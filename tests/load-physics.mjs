@@ -1,18 +1,8 @@
-// Loads the physics block (between /*PHYS*/ and /*END*/) out of index.html
-// so it can be exercised headless in Node, with no DOM.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+// Loads the simulation model (sim.js) headless in Node, with no DOM.
+// sim.js is a plain script that defines globalThis.PZSim, so the browser can load it from file://.
+import '../sim.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, '..', 'index.html'), 'utf8');
-const start = html.indexOf('/*PHYS*/'), end = html.indexOf('/*END*/');
-if (start < 0 || end < 0) throw new Error('PHYS markers not found in index.html');
-const code = html.slice(start + 8, end);
-
-export const phys = new Function(
-  code + '\nreturn {satX,sat,Tsat,kap,pz,liqRho,rcsP,hLiq,cpL,relW,relHys,engage,init,step,VP,VR,CM,TAU,T0,THI};'
-)();
+export const phys = globalThis.PZSim;
 
 // Helper: run the model for `seconds` with fixed controls; optional onStep(s) hook.
 export function run(s, c, seconds, dt = 1, onStep) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render index.html headless at three widths and report JS errors / horizontal overflow.
+"""Render index.html (with sim.js) headless at three widths and report JS errors / horizontal overflow.
 
 Usage:  python3 tools/screenshot.py [--wait SECONDS] [--speed 600] [--out shots/]
 Needs:  pip install playwright && playwright install chromium

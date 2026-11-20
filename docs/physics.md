@@ -77,7 +77,7 @@ automatically** at bubble formation or when the pressuriser goes solid.
 The implicit surge solve is essential: RCS stiffness per kg is ~4–8 kPa when liquid, so an explicit
 coupling would oscillate whenever the pressuriser is solid.
 
-## Halts (in `physTick`, UI side)
+## Halts (`fault(s)` in sim.js; `physTick` stops on it)
 
 Pressuriser dry, state solve error, P > 21.5 MPa, or RCS subcooling margin < 0 (the single-node
 RCS can't represent boiling).
