@@ -17,6 +17,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `tests/load-physics.mjs` | Imports `sim.js` in Node and exposes `PZSim` as `phys`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
 
