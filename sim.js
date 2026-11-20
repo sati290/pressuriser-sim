@@ -72,11 +72,11 @@ const engage=(s,c)=>{s.iL=s.iC=clamp(c.ch-c.ld,-15,15)};
 // between auto and manual, or between inventory modes, by itself.
 const demands=(s,c,dt)=>{
   const d=s.d,P=d.P,A=c.auto||{},e=P-c.set;
-  // heaters and spray (proportional): 'pres' holds the pressure setpoint; 'sub' holds the coolant
-  // subcooling margin c.sub (K), i.e. a pressure target Psat(Tr + c.sub) that follows the coolant
-  // temperature. The 'sub' bands are in kelvin of margin so they stay sensible at low pressure.
+  // heaters and spray (proportional): 'pres' holds the pressure setpoint; 'dT' holds the pressuriser
+  // temperature c.dT (K) above the coolant. With a bubble that is a pressure target Psat(Tr + c.dT)
+  // that follows the coolant; water-solid it acts on the liquid temperature. Bands are in kelvin.
   let q,sp,pset;
-  if(c.pzMode==='sub'){const Q=sat(Math.min(s.Tr+c.sub,THI));pset=Q.p;const eT=(P-pset)/Q.dpdT;
+  if(c.pzMode==='dT'){pset=sat(Math.min(s.Tr+c.dT,THI)).p;const eT=d.T-s.Tr-c.dT;
     q=1.8e6*clamp(0.2-eT/1.25,0,1);sp=40*clamp((eT-0.5)/2.5,0,1)}
   else{pset=c.set;q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);sp=40*clamp((e-0.1e6)/0.4e6,0,1)}
   // charging and letdown: a PI controller asks for a net inflow N = charging − letdown.

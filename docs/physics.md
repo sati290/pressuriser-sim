@@ -56,8 +56,10 @@ only when `c.auto[k]` is true (keys `ch, ld, q, sp, rel`), otherwise the operato
 1. **Demands**:
    - Heaters and spray, `c.pzMode === 'pres'`: heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2);
      spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
-     `c.pzMode === 'sub'` (hold the coolant subcooling margin `c.sub`, K): target p* = p_sat(Tr + c.sub),
-     margin error eT = (P − p*)/(dp/dT at Tr + c.sub) ≈ (Tsat(P) − Tr) − c.sub;
+     `c.pzMode === 'dT'` (hold pressuriser − coolant ΔT `c.dT`, K): error eT = (T_pz − Tr) − c.dT, with
+     T_pz the saturated-region (or solid liquid) temperature. With a bubble T_pz = Tsat(P), so this holds
+     P = p* = p_sat(Tr + c.dT), and the ΔT equals the coolant subcooling margin. Water-solid it acts on the
+     liquid temperature while letdown sets the pressure. Default 53 K (15.5 MPa at 291.7 °C);
      heaters = 1.8 MW·clamp(0.2 − eT/1.25 K); spray = 40·clamp((eT − 0.5 K)/2.5 K). Bands are in kelvin
      so control stays proportionate at low pressure, where 0.15 MPa would be tens of kelvin.
      p* is stored as `s.dem.pset`. Letdown pressure control always uses `c.set`.
@@ -103,7 +105,8 @@ RCS can't represent boiling).
 |---|---|
 | Saturation props vs IAPWS tables at 100/200/300/345 °C | within 0.2–0.3 % |
 | Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h, controls in A or all in M | steady |
-| Subcooling-margin mode, 50 K, hot standby then −13.5 MW cooldown 292 → 235 °C | margin 50.2–50.6 K throughout |
+| ΔT mode, 53 K, hot standby then −13.5 MW cooldown 292 → 235 °C | ΔT 53.2–53.6 K throughout, 15.5 MPa at start |
+| ΔT mode, 53 K, cold water-solid start, letdown on pressure | pressuriser settles 53 K above the coolant at 2.8 MPa |
 | Level 40 → 25 % with charging and letdown both in A | charging goes to 0, letdown takes over, then returns to its held flow |
 | +40 MW for 120 s at hot standby | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
 | Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
