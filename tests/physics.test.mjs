@@ -171,3 +171,11 @@ test('automatic relief opens at the configured pressure', () => {
     assert.ok(Pmax < set + 0.1e6, `overshoot to ${MPa(Pmax)} MPa`);
   }
 });
+
+test('fault() stops the model when the coolant reaches saturation', () => {
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  assert.equal(phys.fault(s), '');
+  let f = '';
+  run(s, { ...HOT_MAN, q: 0, relMan: 100, relAuto: false }, 3600, 0.5, x => (f = phys.fault(x)) === '');
+  assert.equal(f, 'boiling');
+});

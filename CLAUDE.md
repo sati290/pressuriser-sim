@@ -1,6 +1,6 @@
 # Pressuriser simulator — project context for Claude Code
 
-Interactive, single-file HTML simulator of a PWR pressuriser coupled to a lumped reactor
+Interactive HTML simulator of a PWR pressuriser coupled to a lumped reactor
 coolant system (RCS). It is a sandbox: **manual control is primary**; automatic controllers are
 optional assists the operator switches on, and they never change mode by themselves. Built to explore how pressure, temperature and level relate, and to run
 startup (water-solid → bubble draw → hot standby) and shutdown (cooldown → refill solid).
@@ -12,8 +12,9 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 | Path | What |
 |---|---|
-| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is opened straight from GitHub via raw.githack; only Google Fonts loads externally). |
-| `tests/load-physics.mjs` | Extracts the code between `/*PHYS*/` and `/*END*/` from `index.html` and evaluates it in Node. |
+| `index.html` | Presentation: CSS, markup, UI wiring, renderers. Loads `sim.js` with a plain relative `<script src>`; nothing else external except Google Fonts. |
+| `sim.js` | The simulation model: pure physics, no DOM. A classic script that defines `globalThis.PZSim` (no `import`/`export`, so the page still works opened from `file://`). |
+| `tests/load-physics.mjs` | Imports `sim.js` in Node and exposes `PZSim` as `phys`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
@@ -28,24 +29,34 @@ python3 tools/screenshot.py --chrome /usr/bin/google-chrome   # use an existing 
 npm run serve                 # http://localhost:8000 — or just open index.html
 ```
 
-Always run `npm test` after touching anything inside `/*PHYS*/ … /*END*/`, and the screenshot
+Always run `npm test` after touching `sim.js`, and the screenshot
 tool after any CSS/markup/drawing change.
 
-## Code structure inside index.html
+## Code structure
 
-The `<script>` is one block `{ … }` (no globals leak). Order:
+### sim.js — the model
 
-1. `/*PHYS*/ … /*END*/` — **pure physics, no DOM.** Everything the tests use lives here and must
-   stay DOM-free so `load-physics.mjs` can evaluate it. If you add a function the tests need,
-   also add it to the `return {…}` list in `tests/load-physics.mjs`.
-   - `satX(T)` exact Wagner–Pruss saturation equations → `[p, dp/dT, ρf, ρg, hf, hg]` (SI).
-   - `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
-     reused object `Q`** — copy fields out before calling `sat` again.
-   - `kap(°C)` approximate isothermal compressibility of liquid (1/Pa).
-   - `pz(M,U,V)` pressuriser state from mass, internal energy, available volume → solid
-     (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
-   - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
-   - `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
+**Pure physics, no DOM.** One IIFE assigning `globalThis.PZSim`; everything the page or the tests use
+is in its `return {…}` list — add a new function there to make it available. It must stay a plain
+script (no ES `export`): browsers refuse module scripts from `file://`, and Node imports it as an
+ES module just fine since it only touches `globalThis`.
+- `satX(T)` exact Wagner–Pruss saturation equations → `[p, dp/dT, ρf, ρg, hf, hg]` (SI).
+- `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
+  reused object `Q`** — copy fields out before calling `sat` again.
+- `kap(°C)` approximate isothermal compressibility of liquid (1/Pa).
+- `pz(M,U,V)` pressuriser state from mass, internal energy, available volume → solid
+  (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
+- `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
+- `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
+- `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
+  codes to the alert text.
+
+### index.html — presentation
+
+The `<script src="sim.js">` comes first; the page's own `<script>` is one block `{ … }` (no globals
+leak) that destructures what it needs from `PZSim`. Order:
+
+1. Imports from `PZSim`.
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
@@ -54,7 +65,7 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
    `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
    otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
    holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
-3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s.
+3. `physTick()` runs `step` repeatedly, halts when `fault(s)` reports one, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
 4. `syncAuto()` greys out and back-fills sliders that an assist is driving, and writes the assist
    status line (warns when the chosen mode no longer suits the pressuriser state).
@@ -94,7 +105,7 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 ## Publishing
 
 The repo is public; the page is opened straight from GitHub through raw.githack, which serves
-`index.html` from any branch or commit with the right content type. There is no build or deploy step:
+`index.html` and the `sim.js` beside it from any branch or commit with the right content types. There is no build or deploy step:
 pushing a branch is publishing it.
 
 - Branch: `https://raw.githack.com/sati290/pressuriser-sim/<branch>/index.html`
@@ -105,6 +116,6 @@ pushing a branch is publishing it.
 
 The old claude.ai artifact is no longer the live version; don't republish there.
 
-**When you finish a task that changed `index.html`, commit and push it, then end your reply with
+**When you finish a task that changed `index.html` or `sim.js`, commit and push it, then end your reply with
 the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare
 versions).
