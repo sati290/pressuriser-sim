@@ -100,7 +100,7 @@ leak) that destructures what it needs from `PZSim`. Order:
   fast compression, no wall heat capacity in the pressuriser.
 - RCS is one well-mixed liquid node; no loops, no hot/cold leg split, no SG secondary side.
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
-- Level is liquid volume fraction (straight-cylinder geometry).
+- Level is liquid volume fraction; the mimic draws it by volume in a cylinder with hemispherical heads (0 % = bottom, 100 % = top).
 - Compressibility table is approximate (± ~10 %).
 - Coolant pumps are not modelled: one signed net-heat control; pumps assumed running.
 - Relief valve flow is a rough scaling (steam ∝ P, liquid ∝ √ΔP), not a valve model.

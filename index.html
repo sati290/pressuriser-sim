@@ -422,7 +422,13 @@ const drawVessel=dtReal=>{
   // surge line as a schematic loop: down below the pressuriser, across, up the gap, over and into the vessel top
   const sb=Math.min(H-30,y1+Math.max(40,H*0.12)),gx=x0+vw+0.6*(rx-x0-vw),st=ry0-Math.max(34,H*0.08),dx=rx+rw*0.5,cyl=ry0+rh*0.3;
   const surge=[pcx,y1-4,pcx,sb,gx,sb,gx,st,dx,st,dx,ry0+4];
-  const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
+  const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1);
+  // level is a liquid volume fraction: draw it as the height in the vessel as drawn (cylinder with
+  // hemispherical heads), so 0 % is the bottom of the shell and 100 % the very top, same as water-solid
+  const levY=v=>{const L=y1-y0,R=Math.min(rad,L/2),Vt=Math.PI*R*R*(L-2*R)+4/3*Math.PI*R**3,
+    vol=z=>z<=R?Math.PI*z*z*(3*R-z)/3:z<=L-R?2/3*Math.PI*R**3+Math.PI*R*R*(z-R):Vt-Math.PI*(L-z)**2*(3*R-(L-z))/3;
+    v=clamp(v,0,1)*Vt;let a=0,b=L;for(let i=0;i<30;i++){const m=(a+b)/2;if(vol(m)<v)a=m;else b=m}return y1-(a+b)/2};
+  const ly=solid?y0-2:levY(lev);
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
   const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
   const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
@@ -468,9 +474,9 @@ const drawVessel=dtReal=>{
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
   const gw=cx.createLinearGradient(0,ly,0,y1);gw.addColorStop(0,col.water);gw.addColorStop(1,col.water2);cx.fillStyle=gw;cx.fillRect(x0,ly,vw,y1-ly+2);
   // insurge layer: cooler RCS water sitting at the bottom until it mixes
-  const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,inBot-(inBot-inTop)*lf);
+  const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,levY(lf));
   if(!solid&&lf>0&&y1-yl>3){cx.fillStyle=col.water2;cx.fillRect(x0,yl,vw,y1-yl);cx.setLineDash([4,4]);cx.strokeStyle='rgba(255,255,255,.6)';cx.lineWidth=1;cx.beginPath();cx.moveTo(x0,yl);cx.lineTo(x0+vw,yl);cx.stroke();cx.setLineDash([])}
-  const hp=f.trip?0:f.Q/1.8e6,hT=inBot-(inBot-inTop)*0.1,hL=y1-hT; // heaters stay below the 12 % low-level trip
+  const hp=f.trip?0:f.Q/1.8e6,hT=levY(0.1),hL=y1-hT; // heaters stay below the 12 % low-level trip
   for(let i=0;i<5;i++){const hx=x0+vw*(0.18+i*0.16);cx.fillStyle=hp>0?`rgba(255,${120-80*hp|0},0,${0.45+0.55*hp})`:col.metal;cx.fillRect(hx-3,hT,6,hL)}
   if(!reduce&&!solid){
     const sp=Math.min(dtReal,100)/1000;
@@ -489,7 +495,7 @@ const drawVessel=dtReal=>{
     cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(x0+vw+6,ly);cx.lineTo(x0+vw+16,ly-7);cx.lineTo(x0+vw+16,ly+7);cx.fill();
     lbl((lev*100).toFixed(1)+'%',x0+vw+20,ly+5,col.ink,true);
   }
-  const tx=x0+12,heatTop=inBot-(inBot-inTop)*0.1; // labels sit left of the heater bundle's top where possible
+  const tx=x0+12,heatTop=hT; // labels sit left of the heater bundle's top where possible
   if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
   else{
     // steam and water share the saturation temperature (thermal equilibrium)
