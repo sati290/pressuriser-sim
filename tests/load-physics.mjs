@@ -11,7 +11,7 @@ if (start < 0 || end < 0) throw new Error('PHYS markers not found in index.html'
 const code = html.slice(start + 8, end);
 
 export const phys = new Function(
-  code + '\nreturn {satX,sat,Tsat,kap,pz,liqRho,rcsP,hLiq,cpL,init,step,VP,VR,CM,TAU,T0,THI};'
+  code + '\nreturn {satX,sat,Tsat,kap,pz,liqRho,rcsP,hLiq,cpL,relW,relHys,engage,init,step,VP,VR,CM,TAU,T0,THI};'
 )();
 
 // Helper: run the model for `seconds` with fixed controls; optional onStep(s) hook.

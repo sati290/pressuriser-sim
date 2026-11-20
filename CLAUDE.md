@@ -1,7 +1,8 @@
 # Pressuriser simulator — project context for Claude Code
 
 Interactive, single-file HTML simulator of a PWR pressuriser coupled to a lumped reactor
-coolant system (RCS). Built to explore how pressure, temperature and level relate, and to run
+coolant system (RCS). It is a sandbox: **manual control is primary**; automatic controllers are
+optional assists the operator switches on, and they never change mode by themselves. Built to explore how pressure, temperature and level relate, and to run
 startup (water-solid → bubble draw → hot standby) and shutdown (cooldown → refill solid).
 
 The owner is iterating on it for understanding the physics, not for licensing-grade analysis.
@@ -11,7 +12,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 | Path | What |
 |---|---|
-| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is published as a claude.ai artifact; only Google Fonts loads externally). |
+| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is opened straight from GitHub via raw.githack; only Google Fonts loads externally). |
 | `tests/load-physics.mjs` | Extracts the code between `/*PHYS*/` and `/*END*/` from `index.html` and evaluates it in Node. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
@@ -45,12 +46,18 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
      (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
    - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
    - `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
-2. DOM wiring: `ids`/`fmt`/`readCtl()` map sliders → `ctl` (SI units except where noted:
-   `q`, `loss` kW; `core`, `cool` MW; flows kg/s; `set` stored in Pa).
-3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s,
-   and handles solid↔two-phase handover side effects (heaters off on going solid, letdown slider
-   continuity).
-4. `syncAuto()` greys out and back-fills sliders that an automatic controller is driving.
+2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
+   `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
+   `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
+   right-hand card; assists in the "Automatic assists" section below the main panel.
+   Every slider gets − / + buttons from JS (wrapped in `.ctl`; ids `<k>Dn`/`<k>Up`). Step sizes live in
+   `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
+   otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
+   holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
+3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s.
+   No solid↔two-phase side effects: the operator switches modes.
+4. `syncAuto()` greys out and back-fills sliders that an assist is driving, and writes the assist
+   status line (warns when the chosen mode no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic with particles). Charts redraw at ~7 Hz; canvas every frame.
 6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
@@ -75,10 +82,24 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
 - Level is liquid volume fraction (straight-cylinder geometry).
 - Compressibility table is approximate (± ~10 %).
+- Coolant pumps are not modelled: one signed net-heat control; pumps assumed running.
+- Relief valve flow is a rough scaling (steam ∝ P, liquid ∝ √ΔP), not a valve model.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
 ## Publishing
 
-The live version is a claude.ai artifact (owner's private page):
-https://claude.ai/artifact/5xj9k98KsVTTTaygXvcJmN — republishing happens from the claude.ai
-chat, not from Claude Code. Hand back an updated `index.html` and the owner will publish it.
+The repo is public; the page is opened straight from GitHub through raw.githack, which serves
+`index.html` from any branch or commit with the right content type. There is no build or deploy step:
+pushing a branch is publishing it.
+
+- Branch: `https://raw.githack.com/sati290/pressuriser-sim/<branch>/index.html`
+  (slashes in the branch name stay as-is, e.g. `.../claude/some-branch/index.html`).
+  raw.githack caches branch URLs for a few minutes, so a fresh push may take a moment to show.
+- Exact commit: `https://raw.githack.com/sati290/pressuriser-sim/<commit-sha>/index.html`.
+- `main`: `https://raw.githack.com/sati290/pressuriser-sim/main/index.html`.
+
+The old claude.ai artifact is no longer the live version; don't republish there.
+
+**When you finish a task that changed `index.html`, commit and push it, then end your reply with
+the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare
+versions).
