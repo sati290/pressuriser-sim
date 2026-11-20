@@ -50,6 +50,10 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
    right-hand card; assists in the "Automatic assists" section below the main panel.
+   Every slider gets − / + buttons from JS (wrapped in `.ctl`; ids `<k>Dn`/`<k>Up`). Step sizes live in
+   `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
+   otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
+   holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
 3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
 4. `syncAuto()` greys out and back-fills sliders that an assist is driving, and writes the assist

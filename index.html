@@ -65,6 +65,9 @@ svg .now{fill:var(--ink);font-weight:600}
 .row label output{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 input[type=range]{width:100%;height:32px;accent-color:var(--acc);margin:2px 0 0;cursor:pointer}
 input[type=range]:disabled{opacity:.45;cursor:not-allowed}
+.ctl{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;gap:8px;align-items:center}
+.ctl button{min-height:40px;height:40px;padding:0;font-size:20px;line-height:1;font-variant-numeric:tabular-nums;touch-action:manipulation}
+.ctl button:disabled{opacity:.45;cursor:not-allowed;border-color:var(--rule)}
 .check{display:flex;align-items:center;gap:10px;font-size:15px;min-height:32px;cursor:pointer}
 .check input{width:20px;height:20px;accent-color:var(--acc);flex:none}
 .btns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -333,6 +336,26 @@ const invR=[...document.querySelectorAll('input[name=inv]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}for(const k of checks)ctl[k]=$(k).checked;
   ctl.inv=invR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
+// − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
+// about ten round steps over the range. Each press snaps to the next multiple of the step.
+const bump={ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,loss:25,relMan:10,lset:5};
+const nudge=(k,dir)=>{
+  const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
+  const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
+  el.value=+v.toFixed(6);el.dispatchEvent(new Event('input'));
+};
+for(const k of ids){
+  const el=$(k),name=el.labels[0].firstChild.textContent.trim(),box=document.createElement('div');box.className='ctl';el.replaceWith(box);
+  const mk=(dir,txt)=>{const b=document.createElement('button');b.type='button';b.textContent=txt;b.id=k+(dir>0?'Up':'Dn');
+    b.setAttribute('aria-label',(dir>0?'Increase ':'Decrease ')+name+' by '+bump[k]);
+    // press once for one step; hold to repeat
+    let t=null;const stop=()=>{clearTimeout(t);t=null};
+    b.addEventListener('pointerdown',e=>{if(e.button)return;nudge(k,dir);const rep=d=>{t=setTimeout(()=>{nudge(k,dir);rep(80)},d)};rep(400)});
+    for(const ev of ['pointerup','pointerleave','pointercancel'])b.addEventListener(ev,stop);
+    b.addEventListener('click',e=>{if(e.detail===0)nudge(k,dir)}); // keyboard activation
+    return b};
+  box.append(mk(-1,'−'),el,mk(1,'+'));
+}
 for(const k of checks)$(k).addEventListener('change',readCtl);
 for(const r of invR)r.addEventListener('change',()=>{readCtl();if(s)engage(s,ctl)});
 
@@ -374,7 +397,7 @@ const rate=k=>{if(hist.length<2)return 0;const b=hist[hist.length-1];let a=b;for
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',f=s.f;
   const drv={ld:ctl.inv==='pres',ch:ctl.inv==='lev',q:ctl.aP,sp:ctl.aP};
-  for(const k in drv){$(k).disabled=drv[k];if(drv[k]){const v={ld:f.ld,q:f.Q/1e3,sp:f.ws,ch:f.ch}[k];$(k).value=v;ctl[k]=v;$(k+'o').textContent=fmt[k](v)}}
+  for(const k in drv){$(k).disabled=$(k+'Dn').disabled=$(k+'Up').disabled=drv[k];if(drv[k]){const v={ld:f.ld,q:f.Q/1e3,sp:f.ws,ch:f.ch}[k];$(k).value=v;ctl[k]=v;$(k+'o').textContent=fmt[k](v)}}
   // tell the operator when a chosen mode no longer suits the pressuriser state
   let m='',bad=false;
   if(ctl.inv==='pres'&&!solid){m='There is a steam bubble, so letdown no longer controls pressure. Switch charging and letdown to level control or manual.';bad=true}
