@@ -16,7 +16,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `sim.js` | The simulation model: pure physics, no DOM. A classic script that defines `globalThis.PZSim` (no `import`/`export`, so the page still works opened from `file://`). |
 | `tests/load-physics.mjs` | Imports `sim.js` in Node and exposes `PZSim` as `phys`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
 
@@ -24,8 +24,8 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 ```bash
 npm test                      # physics regression suite
-npm run shots                 # screenshots into shots/ (needs: pip install playwright && playwright install chromium)
-python3 tools/screenshot.py --chrome /usr/bin/google-chrome   # use an existing Chrome
+npm run shots                 # screenshots into shots/ (needs: npm i -D playwright && npx playwright install chromium)
+node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Chrome
 npm run serve                 # http://localhost:8000 — or just open index.html
 ```
 

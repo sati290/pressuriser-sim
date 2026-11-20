@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/physics.test.mjs",
-    "shots": "python3 tools/screenshot.py",
+    "shots": "node tools/screenshot.mjs",
     "serve": "python3 -m http.server 8000"
   },
   "engines": { "node": ">=20" }
