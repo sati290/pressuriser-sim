@@ -12,8 +12,8 @@ Roughly in order of value for understanding the physics. None of these are commi
    thermal-shock warnings.
 5. **Charging enthalpy** — regenerative heat exchanger outlet temperature as a function of letdown flow.
 6. **Real level geometry** — hemispherical heads; level in % of span instead of volume fraction.
-7. **Nitrogen cushion mode** — Dalton's law with N₂ partial pressure, solubility (Henry), venting
-   during bubble formation. Allows comparing the three cold-pressure strategies.
+7. **Nitrogen solubility** — the cushion itself is done (Dalton, venting, supply line); add Henry's-law
+   solution and degassing as the water heats, and non-equilibrium (adiabatic) gas compression.
 
 ## Operations
 8. **P–T limit curves** — illustrative heat-up/cooldown brittle-fracture limit and minimum-pressure

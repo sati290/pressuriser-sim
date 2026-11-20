@@ -76,6 +76,8 @@ svg .now{fill:var(--ink);font-weight:600}
 button.am{display:inline-flex;flex:none;min-height:0;height:24px;padding:2px;gap:2px;border-radius:6px;font-size:12px;font-weight:600;line-height:1}
 button.am span{display:grid;place-items:center;width:20px;border-radius:4px;color:var(--mute)}
 button.am[aria-checked=false] span:first-child,button.am[aria-checked=true] span:last-child{background:var(--ink);color:var(--bg)}
+button.am.vlv span{width:auto;padding:0 8px}button.am.vlv[aria-checked=true] span:last-child{background:var(--acc);color:#fff}
+.vrow{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;color:var(--mute)}.vrow output{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:auto}
 /* demand notch on a manual slider: marks where the automatic logic would put it */
 .trk{position:relative}
 .cmd{position:absolute;top:0;bottom:0;left:calc(8px + var(--f,0) * (100% - 16px));width:0;pointer-events:none}
@@ -90,7 +92,7 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .check{display:flex;align-items:center;gap:10px;font-size:15px;min-height:32px;cursor:pointer}
 .check input{width:20px;height:20px;accent-color:var(--acc);flex:none}
 .btns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.btns button{font-size:14px;padding:4px 8px;line-height:1.25}
+.btns button{font-size:14px;padding:4px 8px;line-height:1.25}.btns button:last-child:nth-child(odd){grid-column:1/-1}
 .alert{display:none;margin-top:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-weight:500}
 .alert.on{display:block}
 .assists .chead{flex-direction:column;align-items:start;gap:4px;margin-bottom:14px}
@@ -114,7 +116,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 <header class="band"><div class="wrap">
   <div>
     <h1>Steam pressuriser simulator</h1>
-    <p>A pressuriser coupled to the reactor coolant system. Start cold and water-solid, draw the steam bubble, heat up to hot standby, then cool down again.</p>
+    <p>A pressuriser coupled to the reactor coolant system. Start cold, water-solid or on a nitrogen cushion, draw the steam bubble, heat up to hot standby, then cool down again.</p>
   </div>
   <div class="bar">
     <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
@@ -137,6 +139,7 @@ code{font-size:14px;overflow-wrap:anywhere}
       <h2>Scenarios</h2>
       <div class="btns">
         <button id="scCold">Cold, water-solid<br>60 °C, 2.8 MPa</button>
+        <button id="scN2">Cold, nitrogen cushion<br>60 °C, 2.8 MPa, 25 %</button>
         <button id="scHot">Hot standby<br>292 °C, 15.5 MPa</button>
         <button id="scCool">Cool down from hot standby</button>
         <button id="scLoad">Load step: +40 MW for 2 min</button>
@@ -158,6 +161,8 @@ code{font-size:14px;overflow-wrap:anywhere}
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
       <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
+      <div class="vrow"><span id="n2l">Nitrogen supply</span><output id="n2o"></output><button id="n2" type="button" class="am vlv" role="switch" aria-checked="false" aria-labelledby="n2l" title="Nitrogen supply valve: shut / open"><span>Shut</span><span>Open</span></button></div>
+      <p>Nitrogen from a 4.0 MPa header through a check valve, about 0.5 kg/s at 1 MPa difference. Vent it through the relief valve.</p>
     </div>
   </div>
 
@@ -170,7 +175,7 @@ code{font-size:14px;overflow-wrap:anywhere}
     </div>
     <div class="card satcard">
       <div class="chead"><h2>Pressure–temperature plane</h2>
-        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span></div></div>
+        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span><span id="satKN" hidden><i style="background:none;border-top:2px dashed var(--acc);height:0"></i>Steam partial (nitrogen above it)</span></div></div>
       <div class="fig sat"><svg id="sat"></svg></div>
     </div>
   </div>
@@ -218,13 +223,22 @@ code{font-size:14px;overflow-wrap:anywhere}
         <li>For shutdown, start from <b>Cool down from hot standby</b>, which sets the net heat to −13.5 MW. The shrinking coolant draws water out of the pressuriser, so charge to hold the level and lower the pressure as the coolant cools, by hand or with heaters and spray in A holding the pressuriser − coolant ΔT.</li>
         <li>Below about 175 °C and near 2.8 MPa, lower the relief opening pressure to about 3.6 MPa and fill the pressuriser: level setpoint 100 %, or charging above letdown. The cooler water collapses the bubble. Once it is solid, turn the heaters off and select letdown pressure control again, or the pressure climbs to the relief setpoint.</li>
       </ol></div>
+    <div><h2>With a nitrogen cushion</h2>
+      <ol>
+        <li>Click <b>Cold, nitrogen cushion</b>: the gas space above 60 °C water is nitrogen at 2.8 MPa, with steam at its own small partial pressure (0.02 MPa). The gas is a soft spring, so pressure moves slowly; charging holds the level once you put charging and letdown in A with <b>Charging holds the level setpoint</b> selected.</li>
+        <li>Turn the heaters up. The steam partial pressure climbs with the water temperature and the warmed nitrogen expands, so total pressure rises. Vent through the relief valve, by hand or in A with a low opening pressure such as 3.0 MPa: the valve lets out the gas mixture, nitrogen in proportion to its share. The P–T plane shows the pressuriser off the saturation curve, with a hollow marker at the steam partial pressure; the gap above it is the nitrogen.</li>
+        <li>Near the saturation temperature for the pressure (about 230 °C at 2.8 MPa) the nitrogen is nearly gone. Once it is below 0.1 % of the gas and the supply is shut, the model drops the remainder and carries on with steam alone: the level gauge keeps its number and the state reads steam bubble. From there it is the same heat-up as before.</li>
+        <li>To cool down onto nitrogen instead of filling solid: near 2.8 MPa with the coolant below about 175 °C, turn the heaters off and spray to bring the pressuriser down to coolant temperature. Steam condenses and pressure falls; open the nitrogen supply to hold it and shut it again at the pressure you want. The header is at 4.0 MPa, so with the supply left open pressure climbs to the relief setting.</li>
+        <li>Opening the supply on a water-solid pressuriser makes a gas space at the top. Nitrogen comes in faster, by volume, than letdown at 20 kg/s can make room, so pressure rises until you shut the valve.</li>
+      </ol></div>
     <div><h2>What the model solves</h2>
-      <p>The pressuriser (51 m³) tracks its own water mass and energy. When the liquid fills the vessel it is treated as compressed liquid; otherwise it is a saturated mixture. The coolant system (280 m³) is one block of liquid at one temperature. A single net-heat control stands for pump work and core or decay heat minus RHR or steam dump; the pumps are assumed to run, keeping the coolant mixed and the spray supplied. Its heat capacity includes 0.6 GJ/K of steel.</p>
+      <p>The pressuriser (51 m³) tracks its own water mass and energy, and the nitrogen mass in its gas space. When the liquid fills the vessel it is treated as compressed liquid; otherwise it is a saturated mixture. With nitrogen, liquid and gas share one temperature: the water vapour is at its saturation pressure for that temperature, the nitrogen is an ideal gas in the same space, and the pressure is the sum. The same equations hold as the nitrogen goes to zero, so the cushion, the steam bubble and water-solid are one model. The coolant system (280 m³) is one block of liquid at one temperature. A single net-heat control stands for pump work and core or decay heat minus RHR or steam dump; the pumps are assumed to run, keeping the coolant mixed and the spray supplied. Its heat capacity includes 0.6 GJ/K of steel.</p>
       <p>Each step the surge flow is solved so the pressuriser and the coolant system are at the same pressure. Charging and letdown change the coolant mass, and spray takes cold-leg water into the steam space.</p></div>
     <div><h2>Assumptions and limits</h2>
       <ul>
         <li>Insurge water collects as a cooler layer at the bottom and mixes into the saturated water over about 5 minutes. The layer compresses the steam, which is why pressure rises on an insurge. Otherwise liquid and steam are in equilibrium, so the brief pressure dip before flashing on an outsurge is not shown.</li>
         <li>Charging enters at coolant temperature, so its cooling effect is ignored.</li>
+        <li>Nitrogen does not dissolve in the water: no Henry's-law solubility, so no degassing as the water heats, and none carried to the coolant by outsurge. Nitrogen stays in equilibrium with the water, so compressing it heats the whole pressuriser a little rather than the gas a lot; fast pressure swings on a cushion are softer than real. Nitrogen relief flow uses the ideal-gas choked-flow ratio to the steam figure.</li>
         <li>Liquid compressibility uses approximate saturated-liquid values, about 0.44 per GPa at 50 °C rising to 3 per GPa at 340 °C.</li>
         <li>Relief valve flow scales with pressure: steam about 15 kg/s at 16.2 MPa, falling in proportion; water about 30 kg/s at 3.6 MPa, rising with the square root of pressure. The safety valve passes four times as much. These are rough sizing figures, not a valve model.</li>
         <li>Heaters cut out below 12 % level to protect the elements; this interlock is always on.</li>
@@ -248,11 +262,11 @@ const ids=['set','dT','lset','heat','ch','ld','q','sp','loss','relSet','relMan']
 // sliders with an M/A switch → key in ctl.auto (as control.js names the actuator)
 const AK={ch:'ch',ld:'ld',q:'q',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,q:false,sp:false,rel:true};
 const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',relSet:v=>(+v).toFixed(1)+' MPa'};
-const ctl={};
+const ctl={};let n2open=false;
 const invR=[...document.querySelectorAll('input[name=inv]')],pzR=[...document.querySelectorAll('input[name=pzMode]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
   ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
-  ctl.inv=invR.find(r=>r.checked).value;ctl.pzMode=pzR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
+  ctl.n2=n2open;$('n2').setAttribute('aria-checked',n2open);ctl.inv=invR.find(r=>r.checked).value;ctl.pzMode=pzR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
 // about ten round steps over the range. Each press snaps to the next multiple of the step.
@@ -282,6 +296,7 @@ for(const k of ids){
   const dem=document.createElement('span');dem.className='dem';dem.id=k+'d';lab.insertBefore(dem,lab.querySelector('output'));
   const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);
 }
+$('n2').onclick=()=>{n2open=!n2open;readCtl()};
 for(const r of invR)r.addEventListener('change',()=>{readCtl();if(cs)Ctl.engage(cs,ctl)});
 for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
@@ -297,13 +312,15 @@ const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
   for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
 const toggle=()=>{running=!running;showSpeed()};
 $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
-const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
+const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='n2')n2open=o[k];else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
-const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
+const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0,n2:false};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();Ctl.engage(cs,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,win:21600});
 const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,win:600});
-$('scCold').onclick=COLD;$('scHot').onclick=HOT;
+// nitrogen cushion: cold, the gas space is nitrogen over 60 °C water; charging/letdown on level
+const N2C=()=>start({n2:true,Tpz:60,Tr:60,P:2.8e6,L:0.25},{inv:'lev',set:2.8,lset:25,heat:0,ch:5,ld:5,q:60,sp:0,loss:60,relSet:3.6,win:21600});
+$('scCold').onclick=COLD;$('scHot').onclick=HOT;$('scN2').onclick=N2C;
 $('scCool').onclick=()=>{HOT();setC({heat:-13.5,win:21600})};
 $('scLoad').onclick=()=>{if(s)s.extra={Q:40e6,end:s.t+120}};
 
@@ -316,7 +333,7 @@ const physTick=simDt=>{
     step(s,Ctl.update(cs,s,ctl,dt),dt); // controller first, then the plant, every sub-step
     const d=s.d,msg=FAULT[fault(s)];
     if(msg){halted=msg;setAlert(msg+' The model stops here; pick a scenario to start again.');if(running)toggle();break}
-    if(s.t-lastS>=2){lastS=s.t;hist.push({t:s.t,P:d.P,T:d.T-273.15,R:s.Tr-273.15,L:d.level*100});if(hist.length>12000)hist.shift()}
+    if(s.t-lastS>=2){lastS=s.t;hist.push({t:s.t,P:d.P,N:s.Mn>0?d.pN:null,T:d.T-273.15,R:s.Tr-273.15,L:d.level*100});if(hist.length>12000)hist.shift()}
   }
 };
 const ctl_dt=()=>speed<=20?0.25:speed<=50?0.5:speed<=200?1:2;
@@ -329,7 +346,7 @@ const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color
 // so at 1× the rate spans the last 4 s.
 const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
-  const d=s.d,solid=d.mode==='solid',A=ctl.auto,D=cs.dem;
+  const d=s.d,solid=d.mode==='solid',n2=s.Mn>0,A=ctl.auto,D=cs.dem;
   // in A the slider follows the demand; in M a notch and a readout show it
   const dv={ch:D.ch,ld:D.ld,q:D.q/1e3,sp:D.sp,relMan:D.rel*100};
   const dtx={ch:v=>v.toFixed(1),ld:v=>v.toFixed(1),q:v=>Math.round(v),sp:v=>v.toFixed(1),relMan:v=>v?'open':'shut'};
@@ -342,27 +359,31 @@ const syncAuto=()=>{
   }
   // heater/spray target: the setpoint, or coolant + ΔT for the pressuriser (follows the coolant)
   const tt=s.Tr-273.15+ctl.dT;
-  $('pzT').textContent=ctl.pzMode==='dT'?`Pressuriser target now ${tt.toFixed(1)} °C, the coolant plus ${ctl.dT} K`+(solid?' (water-solid: pressure is set by letdown).':`: ${(D.pset/1e6).toFixed(2)} MPa with a bubble.`):`Target ${(ctl.set/1e6).toFixed(1)} MPa.`;
+  $('pzT').textContent=ctl.pzMode==='dT'?`Pressuriser target now ${tt.toFixed(1)} °C, the coolant plus ${ctl.dT} K`+(solid?' (water-solid: pressure is set by letdown).':n2?`. With nitrogen in the gas this is not a pressure target: the steam partial pressure would be ${(D.pset/1e6).toFixed(2)} MPa, plus the nitrogen.`:`: ${(D.pset/1e6).toFixed(2)} MPa with a bubble.`):`Target ${(ctl.set/1e6).toFixed(1)} MPa.`;
   // tell the operator when the chosen logic no longer suits the pressuriser state
   const inv=A.ch||A.ld,any=A.ch||A.ld||A.q||A.sp;
   let m='',bad=false;
-  if(ctl.inv==='pres'&&!solid&&inv){m='There is a steam bubble, so letdown no longer controls pressure: it drains the level instead. Select level control, or put charging and letdown in M.';bad=true}
+  if(ctl.inv==='pres'&&!solid&&!n2&&inv){m='There is a steam bubble, so letdown no longer controls pressure: it drains the level instead. Select level control, or put charging and letdown in M.';bad=true}
   else if(ctl.inv==='lev'&&solid&&ctl.lset<100&&inv){m='Water-solid: level control will draw water out until the pressure falls to saturation and a bubble forms. Watch the subcooling margin.';bad=true}
   else if((A.q||A.sp)&&solid){m='Water-solid: the heaters still raise the pressure, but spray has little effect without a steam space.'}
+  else if(ctl.n2&&s.f.wn>0&&d.P>ctl.relSet-0.3e6&&A.rel){m='Nitrogen supply open close to the relief setting: the relief valve will vent what comes in.'}
   else if(!A.rel){m='Relief valve in M. Only the safety valve at 17.2 MPa limits pressure.';bad=true}
-  else m=(solid?'Pressuriser is water-solid.':'Pressuriser has a steam bubble.')+(any?'':' Every control except the relief valve is in M; the notches show the automatic demand.');
+  else m=(solid?'Pressuriser is water-solid.':n2?`Nitrogen cushion: the gas is ${(d.yN*100).toFixed(d.yN>0.995?1:0)} % nitrogen by partial pressure. Charging and letdown change the pressure by squeezing the gas; heaters add steam partial pressure.`:'Pressuriser has a steam bubble.')+(any?'':' Every control except the relief valve is in M; the notches show the automatic demand.');
   $('astat').textContent=m;$('astat').classList.toggle('bad',bad);
+  $('n2o').textContent=s.f.wn>0?s.f.wn.toFixed(2)+' kg/s':ctl.n2?'no flow':'';
 };
 const updText=()=>{
   const d=s.d;if(d.err)return;
-  const solid=d.mode==='solid',sub=Tsat(d.P)-s.Tr,dT=d.T-s.Tr,f=s.f;
+  const solid=d.mode==='solid',n2=s.Mn>0,sub=Tsat(d.P)-s.Tr,dT=d.T-s.Tr,f=s.f;
   $('gP').textContent=(d.P/1e6).toFixed(3);$('gT').textContent=(d.T-273.15).toFixed(1);$('gR').textContent=(s.Tr-273.15).toFixed(1);
   $('gL').textContent=solid?'Solid':(d.level*100).toFixed(1);
   const h=Math.floor(s.t/3600),m=Math.floor(s.t%3600/60);
-  const rows=[['State',solid?'water-solid':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
+  const rows=[['State',solid?'water-solid':n2?'nitrogen cushion':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
-    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],['Steam mass',d.Mg.toFixed(0)+' kg'],
+    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],
+    ['Nitrogen',n2?`${s.Mn.toFixed(0)} kg, ${(d.pN/1e6).toFixed(3)} MPa`:'none'],['Nitrogen flow',f.wn>0||f.wrn>0?`${f.wn>0?'in '+f.wn.toFixed(2):''}${f.wn>0&&f.wrn>0?' / ':''}${f.wrn>0?'vented '+f.wrn.toFixed(2):''} kg/s`:'none'],
+    ['Steam mass',d.Mg.toFixed(0)+' kg'+(n2?`, ${(d.pS/1e6).toFixed(3)} MPa`:'')],
     ['Coolant mass',(s.Mr/1000).toFixed(1)+' t'],['Water mass',(d.Ml/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(m).padStart(2,'0')+' min']];
   $('stats').innerHTML=rows.map(r=>`<div><dt>${r[0]}</dt><dd${r[2]?' class="bad"':''}>${r[1]}</dd></div>`).join('');
 };
@@ -373,20 +394,24 @@ const drawRec=()=>{
   const W=rec.clientWidth,H=rec.clientHeight;if(!W||!s)return;
   const win=+$('win').value,t1=s.t,t0=t1-win,pts=hist.filter(h=>h.t>=t0);
   const L=50,R=W<520?50:64,top=4,bot=22,gap=14,ph=(H-top-bot-2*gap)/3;
-  const ser=[[['P','var(--acc)']],'Pressure, MPa',v=>(v/1e6).toFixed(W<520?2:3),0.2e6,[['T','var(--ink)'],['R','var(--water)']],'Temperature, °C (pressuriser, coolant)',v=>v.toFixed(1),2,[['L','var(--water)']],'Level, %',v=>v.toFixed(1),2];
+  const ser=[[['P','var(--acc)'],['N','var(--mute)']],pts.some(p=>p.N!=null)?'Pressure, MPa (total, nitrogen)':'Pressure, MPa',v=>(v/1e6).toFixed(W<520?2:3),0.2e6,[['T','var(--ink)'],['R','var(--water)']],'Temperature, °C (pressuriser, coolant)',v=>v.toFixed(1),2,[['L','var(--water)']],'Level, %',v=>v.toFixed(1),2];
   let out='';const X=t=>L+(t-t0)/win*(W-L-R);
   for(let i=0;i<3;i++){
     const keys=ser[i*4],name=ser[i*4+1],f=ser[i*4+2],minSpan=ser[i*4+3],y0=top+i*(ph+gap);
-    let lo=Infinity,hi=-Infinity;for(const p of pts)for(const[k]of keys){lo=Math.min(lo,p[k]);hi=Math.max(hi,p[k])}
+    let lo=Infinity,hi=-Infinity;for(const p of pts)for(const[k]of keys)if(p[k]!=null){lo=Math.min(lo,p[k]);hi=Math.max(hi,p[k])}
+    if(lo>hi){lo=0;hi=1}
     if(!pts.length){lo=0;hi=1}
     if(hi-lo<minSpan){const m=(hi+lo)/2;lo=m-minSpan/2;hi=m+minSpan/2}
     const pad=(hi-lo)*0.08;lo-=pad;hi+=pad;const Y=v=>y0+ph-(v-lo)/(hi-lo)*ph;
     out+=`<rect x="${L}" y="${y0}" width="${W-L-R}" height="${ph}" fill="none" stroke="var(--rule)"/><text x="${L-6}" y="${y0+12}" text-anchor="end">${f(hi)}</text><text x="${L-6}" y="${y0+ph}" text-anchor="end">${f(lo)}</text><text x="${L+6}" y="${y0+15}">${W<520?name.replace(/ \(.*\)/,''):name}</text>`;
     if(pts.length>1)for(const[k,col]of keys){
-      const st=Math.max(1,Math.floor(pts.length/(W-L-R)));let dd='';
-      for(let j=0;j<pts.length;j+=st)dd+=(dd?'L':'M')+X(pts[j].t).toFixed(1)+','+Y(pts[j][k]).toFixed(1);
-      const lp=pts[pts.length-1];dd+='L'+X(lp.t).toFixed(1)+','+Y(lp[k]).toFixed(1);
-      out+=`<path d="${dd}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/><circle cx="${X(lp.t)}" cy="${Y(lp[k])}" r="3.5" fill="${col}"/><text class="now" x="${W-R+6}" y="${Y(lp[k])+4}">${f(lp[k])}</text>`;
+      // gaps (null, e.g. no nitrogen) break the line
+      const st=Math.max(1,Math.floor(pts.length/(W-L-R)));let dd='',pen=false;
+      const add=p=>{if(p[k]==null){pen=false;return}dd+=(pen?'L':'M')+X(p.t).toFixed(1)+','+Y(p[k]).toFixed(1);pen=true};
+      for(let j=0;j<pts.length;j+=st)add(pts[j]);
+      const lp=pts[pts.length-1];add(lp);if(!dd)continue;
+      out+=`<path d="${dd}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"${k==='N'?' stroke-dasharray="5 3"':''}/>`;
+      if(lp[k]!=null)out+=`<circle cx="${X(lp.t)}" cy="${Y(lp[k])}" r="3.5" fill="${col}"/><text class="now" x="${W-R+6}" y="${Y(lp[k])+4}">${f(lp[k])}</text>`;
     }
   }
   const lab={120:['−2 min','−1 min'],600:['−10 min','−5 min'],3600:['−60 min','−30 min'],21600:['−6 h','−3 h']}[win];
@@ -417,10 +442,12 @@ const drawSat=()=>{
     o+=`<path d="${pts.map((h,i)=>(i?'L':'M')+X(h.T).toFixed(1)+','+Y(h.P/1e6).toFixed(1)).join('')}" fill="none" stroke="var(--acc)" stroke-width="2" opacity=".5"/>`}
   const cp=s.d.T-273.15,cr=s.Tr-273.15,p=s.d.P/1e6,yy=Y(p);
   o+=`<line x1="${X(cr)}" x2="${X(cp)}" y1="${yy}" y2="${yy}" stroke="var(--mute)" stroke-dasharray="2 3"/>`;
+  if(s.Mn>0){const ys=Y(s.d.pS/1e6);o+=`<line x1="${X(cp)}" x2="${X(cp)}" y1="${yy}" y2="${ys}" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="${X(cp)}" cy="${ys}" r="4.5" fill="var(--panel)" stroke="var(--acc)" stroke-width="2"/>`;
+    if(yy<ys-40)o+=`<text x="${X(cp)+8}" y="${(yy+ys)/2+4}">N₂ ${(s.d.pN/1e6).toFixed(2)}</text>`}
   o+=`<circle cx="${X(cr)}" cy="${yy}" r="6" fill="var(--water)"/><circle cx="${X(cp)}" cy="${yy}" r="6" fill="var(--acc)"/>`;
   const lx=Math.min(X(cr),X(cp)),tx=lx>W*0.45?lx-10:Math.max(X(cr),X(cp))+10,an=lx>W*0.45?'end':'start';
   o+=`<text class="now" x="${tx}" y="${yy-10}" text-anchor="${an}">${p.toFixed(2)} MPa</text>`;
-  satsvg.innerHTML=o;
+  satsvg.innerHTML=o;$('satKN').hidden=!(s.Mn>0);
 };
 
 // ---------- vessel mimic ----------
@@ -471,6 +498,12 @@ const drawVessel=dtReal=>{
    for(const o of[-6,6]){cx.beginPath();cx.moveTo(gx-12,ym+o+4);cx.lineTo(gx+12,ym+o-4);cx.stroke()}}
   pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
   pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
+  // nitrogen supply: enters the upper shell from the left, valve on the line (filled shut, hollow open)
+  const ny=y0+rad+18,nvx=Math.max(26,x0*0.45),nopen=ctl.n2;
+  pipe([0,ny,x0+4,ny],8);
+  cx.beginPath();cx.moveTo(nvx-11,ny-8);cx.lineTo(nvx+11,ny+8);cx.lineTo(nvx+11,ny-8);cx.lineTo(nvx-11,ny+8);cx.closePath();
+  cx.fillStyle=nopen?css('--panel'):col.ink;cx.fill();cx.lineWidth=2;cx.strokeStyle=nopen&&f.wn>0?col.acc:col.ink;cx.lineJoin='miter';cx.stroke();
+  if(f.wn>0){cx.fillStyle=col.acc;const ax=(nvx+x0)/2;cx.beginPath();cx.moveTo(ax+8,ny);cx.lineTo(ax-4,ny-7);cx.lineTo(ax-4,ny+7);cx.fill()}
   // reactor vessel: coolant + core
   cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.clip();
   const gr=cx.createLinearGradient(0,ry0,0,ry1);gr.addColorStop(0,col.water);gr.addColorStop(1,col.water2);cx.fillStyle=gr;cx.fillRect(rx,ry0,rw,rh);
@@ -491,6 +524,7 @@ const drawVessel=dtReal=>{
   // pressuriser interior
   cx.save();shape();cx.clip();
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
+  if(s.Mn>0&&ly-y0>4){cx.fillStyle=col.mute;cx.globalAlpha=0.15+0.35*d.yN;for(let yy=y0+4,r_=0;yy<ly-2;yy+=9,r_++)for(let xx=x0+(r_%2?4:8.5);xx<x0+vw;xx+=9)cx.fillRect(xx,yy,1.6,1.6);cx.globalAlpha=1}
   const gw=cx.createLinearGradient(0,ly,0,y1);gw.addColorStop(0,col.water);gw.addColorStop(1,col.water2);cx.fillStyle=gw;cx.fillRect(x0,ly,vw,y1-ly+2);
   // insurge layer: cooler RCS water sitting at the bottom until it mixes
   const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,levY(lf));
@@ -518,11 +552,14 @@ const drawVessel=dtReal=>{
   if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
   else{
     // steam and water share the saturation temperature (thermal equilibrium)
-    if(ly-y0>60){const yy=Math.max(y0+rad*0.6,(y0+ly)/2);lbl('Steam',tx,yy,col.mute);tempL(d.T,rT,tx,yy+20,col.ink)}
+    // with nitrogen the gas is a mixture: name it and give the nitrogen share (by partial pressure)
+    if(ly-y0>60){const n2=s.Mn>0,yy=Math.max(y0+rad*0.6,(y0+ly)/2-(n2?10:0));lbl(n2?'N₂ + steam':'Steam',tx,yy,col.mute);const hh=tempL(d.T,rT,tx,yy+20,col.ink);
+      if(n2&&ly-y0>100)lbl(`N₂ ${(d.yN*100).toFixed(d.yN>0.995||d.yN<0.01?1:0)} %`,tx,yy+38+hh,col.ink,true)}
     // water (and insurge layer) labels go inside when there is room, else beside the vessel under the level marker
     const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop),ox=x0+vw+10;
     let oy=Math.max(ly+30,inTop+30);
-    if(wb-ly>66){lbl('Water',tx,ly+22,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,ly+42,'#fff')}
+    const wy=Math.max(ly+22,y0+rad*0.7); // below the curved top head, where the label would be clipped
+    if(wb-wy>44){lbl('Water',tx,wy,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,wy+20,'#fff')}
     else{oy=Math.min(oy,y1-68);lbl('Water',ox,oy,col.mute);oy+=48+tempL(d.T,rT,ox,oy+20,col.ink)}
     if(lay){
       let Ts=s.Tr;for(let i=0;i<3;i++)Ts+=(s.hs-hLiq(Ts,d.P))/cpL(Ts);
@@ -531,6 +568,7 @@ const drawVessel=dtReal=>{
   }
   cx.textAlign='left';lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',sx+14,pt-4,col.mute);
   lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
+  {const nn=x0<160?'N₂':'Nitrogen';lbl(f.wn>0?`${nn} ${f.wn.toFixed(2)}${x0<160?'':' kg/s'}`:nopen?nn+(x0<160?' open':' open, no flow'):nn,12,ny-16,col.mute)}
   cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
   cx.textAlign='left';
   const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sb-12,col.mute);

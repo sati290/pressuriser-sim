@@ -13,6 +13,10 @@
 | Spray max | 40 kg/s | Main spray at RCS temperature |
 | Relief valve | 15 kg/s steam at 16.2 MPa (∝ P); 30 kg/s liquid at 3.6 MPa (∝ √(P − 0.1 MPa)) | `relW(P, steam)` |
 | Safety valve | 4 × relief valve flow | Fixed 17.2 MPa open / 16.9 MPa reclose |
+| Gas with nitrogen | relief flow × √(R_s·T_sat(P) / (R_mix·T)) | `gasF(d)`: ideal-gas choked-flow ratio (∝ P/√(RT)) of the mixture vs saturated steam at the same P; exactly 1 for steam alone |
+| Nitrogen supply | 4.0 MPa header (`N2P`), 0.5 kg/s·√(ΔP / 1 MPa) (`N2W`), 20 °C, check valve | `n2W(P)`; valve open/shut, operator only |
+| Nitrogen | R = 296.8, c_v = 743, c_p = 1039.8 J/(kg·K), ideal gas, u = c_v·T | `RN`, `CVN` |
+| `N2MIN` | 0.1 % | Below this share of the gas (partial pressure / P), with the supply shut, the nitrogen is dropped |
 
 ## Properties
 
@@ -37,14 +41,15 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 
 | Field | Meaning |
 |---|---|
-| `M`, `U` | Mass and internal energy of the pressuriser's **saturated region** (or the whole liquid when solid) |
+| `M`, `U` | Water mass and internal energy of the pressuriser's **saturated region** (or the whole liquid when solid); `U` includes the nitrogen's c_v·T |
+| `Mn` | Nitrogen mass in the gas space (0 = steam bubble or water-solid) |
 | `Ms`, `hs`, `rs` | Insurge layer: mass, specific enthalpy, density (bottom of pressuriser) |
 | `Mr`, `Tr` | RCS liquid mass and temperature |
 | `d` | Derived pressuriser state from `pz(M, U, VP − Ms/rs)` |
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `sv`, `rel` | Safety-valve latch, relief valve opening fraction 0–1 (as commanded) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
-| `f` | What was applied in the last step: `{Q, ws, ch, ld, wr, trip, Qr}` (after limits and interlocks) |
+| `f` | What was applied in the last step: `{Q, ws, ch, ld, wr, wrn, wn, trip, Qr}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
 
 ## Controller memory (`cs`, from `PZCtl.init()`)
 
@@ -55,7 +60,9 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 | `hold` | Charging/letdown flows held by a secondary actuator in A |
 | `porv` | Auto-relief latch (runs in M too) |
 
-## Pressuriser state solve `pz(M,U,V)`
+## Pressuriser state solve `pz(M,U,V,Mn)`
+
+With `Mn = 0`:
 
 1. Find T with u_f(T) = U/M. If ρ̄ = M/V ≥ ρ_f(T) → **solid**: P from compressed-liquid relation.
 2. Otherwise **two-phase**: find T with u_mix(T; v̄) = ū where x = (v̄ − v_f)/(v_g − v_f),
@@ -63,6 +70,21 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 3. Errors: `dry` (no liquid left), `cold` (below table), `solid?` (no consistent state).
 
 Solid↔two-phase transition is continuous: at x = 0, v̄ = v_f and P = p_sat.
+
+With `Mn > 0` (`pzN`): liquid and gas at one temperature T. The water vapour is saturated at T
+(partial pressure p_sat(T), density ρ″(T)); nitrogen is an ideal gas in the same volume; Dalton:
+P = p_sat(T) + Mn·R_N·T/V_g. The liquid is compressed liquid at P, ρ_l = ρ_f/(1 − κ(P − p_sat)), u = u_f(T).
+Water mass gives V_l = (M − ρ″V)/(ρ_l − ρ″), V_g = V − V_l.
+
+1. For a trial T, solve P = p_sat + Mn·R_N·T/V_g(P) (safeguarded Newton in P − p_sat; V_g grows with P
+   as the liquid compresses, so the root is unique).
+2. Find T where E(T) = M_l·u_f + M_g·u_g + Mn·c_v·T equals U (Illinois regula falsi, ~6–10 evaluations;
+   E is smooth and increasing). Upper bound where ρ″(T)·V = M (all water vapour → `dry`).
+3. There is always a gas space: squeezing it raises the pressure without bound, so this branch is never
+   water-solid. Nitrogen entering a solid pressuriser opens a gas space continuously.
+
+As Mn → 0 the result tends to the steam and water-solid states (tested to 20 Pa, 1 mK at Mn = 1 µg),
+so one model covers water-solid, nitrogen-cushion and steam-bubble operation.
 
 ## Control step `PZCtl.update(cs, s, c, dt)` (control.js)
 
@@ -104,7 +126,7 @@ The controller reads the plant state directly (ideal, instantaneous measurements
 
 ## Plant step `PZSim.step(s, u, dt)` (sim.js)
 
-`u = {ch, ld, sp (kg/s), q (W), rel (0–1), heat (W), loss (W)}`, the final command.
+`u = {ch, ld, sp (kg/s), q (W), rel (0–1), n2 (0/1), heat (W), loss (W)}`, the final command.
 
 1. **Limits and protection**: each actuator is clamped to `LIM` (charging/letdown 0–20 kg/s, heaters
    0–1.8 MW, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level in either mode. Safety valve
@@ -112,7 +134,9 @@ The controller reads the plant state directly (ideal, instantaneous measurements
    These act whoever commands, and are recorded in `s.f`.
 2. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
 3. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
-   spray at RCS enthalpy, heater power, minus losses and relief.
+   spray at RCS enthalpy, heater power, minus losses and relief. With nitrogen, the vented gas carries
+   nitrogen by its mass share, Mn·(1 − exp(−w·dt/(Mn + M_g))) per step (so it can't overdraw), at
+   c_p·T; the rest is steam at h″(T). Nitrogen supply (`u.n2`) adds `n2W(P)` at c_p·293 K.
 4. **Layer mixing**: m = Ms·dt/τ (+ small floor) moves from the layer into the saturated region with
    energy m·(hs − P/ρs) and volume m/ρs. If the pressuriser is solid the layer merges at once.
 5. **Surge solve** (implicit): find dm (RCS → pressuriser, kg) such that
@@ -122,6 +146,8 @@ The controller reads the plant state directly (ideal, instantaneous measurements
    - Outsurge (dm < 0): drawn from the layer first, then saturated liquid at h_l. Hot outsurge
      water heats the RCS.
 6. Re-derive `d`, total level = (saturated liquid volume + layer volume)/VP, and `Pr`.
+7. **Nitrogen gone**: if the supply delivered nothing this step and the nitrogen is below `N2MIN` of the
+   gas, Mn = 0 and its c_v·T leaves U; the pressure steps down by under 0.1 %.
 
 The implicit surge solve is essential: RCS stiffness per kg is ~4–8 kPa when liquid, so an explicit
 coupling would oscillate whenever the pressuriser is solid.
@@ -149,3 +175,9 @@ RCS can't represent boiling).
 | Manual relief at hot standby | ~13 kg/s steam, pressure falls |
 | Auto relief at 15.8 and 16.6 MPa | opens within 0.02 MPa of the setting |
 | Mass conservation, closed system (with the controller, and plant alone with fixed commands) | < 1 kg drift over 10 min |
+| Nitrogen branch at Mn = 1 µg vs steam and water-solid states | P within 20 Pa, T within 1 mK, level within 1e-4 |
+| Cold nitrogen cushion (60 °C, 2.8 MPa, 25 %), balanced, 1 h | steady |
+| Closed system with nitrogen, then relief open | water and nitrogen balances close (< 1 kg, < 1 µg) |
+| Nitrogen into water-solid, letdown on pressure | gas space forms; pressure rises to ~3.1 MPa while open (inflow beats 20 kg/s letdown), back to 2.8 MPa once shut |
+| Nitrogen startup, 1.8 MW heaters, relief in A at 3.0 MPa, level in A | nitrogen purged ~2.9 h at ~232 °C; pressure step at the switch < 0.01 MPa |
+| Cooldown from 175 °C steam bubble, spray 3 kg/s, operator works the nitrogen valve | pressuriser reaches coolant temperature, gas > 60 % nitrogen, P ≥ 2.7 MPa |
