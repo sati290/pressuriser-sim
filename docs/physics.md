@@ -14,7 +14,7 @@
 | Relief valve | 15 kg/s steam at 16.2 MPa (∝ P); 30 kg/s liquid at 3.6 MPa (∝ √(P − 0.1 MPa)) | `relW(P, steam)` |
 | Safety valve | 4 × relief valve flow | Fixed 17.2 MPa open / 16.9 MPa reclose |
 | Gas with nitrogen | relief flow × √(R_s·T_sat(P) / (R_mix·T)) | `gasF(d)`: ideal-gas choked-flow ratio (∝ P/√(RT)) of the mixture vs saturated steam at the same P; exactly 1 for steam alone |
-| Nitrogen supply | 4.0 MPa header (`N2P`), 0.5 kg/s·√(ΔP / 1 MPa) (`N2W`), 20 °C, check valve | `n2W(P)`; valve open/shut, operator only |
+| Nitrogen supply | 4.0 MPa header (`N2P`), 0.5 kg/s·√(ΔP / 1 MPa) (`N2W`), 20 °C, check valve | `n2W(P)`; flow × valve opening 0–1 (`u.n2`), operator only (no M/A) |
 | Nitrogen | R = 296.8, c_v = 743, c_p = 1039.8 J/(kg·K), ideal gas, u = c_v·T | `RN`, `CVN` |
 | `N2MIN` | 0.1 % | Below this share of the gas (partial pressure / P), with the supply shut, the nitrogen is dropped |
 
@@ -136,7 +136,7 @@ The controller reads the plant state directly (ideal, instantaneous measurements
 3. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
    spray at RCS enthalpy, heater power, minus losses and relief. With nitrogen, the vented gas carries
    nitrogen by its mass share, Mn·(1 − exp(−w·dt/(Mn + M_g))) per step (so it can't overdraw), at
-   c_p·T; the rest is steam at h″(T). Nitrogen supply (`u.n2`) adds `n2W(P)` at c_p·293 K.
+   c_p·T; the rest is steam at h″(T). Nitrogen supply adds `u.n2`·`n2W(P)` at c_p·293 K.
 4. **Layer mixing**: m = Ms·dt/τ (+ small floor) moves from the layer into the saturated region with
    energy m·(hs − P/ρs) and volume m/ρs. If the pressuriser is solid the layer merges at once.
 5. **Surge solve** (implicit): find dm (RCS → pressuriser, kg) such that

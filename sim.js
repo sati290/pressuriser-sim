@@ -87,7 +87,7 @@ const init=o=>{
     s.Mn=Math.max(0,o.P-ps)*Vg/(RN*T);s.M=Ml+Mg;s.U=Ml*uf+Mg*ug+s.Mn*CVN*T}
   else if(o.solid){const T=o.Tpz+273.15,q=sat(T),rho=liqRho(T,o.P);s.M=rho*VP;s.U=s.M*q.uf}
   else{const T=Tsat(o.P),q=sat(T),Mf=o.L*VP*q.rf,Mg=(1-o.L)*VP*q.rg;s.M=Mf+Mg;s.U=Mf*q.uf+Mg*q.ug}
-  s.d=pz(s.M,s.U,VP,s.Mn);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,trip:false,Qr:0};
+  s.d=pz(s.M,s.U,VP,s.Mn);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0};
   return s;
 };
 // relief valve flow, kg/s: choked steam ∝ P (15 kg/s at 16.2 MPa); liquid ∝ √ΔP (30 kg/s at 3.6 MPa)
@@ -95,10 +95,11 @@ const relW=(P,steam)=>steam?15*P/16.2e6:30*Math.sqrt(Math.max(0,P-0.1e6)/3.5e6);
 // gas with nitrogen: the steam figure times the ideal-gas choked-flow ratio (∝ P/√(R·T)) of the mixture
 // against saturated steam at the same pressure; exactly 1 for steam alone
 const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);return Math.sqrt(RS*Tsat(d.P)/(Rm*d.T))};
-// nitrogen supply, kg/s: from the N2P header through a check valve, ∝ √ΔP (N2W at 1 MPa)
+// nitrogen supply, kg/s, valve fully open: from the N2P header through a check valve, ∝ √ΔP (N2W at 1 MPa);
+// the flow scales with the valve opening
 const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
 // One step. u is the final command, SI: {ch, ld, sp kg/s; q W heaters; rel 0–1 relief opening;
-// n2 0/1 nitrogen supply valve shut/open; heat W net heat to coolant; loss W pressuriser heat loss}. Each actuator is clamped to LIM; the plant's
+// n2 0–1 nitrogen supply valve opening; heat W net heat to coolant; loss W pressuriser heat loss}. Each actuator is clamped to LIM; the plant's
 // own protection (heater trip below 12 % level, spring safety valve) acts on top, whoever commands.
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid';
@@ -111,7 +112,7 @@ const step=(s,u,dt)=>{
   const hrel=solid?d.hl:d.hg; // steam leaves at h″(T) whether or not nitrogen is present
   // vented gas carries nitrogen in proportion to its share of the gas mass (exponential, so it can't overdraw)
   const wrn=!solid&&s.Mn>0?s.Mn*(1-Math.exp(-wr*dt/(s.Mn+Math.max(0,d.Mg))))/dt:0,wrs=wr-wrn;
-  const wn=u.n2?n2W(P):0;
+  const n2=clamp(u.n2||0,0,LIM.n2),wn=n2*n2W(P);
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
   const Qr=u.heat+pulse;
@@ -144,7 +145,7 @@ const step=(s,u,dt)=>{
   if(s.Mn>0&&!wn&&!s.d.err&&s.d.yN<N2MIN){s.U-=s.Mn*CVN*s.d.T;s.Mn=0;s.d=pz(s.M,s.U,VP-s.Ms/s.rs)}
   if(!s.d.err&&s.Ms>0){s.d.level=(s.d.Ml/s.d.rf+s.Ms/s.rs)/VP}
   s.Pr=rcsP(s.Mr,s.Tr);
-  s.f={Q,ws,ch,ld,wr,wrn,wn,trip,Qr};
+  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr};
 };
 // why the model must stop, or '' while the state is valid:
 // 'dry' pressuriser boiled dry, 'range' state outside the model, 'critical' near the critical point,

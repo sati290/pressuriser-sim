@@ -51,7 +51,7 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 - `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
   reused object `Q`** — copy fields out before calling `sat` again.
 - `Tsat(p)` saturation temperature by bisection; `clamp`; `LIM` actuator ranges in SI
-  (`ch`, `ld` 20 kg/s, `q` 1.8 MW, `sp` 40 kg/s, `rel` 1). The plant clamps commands to `LIM`, and the
+  (`ch`, `ld` 20 kg/s, `q` 1.8 MW, `sp` 40 kg/s, `rel`, `n2` 1). The plant clamps commands to `LIM`, and the
   controller's anti-windup uses the same limits.
 
 ### sim.js — the plant
@@ -66,7 +66,7 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 - `relW`, `gasF(d)` relief flow and its gas-mixture factor; `n2W(P)` nitrogen supply flow.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
 - `init(o)` builds a plant state; `step(s,u,dt)` advances one step from the final command
-  `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0/1, heat W, loss W}` (see docs/physics.md). It clamps to `LIM` and
+  `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W, loss W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
@@ -90,7 +90,7 @@ leak) that destructures what it needs from `PZSim`. Order:
 1. Imports from `PZCommon`, `PZSim`, and `PZCtl` (as `Ctl`). The page keeps `s` (plant) and `cs` (controller).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
-   `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve open (boolean, always manual); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
+   `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve opening % (always manual, no M/A); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
    in the card right of the mimic; each actuator slider has a compact M/A switch (`<k>Am`), a demand
    readout (`<k>d`) and a demand notch on its track (`<k>m`). The logic selectors and setpoints sit in
    the "Automatic control" section below the main panel.
@@ -125,7 +125,7 @@ leak) that destructures what it needs from `PZSim`. Order:
 ## Known limitations (keep the notes section in the page in sync)
 
 - Nitrogen: ideal gas in equilibrium with the water (no adiabatic heating on compression), no
-  solubility, supply from a fixed 4.0 MPa header, valve open/shut only (no M/A).
+  solubility, supply from a fixed 4.0 MPa header, throttled valve, manual only (no M/A).
 - Thermal equilibrium in the saturated region; only insurge stratification is modelled (a
   cold layer mixing with τ = 300 s). No outsurge flashing delay, no steam superheat on
   fast compression, no wall heat capacity in the pressuriser.
