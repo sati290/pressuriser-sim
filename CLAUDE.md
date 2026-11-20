@@ -12,7 +12,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 | Path | What |
 |---|---|
-| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is published as a claude.ai artifact; only Google Fonts loads externally). |
+| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is opened straight from GitHub via raw.githack; only Google Fonts loads externally). |
 | `tests/load-physics.mjs` | Extracts the code between `/*PHYS*/` and `/*END*/` from `index.html` and evaluates it in Node. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
@@ -84,6 +84,18 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 
 ## Publishing
 
-The live version is a claude.ai artifact (owner's private page):
-https://claude.ai/artifact/5xj9k98KsVTTTaygXvcJmN — republishing happens from the claude.ai
-chat, not from Claude Code. Hand back an updated `index.html` and the owner will publish it.
+The repo is public; the page is opened straight from GitHub through raw.githack, which serves
+`index.html` from any branch or commit with the right content type. There is no build or deploy step:
+pushing a branch is publishing it.
+
+- Branch: `https://raw.githack.com/sati290/pressuriser-sim/<branch>/index.html`
+  (slashes in the branch name stay as-is, e.g. `.../claude/some-branch/index.html`).
+  raw.githack caches branch URLs for a few minutes, so a fresh push may take a moment to show.
+- Exact commit: `https://raw.githack.com/sati290/pressuriser-sim/<commit-sha>/index.html`.
+- `main`: `https://raw.githack.com/sati290/pressuriser-sim/main/index.html`.
+
+The old claude.ai artifact is no longer the live version; don't republish there.
+
+**When you finish a task that changed `index.html`, commit and push it, then end your reply with
+the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare
+versions).
