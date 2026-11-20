@@ -2,7 +2,7 @@
 
 Interactive HTML simulator of a PWR pressuriser coupled to a lumped reactor
 coolant system (RCS). It is a sandbox: **manual control is primary**; automatic controllers are
-optional assists the operator switches on, and they never change mode by themselves. Built to explore how pressure, temperature and level relate, and to run
+optional: each actuator has an M/A switch the operator sets, and nothing changes mode by itself. Built to explore how pressure, temperature and level relate, and to run
 startup (water-solid → bubble draw → hot standby) and shutdown (cooldown → refill solid).
 
 The owner is iterating on it for understanding the physics, not for licensing-grade analysis.
@@ -47,7 +47,9 @@ ES module just fine since it only touches `globalThis`.
 - `pz(M,U,V)` pressuriser state from mass, internal energy, available volume → solid
   (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
-- `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
+- `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md). `demands(s,c,dt)`
+  (called by `step`) runs the automatic logic every step and stores `s.dem`; each actuator uses its
+  demand only when `c.auto[k]` is set.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
 
@@ -59,16 +61,18 @@ leak) that destructures what it needs from `PZSim`. Order:
 1. Imports from `PZSim`.
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
-   `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
-   card right of the mimic; assists in the "Automatic assists" section below the main panel.
+   `inv` is `'pres'|'lev'`; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
+   in the card right of the mimic; each actuator slider has a compact M/A switch (`<k>Am`), a demand
+   readout (`<k>d`) and a demand notch on its track (`<k>m`). The logic selectors and setpoints sit in
+   the "Automatic control" section below the main panel.
    Every slider gets − / + buttons from JS (wrapped in `.ctl`; ids `<k>Dn`/`<k>Up`). Step sizes live in
    `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
    otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
    holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
 3. `physTick()` runs `step` repeatedly, halts when `fault(s)` reports one, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
-4. `syncAuto()` greys out and back-fills sliders that an assist is driving, and writes the assist
-   status line (warns when the chosen mode no longer suits the pressuriser state).
+4. `syncAuto()` greys out and back-fills sliders in A from `s.dem`, moves the notches on sliders in M,
+   and writes the status line (warns when the chosen logic no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
 6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
@@ -84,7 +88,7 @@ leak) that destructures what it needs from `PZSim`. Order:
   390 px; below 1100 px everything stacks in one column, gauges sticky on phones). Don't compromise
   the desktop layout for phones.
 - Desktop layout: gauges strip, then the wide mimic canvas, with the manual controls in a column to the
-  right; stats, recorder and P–T plane in a row underneath; assists and notes below that.
+  right; stats, recorder and P–T plane in a row underneath; automatic-control settings and notes below that.
 - Design language: "precision instrument" — Geist, aluminium ground, black ink, one orange
   accent (#ff4f00) for pressure / pointer, water blue. No new colours without reason.
 - Keep user-facing copy plain and specific; state limitations next to the feature they affect.

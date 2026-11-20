@@ -54,7 +54,7 @@ const rcsP=(Mr,Tr)=>{const q=sat(Tr),rho=Mr/VR;return q.p+(1-q.rf/rho)/kap(Tr-27
 const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
 const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
 const init=o=>{
-  const s={t:0,Tr:o.Tr+273.15,iL:0,iC:0,porv:false,sv:false,rel:false,extra:null,Ms:0,hs:0,rs:1000};
+  const s={t:0,Tr:o.Tr+273.15,iL:0,iC:0,porv:false,sv:false,rel:0,hold:null,dem:{q:0,sp:0,ch:0,ld:0,rel:0},extra:null,Ms:0,hs:0,rs:1000};
   if(o.solid){const T=o.Tpz+273.15,q=sat(T),rho=liqRho(T,o.P);s.M=rho*VP;s.U=s.M*q.uf}
   else{const T=Tsat(o.P),q=sat(T),Mf=o.L*VP*q.rf,Mg=(1-o.L)*VP*q.rg;s.M=Mf+Mg;s.U=Mf*q.uf+Mg*q.ug}
   s.d=pz(s.M,s.U);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,trip:false,Qr:0};
@@ -64,21 +64,42 @@ const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 // relief valve flow, kg/s: choked steam ∝ P (15 kg/s at 16.2 MPa); liquid ∝ √ΔP (30 kg/s at 3.6 MPa)
 const relW=(P,steam)=>steam?15*P/16.2e6:30*Math.sqrt(Math.max(0,P-0.1e6)/3.5e6);
 const relHys=set=>Math.max(0.2e6,0.02*set);
-// bumpless engage: preload the controller integrators from the current manual charging/letdown
-const engage=(s,c)=>{s.iL=clamp(c.ld-c.ch,-15,15);s.iC=clamp(c.ch-c.ld,-15,15)};
+// bumpless engage: preload the inventory integrators from the current charging/letdown, so a
+// change of inventory mode starts from the present net flow
+const engage=(s,c)=>{s.iL=s.iC=clamp(c.ch-c.ld,-15,15)};
+// Automatic logic runs all the time and produces a demand for every actuator (s.dem). Each actuator
+// uses its demand only if c.auto[k] is set; otherwise the operator's value in c. Nothing switches
+// between auto and manual, or between inventory modes, by itself.
+const demands=(s,c,dt)=>{
+  const d=s.d,P=d.P,A=c.auto||{},e=P-c.set;
+  // heaters and spray hold the pressure setpoint (proportional)
+  const q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1),sp=40*clamp((e-0.1e6)/0.4e6,0,1);
+  // charging and letdown: a PI controller asks for a net inflow N = charging − letdown.
+  // 'pres': letdown is primary and holds pressure (water-solid); 'lev': charging is primary and holds level.
+  // The other one, in auto, holds the flow it had when switched to auto (s.hold) and moves off it
+  // only while the primary is at a limit.
+  const lev=c.inv==='lev',err=lev?c.lset-d.level*100:-e,kp=lev?1.5:5e-5,ki=lev?0.004:2e-7,key=lev?'iC':'iL';
+  const H=s.hold||(s.hold={ch:c.ch,ld:c.ld});if(!A.ch)H.ch=c.ch;if(!A.ld)H.ld=c.ld;
+  const flows=I=>{const N=kp*err+I;let ch,ld;
+    if(lev){ch=clamp(H.ld+N,0,20);ld=clamp((A.ch?ch:c.ch)-N,0,20)}
+    else{ld=clamp(H.ch-N,0,20);ch=clamp((A.ld?ld:c.ld)+N,0,20)}
+    return {N,ch,ld,got:(A.ch?ch:c.ch)-(A.ld?ld:c.ld)}};
+  // integrate unless the demand is already at a limit in the direction the error pushes (anti-windup)
+  let I=clamp(s[key]+ki*err*dt,-15,15),r=flows(I);
+  if(Math.abs(r.got-r.N)>1e-9&&Math.sign(r.N-r.got)===Math.sign(err)){I=s[key];r=flows(I)}
+  s[key]=I;
+  // relief valve: on/off with hysteresis at c.relSet
+  if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false;
+  s.dem={q,sp,ch:r.ch,ld:r.ld,rel:s.porv?1:0};
+};
 const step=(s,c,dt)=>{
-  const d=s.d,P=d.P,solid=d.mode==='solid';
-  let Q=c.q*1e3,ws=c.sp,ch=c.ch,ld=c.ld;
-  const e=P-c.set;
-  // assists: each one only acts when the operator has switched it on; no automatic mode handover
-  if(c.inv==='pres'){s.iL=clamp(s.iL+2e-7*e*dt,-15,15);ld=clamp(ch+5e-5*e+s.iL,0,20)}
-  else if(c.inv==='lev'){const el=c.lset-d.level*100;s.iC=clamp(s.iC+0.004*el*dt,-15,15);const n=1.5*el+s.iC;ch=clamp(ld+n,0,20);if(ld+n<0)ld=clamp(-n,0,20)}
-  if(c.aP){Q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);ws=40*clamp((e-0.1e6)/0.4e6,0,1)}
+  const d=s.d,P=d.P,solid=d.mode==='solid',A=c.auto||{};
+  demands(s,c,dt);const D=s.dem;
+  let Q=A.q?D.q:c.q*1e3;const ws=A.sp?D.sp:c.sp,ch=A.ch?D.ch:c.ch,ld=A.ld?D.ld:c.ld;
   const trip=!solid&&d.level<0.12;if(trip)Q=0;
-  // relief: relief valve (manual and/or auto at c.relSet) plus a fixed safety valve
-  if(c.relAuto){if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false}else s.porv=false;
+  // relief valve (manual opening or auto on/off) plus a fixed safety valve, always armed
   if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;
-  s.rel=s.porv?1:clamp((c.relMan||0)/100,0,1); // opening fraction: manual, or fully open on auto
+  s.rel=A.rel?D.rel:clamp((c.relMan||0)/100,0,1); // opening fraction 0–1
   const w1=relW(P,!solid),wr=s.rel*w1+(s.sv?4*w1:0);
   const hrel=solid?d.hl:d.hg;
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
@@ -124,5 +145,5 @@ const fault=s=>{
   if(Tsat(s.Pr)-s.Tr<0)return 'boiling';
   return '';
 };
-return {satX,sat,Tsat,kap,pz,liqRho,rcsP,hLiq,cpL,relW,relHys,engage,init,step,fault,clamp,VP,VR,CM,TAU,T0,THI};
+return {satX,sat,Tsat,kap,pz,liqRho,rcsP,hLiq,cpL,relW,relHys,engage,demands,init,step,fault,clamp,VP,VR,CM,TAU,T0,THI};
 })();

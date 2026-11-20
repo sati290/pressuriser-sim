@@ -31,8 +31,9 @@
 | `Mr`, `Tr` | RCS liquid mass and temperature |
 | `d` | Derived pressuriser state from `pz(M, U, VP − Ms/rs)` |
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
-| `iL`, `iC` | Integrators for letdown (solid pressure) and charging (level) controllers |
-| `porv`, `sv`, `rel` | Auto-relief latch, safety-valve latch, relief valve opening fraction 0–1 (manual or auto) |
+| `iL`, `iC` | Net-inflow integrators of the pressure ('pres') and level ('lev') inventory logic |
+| `dem`, `hold` | Automatic demands for every actuator; charging/letdown flows held by a secondary actuator in A |
+| `porv`, `sv`, `rel` | Auto-relief latch (runs in M too), safety-valve latch, relief valve opening fraction 0–1 |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
 
 ## Pressuriser state solve `pz(M,U,V)`
@@ -46,21 +47,29 @@ Solid↔two-phase transition is continuous: at x = 0, v̄ = v_f and P = p_sat.
 
 ## One time step `step(s, c, dt)`
 
-Manual control is primary: every control value in `c` is used as-is unless the operator has
-switched on an assist. Assists act regardless of pressuriser state; **nothing hands over
-automatically** at bubble formation or when the pressuriser goes solid.
+Manual control is primary. The automatic logic runs every step (`demands(s, c, dt)`) and writes a
+demand for each actuator to `s.dem = {ch, ld, q (W), sp, rel (0–1)}`; an actuator uses its demand
+only when `c.auto[k]` is true (keys `ch, ld, q, sp, rel`), otherwise the operator's value
+(`c.ch, c.ld, c.q` kW, `c.sp, c.relMan` %). The logic acts regardless of pressuriser state;
+**nothing switches between M and A, or between inventory modes, automatically**.
 
-1. **Assists** (all optional):
-   - `c.inv === 'pres'` (letdown holds pressure): letdown = charging + 5e-5·(P − SP) + ∫2e-7·(P − SP)dt,
-     clamped 0–20 kg/s. Meant for water-solid; with a bubble it winds up and drains the level.
-   - `c.inv === 'lev'` (charging holds level): net = 1.5·e + ∫0.004·e dt (e in %); charging = letdown + net;
-     if that is negative, letdown is raised instead. Water-solid with SP < 100 % it lowers inventory until
-     the pressure reaches saturation.
-   - `c.aP` (heaters + spray): heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2); spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
-   - `engage(s, c)` preloads the integrators from the current manual charging/letdown (bumpless switch).
-2. **Relief**: relief valve opening `s.rel` (0–1) = `c.relMan`/100 by hand, or fully open if `c.relAuto` and P > `c.relSet` (recloses below
-   relSet − max(0.2 MPa, 2 %)). Safety valve 17.2/16.9 MPa always armed. Flow = opening × `relW`; vents steam
-   (two-phase) or liquid (solid).
+1. **Demands**:
+   - Heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2); spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
+   - Charging/letdown: a PI controller asks for net inflow N = charging − letdown.
+     `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt; letdown is primary,
+     letdown = hold.ch − N. `c.inv === 'lev'` (bubble): N = 1.5·e + ∫0.004·e dt (e = level error, %);
+     charging is primary, charging = hold.ld + N. The other flow's demand is primary ± N, which equals
+     its hold value unless the primary is clamped at 0 or 20 kg/s. `s.hold` holds the operator's last
+     manual value of each flow (frozen while that flow is in A).
+     Anti-windup: the integrator (`iL` for 'pres', `iC` for 'lev') stops when the flows that will
+     actually be applied cannot deliver N in the direction the error pushes. So in M the demand runs
+     up to the actuator limit and stops there; it does not wind beyond.
+     With a bubble, 'pres' winds letdown to its limit and drains the level.
+   - `engage(s, c)` preloads both integrators with charging − letdown (call on an inventory-mode change).
+2. **Relief**: the auto latch `s.porv` sets at P > `c.relSet` and clears below relSet − max(0.2 MPa, 2 %);
+   demand = 1 or 0. Opening `s.rel` = demand in A, `c.relMan`/100 in M. Safety valve 17.2/16.9 MPa always armed.
+   Flow = opening × `relW`; vents steam (two-phase) or liquid (solid).
+   Heaters trip below 12 % level in either mode.
 3. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
 4. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
    spray at RCS enthalpy, heater power, minus losses and relief.
@@ -87,7 +96,8 @@ RCS can't represent boiling).
 | Check | Result |
 |---|---|
 | Saturation props vs IAPWS tables at 100/200/300/345 °C | within 0.2–0.3 % |
-| Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h, assists on or all manual | steady |
+| Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h, controls in A or all in M | steady |
+| Level 40 → 25 % with charging and letdown both in A | charging goes to 0, letdown takes over, then returns to its held flow |
 | +40 MW for 120 s at hot standby | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
 | Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
 | Same, but nobody switches at the bubble | letdown winds up to 20 kg/s and drains the pressuriser |
