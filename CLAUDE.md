@@ -12,9 +12,11 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 | Path | What |
 |---|---|
-| `index.html` | Presentation: CSS, markup, UI wiring, renderers. Loads `sim.js` with a plain relative `<script src>`; nothing else external except Google Fonts. |
-| `sim.js` | The simulation model: pure physics, no DOM. A classic script that defines `globalThis.PZSim` (no `import`/`export`, so the page still works opened from `file://`). |
-| `tests/load-physics.mjs` | Imports `sim.js` in Node and exposes `PZSim` as `phys`. Tests never load `index.html`. |
+| `index.html` | Presentation: CSS, markup, UI wiring, renderers. Loads `common.js`, `sim.js`, `control.js` (in that order) with plain relative `<script src>`; nothing else external except Google Fonts. |
+| `common.js` | What both plant and controller need: steam tables, `clamp`, actuator limits `LIM`. Defines `globalThis.PZCommon`. |
+| `sim.js` | The plant: pure physics, no DOM, no automatic control. Defines `globalThis.PZSim`. |
+| `control.js` | Automatic control: demands and the final command for the plant. Defines `globalThis.PZCtl`. Needs `common.js`, not `sim.js`. |
+| `tests/load-physics.mjs` | Imports the three scripts in Node; exposes `PZCommon` as `common`, `PZSim` as `phys`, `PZCtl` as `ctrl`, plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
@@ -30,36 +32,58 @@ node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Ch
 npm run serve                 # http://localhost:8000 — or just open index.html
 ```
 
-Always run `npm test` after touching `sim.js`, and the screenshot
+Always run `npm test` after touching `common.js`, `sim.js` or `control.js`, and the screenshot
 tool after any CSS/markup/drawing change.
 
 ## Code structure
 
-### sim.js — the model
+### The three scripts
 
-**Pure physics, no DOM.** One IIFE assigning `globalThis.PZSim`; everything the page or the tests use
-is in its `return {…}` list — add a new function there to make it available. It must stay a plain
-script (no ES `export`): browsers refuse module scripts from `file://`, and Node imports it as an
-ES module just fine since it only touches `globalThis`.
+Each is one IIFE assigning one global; everything the page or the tests use is in its `return {…}`
+list — add a new function there to make it available. They must stay plain scripts (no ES
+`export`): browsers refuse module scripts from `file://`, and Node imports them as ES modules just
+fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js` each read
+`PZCommon` at load; neither reads the other. Anything both need goes into `common.js`.
+
+### common.js — shared
+
 - `satX(T)` exact Wagner–Pruss saturation equations → `[p, dp/dT, ρf, ρg, hf, hg]` (SI).
 - `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
   reused object `Q`** — copy fields out before calling `sat` again.
+- `Tsat(p)` saturation temperature by bisection; `clamp`; `LIM` actuator ranges in SI
+  (`ch`, `ld` 20 kg/s, `q` 1.8 MW, `sp` 40 kg/s, `rel` 1). The plant clamps commands to `LIM`, and the
+  controller's anti-windup uses the same limits.
+
+### sim.js — the plant
+
+**Pure physics, no DOM, no M/A, no setpoints.**
 - `kap(°C)` approximate isothermal compressibility of liquid (1/Pa).
 - `pz(M,U,V)` pressuriser state from mass, internal energy, available volume → solid
   (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
-- `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md). `demands(s,c,dt)`
-  (called by `step`) runs the automatic logic every step and stores `s.dem`; each actuator uses its
-  demand only when `c.auto[k]` is set.
+- `init(o)` builds a plant state; `step(s,u,dt)` advances one step from the final command
+  `u = {ch, ld, sp kg/s, q W, rel 0–1, heat W, loss W}` (see docs/physics.md). It clamps to `LIM` and
+  applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
+  what was applied.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
 
+### control.js — automatic control
+
+- `init()` controller memory `cs = {iL, iC, hold, porv, dem}`, kept apart from the plant state.
+- `demands(cs,s,c,dt)` runs the automatic logic every step (in M too, for the notches) and stores
+  `cs.dem`; `command(cs,c)` picks demand (A) or operator value (M) per actuator and converts the
+  panel units of `c` to SI; `update(cs,s,c,dt)` does both and returns `u`. Call it before every
+  `step`, with the same dt.
+- `engage(cs,c)` bumpless preload of the inventory integrators (on an inventory-mode change).
+- `relHys(set)` relief reclose hysteresis.
+
 ### index.html — presentation
 
-The `<script src="sim.js">` comes first; the page's own `<script>` is one block `{ … }` (no globals
+The three `<script src>` tags (`common.js`, `sim.js`, `control.js`) come first; the page's own `<script>` is one block `{ … }` (no globals
 leak) that destructures what it needs from `PZSim`. Order:
 
-1. Imports from `PZSim`.
+1. Imports from `PZCommon`, `PZSim`, and `PZCtl` (as `Ctl`). The page keeps `s` (plant) and `cs` (controller).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'pres'|'lev'`; `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
@@ -70,9 +94,9 @@ leak) that destructures what it needs from `PZSim`. Order:
    `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
    otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
    holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
-3. `physTick()` runs `step` repeatedly, halts when `fault(s)` reports one, records `hist` every 2 sim-s.
+3. `physTick()` runs `step(s, Ctl.update(cs,s,ctl,dt), dt)` repeatedly, halts when `fault(s)` reports one, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
-4. `syncAuto()` greys out and back-fills sliders in A from `s.dem`, moves the notches on sliders in M,
+4. `syncAuto()` greys out and back-fills sliders in A from `cs.dem`, moves the notches on sliders in M,
    and writes the status line (warns when the chosen logic no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
@@ -110,7 +134,7 @@ leak) that destructures what it needs from `PZSim`. Order:
 ## Publishing
 
 The repo is public; the page is opened straight from GitHub through raw.githack, which serves
-`index.html` and the `sim.js` beside it from any branch or commit with the right content types. There is no build or deploy step:
+`index.html` and the scripts beside it from any branch or commit with the right content types. There is no build or deploy step:
 pushing a branch is publishing it.
 
 - Branch: `https://raw.githack.com/sati290/pressuriser-sim/<branch>/index.html`
@@ -121,6 +145,6 @@ pushing a branch is publishing it.
 
 The old claude.ai artifact is no longer the live version; don't republish there.
 
-**When you finish a task that changed `index.html` or `sim.js`, commit and push it, then end your reply with
+**When you finish a task that changed `index.html` or any of the scripts, commit and push it, then end your reply with
 the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare
 versions).
