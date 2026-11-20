@@ -15,9 +15,9 @@ const RELIEF_COLD = { relSet: 3.6e6, relMan: 0 };
 const RELIEF_HOT  = { relSet: 16.2e6, relMan: 0 };
 const BUBBLE_AUTO = () => ({ q: true, sp: true, ch: true, ld: true, rel: true });
 const SOLID_AUTO  = () => ({ ld: true, rel: true });
-const COLD_CTL = { auto: SOLID_AUTO(), inv: 'pres', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 1800, sp: 0, amb: 40, ...RELIEF_COLD };
-const HOT_CTL  = { auto: BUBBLE_AUTO(), inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 200, sp: 0, amb: 40, ...RELIEF_HOT };
-const HOT_MAN  = { auto: { rel: true }, inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 60, sp: 0, amb: 40, ...RELIEF_HOT };
+const COLD_CTL = { auto: SOLID_AUTO(), inv: 'pres', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 1800, sp: 0, ...RELIEF_COLD };
+const HOT_CTL  = { auto: BUBBLE_AUTO(), inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 200, sp: 0, ...RELIEF_HOT };
+const HOT_MAN  = { auto: { rel: true }, inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 60, sp: 0, ...RELIEF_HOT };
 // operator hands over from solid to bubble control: everything to auto, charging on level
 // (letdown in auto holds its flow and takes over when charging reaches zero)
 const toBubble = (s, c) => { c.ld = s.f.ld; c.auto = BUBBLE_AUTO(); c.inv = 'lev'; engage(s, c); };
@@ -284,16 +284,16 @@ test('plant clamps commands to the actuator limits and trips the heaters at low 
 
 test('controller command: demand in A, operator value in M, converted to SI', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  const k = ctrl.init(), c = { ...HOT_MAN, auto: { sp: true }, q: 600, relMan: 40, heat: 2.5, amb: 40 };
+  const k = ctrl.init(), c = { ...HOT_MAN, auto: { sp: true }, q: 600, relMan: 40, heat: 2.5 };
   const u = ctrl.update(k, s, c, 0.5);
-  assert.deepEqual(u, { ch: 6, ld: 6, q: 600e3, sp: k.dem.sp, rel: 0.4, n2: 0, heat: 2.5e6, amb: 313.15 });
+  assert.deepEqual(u, { ch: 6, ld: 6, q: 600e3, sp: k.dem.sp, rel: 0.4, n2: 0, heat: 2.5e6 });
   assert.equal(ctrl.update(k, s, { ...c, n2: 40 }, 0.5).n2, 0.4, 'nitrogen valve is always the operator\'s');
 });
 
 // nitrogen cushion: the gas space holds nitrogen and water vapour (Dalton), same pz() as steam and solid
 
 const N2_COLD = { n2: true, Tpz: 60, Tr: 60, P: 2.8e6, L: 0.25 };
-const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 0, sp: 0, amb: 40, relSet: 3.6e6, relMan: 0, n2: 0 };
+const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 0, sp: 0, relSet: 3.6e6, relMan: 0, n2: 0 };
 
 test('nitrogen cushion round-trips through init', () => {
   const s = phys.init(N2_COLD);
@@ -415,10 +415,10 @@ test('relief flow stops at the relief-tank back pressure (pressures are absolute
   assert.ok(s.d.P > phys.PB - 2e3, `vented down to ${MPa(s.d.P)} MPa`);
 });
 
-test('pressuriser heat loss is UA·(T − ambient)', () => {
+test('pressuriser heat loss is UA·(T − 40 °C)', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   const T = s.d.T;
-  phys.step(s, { ch: 0, ld: 0, q: 0, sp: 0, rel: 0, heat: 0, amb: 30 + 273.15 }, 0.5);
-  near(s.f.loss, phys.UA * (T - 303.15), 1, 'loss at hot standby, 30 °C air');
+  phys.step(s, { ch: 0, ld: 0, q: 0, sp: 0, rel: 0, heat: 0 }, 0.5);
+  near(s.f.loss, phys.UA * (T - phys.TAMB), 1, 'loss at hot standby, 40 °C air');
   assert.ok(s.f.loss > 50e3 && s.f.loss < 70e3, `hot standby loss ${s.f.loss / 1e3} kW`);
 });

@@ -66,7 +66,7 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 - `relW`, `gasF(d)` relief flow and its gas-mixture factor; `n2W(P)` nitrogen supply flow.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
 - `init(o)` builds a plant state; `step(s,u,dt)` advances one step from the final command
-  `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W, amb K}` (see docs/physics.md). It clamps to `LIM` and
+  `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
@@ -89,7 +89,7 @@ leak) that destructures what it needs from `PZSim`. Order:
 
 1. Imports from `PZCommon`, `PZSim`, and `PZCtl` (as `Ctl`). The page keeps `s` (plant) and `cs` (controller).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
-   `q` kW; `amb` ambient air °C; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
+   `q` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve opening % (always manual, no M/A); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
    in the card right of the mimic; each actuator slider has a compact M/A switch (`<k>Am`), a demand
    readout (`<k>d`) and a demand notch on its track (`<k>m`). The logic selectors and setpoints sit in
@@ -137,7 +137,7 @@ leak) that destructures what it needs from `PZSim`. Order:
 - All pressures are absolute. Relief valve flow is a rough scaling (steam ∝ P while choked, subsonic
   nozzle factor near the 0.1 MPa relief-tank back pressure; liquid ∝ √(P − 0.1 MPa)), not a valve model;
   the relief tank is a fixed 0.1 MPa sink.
-- Pressuriser heat loss is UA·(T − ambient), UA = 200 W/K fixed; RCS losses are inside net heat.
+- Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
 ## Publishing

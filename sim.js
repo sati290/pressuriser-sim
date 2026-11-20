@@ -13,8 +13,9 @@ const VP=51,VR=280,CM=0.6e9,TAU=300;
 // pressure (Pa), supply flow at 1 MPa across the valve (kg/s), supply temperature (K); below N2MIN of
 // the gas (by partial pressure) with the supply shut, the remaining nitrogen is dropped
 const RN=296.8,CVN=743,CPN=RN+CVN,RS=461.5,N2P=4e6,N2W=0.5,TN2=293.15,N2MIN=1e-3;
-// pressuriser heat loss through the insulation, W/K: UA·(T − ambient), 61 kW at hot standby in 40 °C air
-const UA=200,TAMB=313.15; // TAMB: default ambient when u.amb is not given
+// pressuriser heat loss through the insulation to ambient air at TAMB (fixed): UA·(T − TAMB), W/K;
+// 61 kW at hot standby
+const UA=200,TAMB=313.15;
 // pressuriser state from mass and energy (water M, U includes the nitrogen's cv·T), nitrogen mass Mn
 const pz=(M,U,V=VP,Mn=0)=>{
   if(Mn>0)return pzN(M,U,V,Mn);
@@ -106,8 +107,7 @@ const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);retu
 // the flow scales with the valve opening
 const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
 // One step. u is the final command, SI: {ch, ld, sp kg/s; q W heaters; rel 0–1 relief opening;
-// n2 0–1 nitrogen supply valve opening; heat W net heat to coolant; amb K ambient air
-// temperature, for the pressuriser heat loss UA·(T − amb)}. Each actuator is clamped to LIM; the plant's
+// n2 0–1 nitrogen supply valve opening; heat W net heat to coolant}. Each actuator is clamped to LIM; the plant's
 // own protection (heater trip below 12 % level, spring safety valve) acts on top, whoever commands.
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid';
@@ -123,7 +123,7 @@ const step=(s,u,dt)=>{
   const n2=clamp(u.n2||0,0,LIM.n2),wn=n2*n2W(P);
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
-  const Qr=u.heat+pulse,loss=UA*(d.T-(u.amb??TAMB));
+  const Qr=u.heat+pulse,loss=UA*(d.T-TAMB);
   s.Tr+=Qr*dt/cap;
   s.Mr+=(ch-ld-ws)*dt;
   s.M+=(ws-wrs)*dt;s.U+=(ws*hr+Q-loss-wrs*hrel+(wn*TN2-wrn*d.T)*CPN)*dt;s.Mn+=(wn-wrn)*dt;
@@ -166,5 +166,5 @@ const fault=s=>{
   if(Tsat(s.Pr)-s.Tr<0)return 'boiling';
   return '';
 };
-return {kap,pz,liqRho,rcsP,hLiq,cpL,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,RN,CVN,N2P,N2MIN,UA,PB};
+return {kap,pz,liqRho,rcsP,hLiq,cpL,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
 })();
