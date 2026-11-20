@@ -8,8 +8,8 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got 
 
 // Control sets. inv: 'man' | 'pres' (letdown holds pressure) | 'lev' (charging holds level).
 // Assists never switch mode themselves; tests that cross solid <-> two-phase switch like an operator would.
-const RELIEF_COLD = { relAuto: true, relSet: 3.6e6, relMan: false };
-const RELIEF_HOT  = { relAuto: true, relSet: 16.2e6, relMan: false };
+const RELIEF_COLD = { relAuto: true, relSet: 3.6e6, relMan: 0 };
+const RELIEF_HOT  = { relAuto: true, relSet: 16.2e6, relMan: 0 };
 const COLD_CTL = { aP: false, inv: 'pres', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 1800, sp: 0, loss: 60, ...RELIEF_COLD };
 const HOT_CTL  = { aP: true, inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 200, sp: 0, loss: 60, ...RELIEF_HOT };
 const HOT_MAN  = { aP: false, inv: 'man', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 60, sp: 0, loss: 60, ...RELIEF_HOT };
@@ -150,12 +150,14 @@ test('net heat control: negative value cools the coolant', () => {
 
 test('relief valve opened by hand depressurises and closes again', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  const c = { ...HOT_MAN, relMan: true };
+  const c = { ...HOT_MAN, relMan: 100 };
   run(s, c, 60, 0.25);
-  assert.ok(s.rel && s.f.wr > 10, 'relief open with steam flow');
+  assert.ok(s.rel === 1 && s.f.wr > 10, 'relief fully open with steam flow');
   assert.ok(MPa(s.d.P) < 15.3, `pressure fell to ${MPa(s.d.P)}`);
-  c.relMan = false; run(s, c, 1, 0.25);
-  assert.equal(s.rel, false);
+  c.relMan = 25; run(s, c, 1, 0.25);
+  near(s.f.wr, 0.25 * phys.relW(s.d.P, true), 0.5, 'flow at 25 % opening');
+  c.relMan = 0; run(s, c, 1, 0.25);
+  assert.equal(s.rel, 0);
 });
 
 test('automatic relief opens at the configured pressure', () => {

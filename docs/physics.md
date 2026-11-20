@@ -32,7 +32,7 @@
 | `d` | Derived pressuriser state from `pz(M, U, VP − Ms/rs)` |
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `iL`, `iC` | Integrators for letdown (solid pressure) and charging (level) controllers |
-| `porv`, `sv`, `rel` | Auto-relief latch, safety-valve latch, relief valve actually open (auto or manual) |
+| `porv`, `sv`, `rel` | Auto-relief latch, safety-valve latch, relief valve opening fraction 0–1 (manual or auto) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
 
 ## Pressuriser state solve `pz(M,U,V)`
@@ -58,8 +58,8 @@ automatically** at bubble formation or when the pressuriser goes solid.
      the pressure reaches saturation.
    - `c.aP` (heaters + spray): heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2); spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
    - `engage(s, c)` preloads the integrators from the current manual charging/letdown (bumpless switch).
-2. **Relief**: relief valve open if `c.relMan`, or if `c.relAuto` and P > `c.relSet` (recloses below
-   relSet − max(0.2 MPa, 2 %)). Safety valve 17.2/16.9 MPa always armed. Flow from `relW`; vents steam
+2. **Relief**: relief valve opening `s.rel` (0–1) = `c.relMan`/100 by hand, or fully open if `c.relAuto` and P > `c.relSet` (recloses below
+   relSet − max(0.2 MPa, 2 %)). Safety valve 17.2/16.9 MPa always armed. Flow = opening × `relW`; vents steam
    (two-phase) or liquid (solid).
 3. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
 4. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains

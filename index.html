@@ -151,7 +151,7 @@ code{font-size:14px;overflow-wrap:anywhere}
       <div class="row"><label for="q">Heaters <output id="qo"></output></label><input id="q" type="range" min="0" max="1800" step="10" value="60"></div>
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
-      <label class="check"><input id="relMan" type="checkbox"> Open the relief valve by hand</label>
+      <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
     </div>
   </div>
 </main>
@@ -288,8 +288,8 @@ const step=(s,c,dt)=>{
   // relief: relief valve (manual and/or auto at c.relSet) plus a fixed safety valve
   if(c.relAuto){if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false}else s.porv=false;
   if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;
-  s.rel=s.porv||!!c.relMan;
-  const w1=relW(P,!solid),wr=(s.rel?w1:0)+(s.sv?4*w1:0);
+  s.rel=s.porv?1:clamp((c.relMan||0)/100,0,1); // opening fraction: manual, or fully open on auto
+  const w1=relW(P,!solid),wr=s.rel*w1+(s.sv?4*w1:0);
   const hrel=solid?d.hl:d.hg;
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
@@ -326,8 +326,8 @@ const step=(s,c,dt)=>{
 /*END*/
 
 const $=id=>document.getElementById(id);
-const ids=['set','lset','heat','ch','ld','q','sp','loss','relSet'],checks=['aP','relAuto','relMan'];
-const fmt={set:v=>(+v).toFixed(1)+' MPa',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relSet:v=>(+v).toFixed(1)+' MPa'};
+const ids=['set','lset','heat','ch','ld','q','sp','loss','relSet','relMan'],checks=['aP','relAuto'];
+const fmt={set:v=>(+v).toFixed(1)+' MPa',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
 const invR=[...document.querySelectorAll('input[name=inv]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}for(const k of checks)ctl[k]=$(k).checked;
@@ -342,7 +342,7 @@ const toggle=()=>{running=!running;$('run').textContent=running?'Pause':'Run'};
 $('run').onclick=()=>{if(halted)return;toggle()};
 const setC=o=>{for(const k in o){if(checks.includes(k))$(k).checked=o[k];else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and leave every assist off except automatic relief
-const MAN={aP:false,inv:'man',relMan:false,relAuto:true};
+const MAN={aP:false,inv:'man',relMan:0,relAuto:true};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);engage(s,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,speed:240,win:21600});
 const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,speed:20,win:600});
@@ -393,7 +393,7 @@ const updText=()=>{
   const rows=[['State',solid?'water-solid':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Coolant heat-up',r0(rate('R'))+' °C/h',Math.abs(rate('R'))>55],['Pressuriser heat-up',r0(rate('T'))+' °C/h',Math.abs(rate('T'))>55],['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
-    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.relMan?'opened by hand':'relief valve open'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],['Steam mass',d.Mg.toFixed(0)+' kg'],
+    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(s.porv?'relief valve open':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],['Steam mass',d.Mg.toFixed(0)+' kg'],
     ['Coolant mass',(s.Mr/1000).toFixed(1)+' t'],['Water mass',(d.Ml/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(m).padStart(2,'0')+' min']];
   $('stats').innerHTML=rows.map(r=>`<div><dt>${r[0]}</dt><dd${r[2]?' class="bad"':''}>${r[1]}</dd></div>`).join('');
 };
@@ -494,11 +494,11 @@ const drawVessel=dtReal=>{
   if(solid){cx.fillStyle='rgba(255,255,255,.92)';cx.fillText('Water-solid',x0+14,y0+rad+10)}
   else{cx.fillStyle=col.mute;if(ly-inTop>30)cx.fillText('Steam',x0+12,(y0+ly)/2+30);if(inBot-ly>30){cx.fillStyle='rgba(255,255,255,.9)';cx.fillText('Water',x0+12,ly+22)}}
   cx.fillStyle=col.mute;cx.fillText(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',8,40);
-  cx.textAlign='right';cx.fillText(s.sv?'Safety valve open':s.rel?'Relief valve open':'Relief',W-8,46);
+  cx.textAlign='right';cx.fillText(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',W-8,46);
   const sw=s.surge;cx.fillText(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,W-8,y1+64);
   cx.textAlign='left';cx.fillText(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,8,y1+64);
   if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=x0+vw/2,ay=y1+14,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
-  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=1-ph;cx.beginPath();cx.arc(W-14-ph*10,24-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
+  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(W-14-ph*10,24-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
 };
 
 // ---------- loop ----------

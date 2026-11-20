@@ -47,8 +47,8 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
    - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
    - `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
-   `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa;
-   `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`, `relMan`). Manual controls sit in the
+   `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
+   `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
    right-hand card; assists in the "Automatic assists" section below the main panel.
 3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
