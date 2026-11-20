@@ -487,16 +487,20 @@ const drawVessel=dtReal=>{
   const d=s.d,f=s.f,solid=d.mode==='solid',degC=T=>(T-273.15).toFixed(1)+' °C';
   // landscape layout: pressuriser left, elevated; reactor vessel right; surge line drops from the
   // pressuriser bottom and runs across to the hot-leg nozzle, spray comes from the cold-leg side
-  const vw=Math.min(165,H*0.2,W*0.24),rw=Math.min(250,W*0.28),rad=vw/2;
-  const x0=Math.max(70,W*0.3-vw/2),y0=70,y1=y0+clamp(H*0.52,2.4*vw,3.4*vw),pcx=x0+vw/2;
-  const rx=Math.min(W-rw-60,Math.max(x0+vw+170,W*0.66-rw/2)),sy=y1+50,cyl=sy,ry0=Math.max(y0+40,sy-90),ry1=Math.max(sy+80,H-74),rh=ry1-ry0;
+  const vw=Math.min(165,H*0.2,W*0.22),rw=Math.min(270,W*0.27),rad=vw/2;
+  const x0=Math.max(110,W*0.2-vw/2),y0=70,y1=y0+clamp(H*0.42,2.1*vw,3.2*vw),pcx=x0+vw/2;
+  const rx=Math.min(W-rw-60,Math.max(x0+vw+190,W*0.7-rw/2)),ry0=Math.max(y0+60,H*0.34),ry1=H-74,rh=ry1-ry0;
+  // serpentine surge line: always falling from the pressuriser bottom to the hot-leg nozzle (sy)
+  const sy=clamp(Math.max(ry0+rh*0.6,y1+130),ry0+30,ry1-50),cyl=sy,xR=rx-50,xL=pcx-vw*0.25;
+  const r1=y1+40,g=Math.max(8,(sy-r1-18)/2),r2=r1+6+g,r3=r2+6+g;
+  const surge=[pcx,y1-4,pcx,r1,xR,r1+6,xR,r2,xL,r2+6,xL,r3,rx+4,sy];
   const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
   const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
   const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
   cx.fillStyle='rgba(0,0,0,.12)';cx.beginPath();cx.ellipse(rx+rw/2+6,ry1+8,rw*0.5,6,0,0,7);cx.fill();
   const pt=34,sx=x0+vw*0.7,qx=x0+vw*0.3;
-  pipe([pcx,y1-4,pcx,sy,rx+4,sy],16);
+  pipe(surge,14);
   pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
   pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
   // reactor vessel: coolant + core
@@ -515,7 +519,7 @@ const drawVessel=dtReal=>{
   cx.textAlign='center';lbl('Core',kx+kw/2,ky+kh+18,'rgba(255,255,255,.9)');
   cx.textAlign='center';
   lbl(`Net heat ${f.Qr>=0?'+':'−'}${Math.abs(f.Qr/1e6).toFixed(1)} MW · charging ${f.ch.toFixed(1)} · letdown ${f.ld.toFixed(1)} kg/s`,rx+rw/2,ry1+32,col.mute);
-  lbl('Hot leg',(rx+pcx)/2+40,sy-14,col.mute);lbl('Cold leg',(rx+rw+W-22)/2,cyl-14,col.mute);
+  lbl('Hot leg',rx-50,sy-14,col.mute);lbl('Cold leg',(rx+rw+W-22)/2,cyl-14,col.mute);
   // pressuriser interior
   cx.save();shape();cx.clip();
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
@@ -561,8 +565,8 @@ const drawVessel=dtReal=>{
   lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
   cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
   cx.textAlign='left';
-  const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sy+30,col.mute);
-  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=(y1+sy)/2,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
+  const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,(xL+xR)/2-40,r2-14,col.mute);
+  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=y1+20,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
   if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(26+ph*12,pt-8-ph*12,4+ph*7,0,7);cx.fill()}cx.globalAlpha=1}
 };
 
