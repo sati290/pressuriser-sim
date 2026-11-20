@@ -29,7 +29,13 @@ button,select{font:inherit;font-size:16px;color:var(--ink);background:var(--pane
 button{cursor:pointer;font-weight:500}
 button:hover{border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
+.seg{display:flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;margin-left:-1px;padding:0 11px;font-variant-numeric:tabular-nums;position:relative}
+.seg button:first-child{border-radius:8px;margin:0 6px 0 0}
+.seg button:nth-child(2){border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}
+.seg button:hover,.seg button:focus-visible{z-index:1}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink);z-index:1}
+.seg button.sel{border-color:var(--ink);z-index:1}
 /* desktop-first: mimic wide in the left column, controls beside it, charts in a row below */
 .main{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(300px,350px);grid-template-areas:"gauges controls" "vessel controls" "lower lower";grid-template-rows:auto 1fr auto;align-items:start}
 .main>.gauges{grid-area:gauges}.main>.vessel{grid-area:vessel}.main>.controls{grid-area:controls}.lower{grid-area:lower;display:grid;gap:16px;grid-template-columns:minmax(250px,.9fr) minmax(0,1.7fr) minmax(0,1.3fr);align-items:start}
@@ -111,9 +117,7 @@ code{font-size:14px;overflow-wrap:anywhere}
     <p>A pressuriser coupled to the reactor coolant system. Start cold and water-solid, draw the steam bubble, heat up to hot standby, then cool down again.</p>
   </div>
   <div class="bar">
-    <button id="run" class="primary">Pause</button>
-    <label for="speed" style="font-size:14px;color:var(--mute)">Speed</label>
-    <select id="speed"><option value="1" selected>1×</option><option value="5">5×</option><option value="20">20×</option><option value="60">60×</option><option value="240">240×</option><option value="600">600×</option></select>
+    <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
   </div>
 </div>
 <div class="wrap"><div id="alert" class="alert" role="status"></div></div>
@@ -279,8 +283,15 @@ for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
 let s,hist=[],running=true,halted='',lastS=0;
 const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
-const toggle=()=>{running=!running;$('run').textContent=running?'Pause':'Run'};
-$('run').onclick=()=>{if(halted)return;toggle()};
+// speed buttons: Pause plus 1×…1000×. Picking a speed resumes (unless the model has halted);
+// while paused the chosen speed stays outlined.
+let speed=1;const SPEEDS=[1,2,5,10,20,50,100,200,500,1000];
+for(const v of SPEEDS){const b=document.createElement('button');b.textContent=v+'×';b.dataset.speed=v;b.setAttribute('aria-pressed','false');
+  b.onclick=()=>{speed=v;if(!running&&!halted)running=true;showSpeed()};$('speed').append(b)}
+const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
+  for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
+const toggle=()=>{running=!running;showSpeed()};
+$('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
 const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
@@ -303,7 +314,7 @@ const physTick=simDt=>{
     if(s.t-lastS>=2){lastS=s.t;hist.push({t:s.t,P:d.P,T:d.T-273.15,R:s.Tr-273.15,L:d.level*100});if(hist.length>12000)hist.shift()}
   }
 };
-const ctl_dt=()=>{const v=+$('speed').value;return v<=20?0.25:v<=60?0.5:v<=240?1:2};
+const ctl_dt=()=>speed<=20?0.25:speed<=50?0.5:speed<=200?1:2;
 
 // ---------- readouts ----------
 const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
@@ -391,7 +402,7 @@ const drawSat=()=>{
   if(ctl.auto.rel){const yr=Y(ctl.relSet/1e6);o+=`<line x1="${L}" x2="${W-R}" y1="${yr}" y2="${yr}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${yr+(ctl.relSet>15.5e6?16:-6)}">Relief opens</text>`}
   // ΔT mode: where the coolant sits when a saturated pressuriser is ΔT hotter: the saturation curve shifted left by ΔT
   if(ctl.pzMode==='dT'){const tl=Math.min(250,365-ctl.dT),pts=curve.filter(q=>q[0]-ctl.dT>=20).map(q=>[q[0]-ctl.dT,q[1]]);
-    if(pts.length>1)o+=`<path d="${pts.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${X(tl)-8}" y="${Y(satX(tl+ctl.dT+273.15)[0]/1e6)}" text-anchor="end">ΔT ${ctl.dT} K</text>`}
+    if(pts.length>1)o+=`<path d="${pts.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${X(tl)-8}" y="${Y(satX(tl+ctl.dT+273.15)[0]/1e6)}" text-anchor="end">ΔT ${ctl.dT} K</text>`}
   o+=`<circle cx="${X(373.95)}" cy="${Y(22.064)}" r="4" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.5"/>`;
   const pts=hist.filter(h=>h.t>=s.t-(+$('win').value));
   if(pts.length>1){o+=`<path d="${pts.map((h,i)=>(i?'L':'M')+X(h.R).toFixed(1)+','+Y(h.P/1e6).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="2" opacity=".5"/>`;
@@ -523,7 +534,7 @@ const drawVessel=dtReal=>{
 let last=performance.now(),acc=0,lastChart=0;
 const frame=now=>{
   const dtr=Math.min(100,now-last);last=now;
-  if(running&&!halted){acc+=dtr/1000*(+$('speed').value);const dt=ctl_dt(),n=Math.floor(acc/dt)*dt;if(n>0){physTick(Math.min(n,dt*1200));acc=Math.min(acc-n,dt)}}
+  if(running&&!halted){acc+=dtr/1000*speed;const dt=ctl_dt(),n=Math.floor(acc/dt)*dt;if(n>0){physTick(Math.min(n,dt*1200));acc=Math.min(acc-n,dt)}}
   drawVessel(running?dtr:0);
   if(now-lastChart>150){lastChart=now;syncAuto();updText();drawRec();drawSat()}
   requestAnimationFrame(frame);

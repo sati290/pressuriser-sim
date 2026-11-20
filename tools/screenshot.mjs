@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values: a } = parseArgs({ options: {
   wait: { type: 'string', default: '4' },      // seconds to let the sim run before the shot
-  speed: { type: 'string', default: '600' },   // value for the #speed select
+  speed: { type: 'string', default: '500' },   // which speed button to press (1…1000)
   out: { type: 'string', default: join(ROOT, 'shots') },
   chrome: { type: 'string' },                  // path to a Chrome/Chromium executable
 } });
@@ -36,7 +36,7 @@ for (const [w, h, name] of [[1400, 1100, 'wide'], [720, 1400, 'mid'], [390, 1600
     pg.on('pageerror', e => errs.push(String(e)));
     pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
     await pg.goto(url);
-    await pg.selectOption('#speed', a.speed);
+    await pg.click(`#speed [data-speed="${a.speed}"]`);
     await pg.waitForTimeout(+a.wait * 1000);
     const file = `${name}-${theme}.png`;
     await pg.screenshot({ path: join(a.out, file), fullPage: name !== 'wide' });

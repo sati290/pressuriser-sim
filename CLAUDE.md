@@ -76,7 +76,7 @@ leak) that destructures what it needs from `PZSim`. Order:
    and writes the status line (warns when the chosen logic no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
-6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
+6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s (≤20×, ≤50×, ≤200×, above). Speed buttons (Pause, 1×…1000×) set `speed`/`running`.
 
 ## Conventions
 
