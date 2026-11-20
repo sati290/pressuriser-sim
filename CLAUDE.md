@@ -1,0 +1,84 @@
+# Pressuriser simulator — project context for Claude Code
+
+Interactive, single-file HTML simulator of a PWR pressuriser coupled to a lumped reactor
+coolant system (RCS). Built to explore how pressure, temperature and level relate, and to run
+startup (water-solid → bubble draw → hot standby) and shutdown (cooldown → refill solid).
+
+The owner is iterating on it for understanding the physics, not for licensing-grade analysis.
+Physical correctness and honest labelling of limitations matter more than features.
+
+## Files
+
+| Path | What |
+|---|---|
+| `index.html` | The whole app: CSS, markup, physics, UI. Must stay one self-contained file (it is published as a claude.ai artifact; only Google Fonts loads externally). |
+| `tests/load-physics.mjs` | Extracts the code between `/*PHYS*/` and `/*END*/` from `index.html` and evaluates it in Node. |
+| `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
+| `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
+| `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
+
+## Commands
+
+```bash
+npm test                      # physics regression suite
+npm run shots                 # screenshots into shots/ (needs: pip install playwright && playwright install chromium)
+python3 tools/screenshot.py --chrome /usr/bin/google-chrome   # use an existing Chrome
+npm run serve                 # http://localhost:8000 — or just open index.html
+```
+
+Always run `npm test` after touching anything inside `/*PHYS*/ … /*END*/`, and the screenshot
+tool after any CSS/markup/drawing change.
+
+## Code structure inside index.html
+
+The `<script>` is one block `{ … }` (no globals leak). Order:
+
+1. `/*PHYS*/ … /*END*/` — **pure physics, no DOM.** Everything the tests use lives here and must
+   stay DOM-free so `load-physics.mjs` can evaluate it. If you add a function the tests need,
+   also add it to the `return {…}` list in `tests/load-physics.mjs`.
+   - `satX(T)` exact Wagner–Pruss saturation equations → `[p, dp/dT, ρf, ρg, hf, hg]` (SI).
+   - `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
+     reused object `Q`** — copy fields out before calling `sat` again.
+   - `kap(°C)` approximate isothermal compressibility of liquid (1/Pa).
+   - `pz(M,U,V)` pressuriser state from mass, internal energy, available volume → solid
+     (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
+   - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
+   - `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
+2. DOM wiring: `ids`/`fmt`/`readCtl()` map sliders → `ctl` (SI units except where noted:
+   `q`, `loss` kW; `core`, `cool` MW; flows kg/s; `set` stored in Pa).
+3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s,
+   and handles solid↔two-phase handover side effects (heaters off on going solid, letdown slider
+   continuity).
+4. `syncAuto()` greys out and back-fills sliders that an automatic controller is driving.
+5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
+   `drawVessel()` (canvas mimic with particles). Charts redraw at ~7 Hz; canvas every frame.
+6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
+
+## Conventions
+
+- SI units internally (K, Pa, kg, J). Convert only at display.
+- Canvas colours must be resolved via the hidden `probe` element (`css('--var')`) — canvas
+  can't parse `light-dark()`.
+- Theme: page must read in light, dark, and unset (`data-theme` on root set by the viewer).
+- Layout must not overflow at 390 px; phone layout stacks with sticky gauges.
+- Design language: "precision instrument" — Geist, aluminium ground, black ink, one orange
+  accent (#ff4f00) for pressure / pointer, water blue. No new colours without reason.
+- Keep user-facing copy plain and specific; state limitations next to the feature they affect.
+
+## Known limitations (keep the notes section in the page in sync)
+
+- Thermal equilibrium in the saturated region; only insurge stratification is modelled (a
+  cold layer mixing with τ = 300 s). No outsurge flashing delay, no steam superheat on
+  fast compression, no wall heat capacity in the pressuriser.
+- RCS is one well-mixed liquid node; no loops, no hot/cold leg split, no SG secondary side.
+- Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
+- Level is liquid volume fraction (straight-cylinder geometry).
+- Compressibility table is approximate (± ~10 %).
+- Generic 4-loop Westinghouse-like numbers; not a VVER.
+
+## Publishing
+
+The live version is a claude.ai artifact (owner's private page):
+https://claude.ai/artifact/5xj9k98KsVTTTaygXvcJmN — republishing happens from the claude.ai
+chat, not from Claude Code. Hand back an updated `index.html` and the owner will publish it.

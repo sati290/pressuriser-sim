@@ -1,0 +1,13 @@
+{
+  "name": "pressuriser-sim",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Single-file interactive PWR pressuriser + RCS simulator (equilibrium steam-table model)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/physics.test.mjs",
+    "shots": "python3 tools/screenshot.py",
+    "serve": "python3 -m http.server 8000"
+  },
+  "engines": { "node": ">=20" }
+}
