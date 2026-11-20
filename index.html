@@ -113,7 +113,7 @@ code{font-size:14px;overflow-wrap:anywhere}
   <div class="bar">
     <button id="run" class="primary">Pause</button>
     <label for="speed" style="font-size:14px;color:var(--mute)">Speed</label>
-    <select id="speed"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="60">60×</option><option value="240" selected>240×</option><option value="600">600×</option></select>
+    <select id="speed"><option value="1" selected>1×</option><option value="5">5×</option><option value="20">20×</option><option value="60">60×</option><option value="240">240×</option><option value="600">600×</option></select>
   </div>
 </div>
 <div class="wrap"><div id="alert" class="alert" role="status"></div></div>
@@ -192,7 +192,7 @@ code{font-size:14px;overflow-wrap:anywhere}
         <label class="check"><input type="radio" name="inv" value="pres" checked> Letdown holds the pressure setpoint (water-solid)</label>
         <label class="check"><input type="radio" name="inv" value="lev"> Charging holds the level setpoint (steam bubble)</label>
         <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="15" max="100" step="1" value="25"></div>
-        <p>The named flow does the controlling. The other one, if in A, holds the flow it had when switched to A and moves off it only while the first is at 0 or 20 kg/s.</p>
+        <p>If only one of charging and letdown is in A, that one does the controlling. If both are, the flow named above controls and the other is held at the flow it had; the held one moves only while the controlling one is at 0 or 20 kg/s.</p>
       </div>
       <div class="grp">
         <h3>Relief valve</h3>
@@ -285,10 +285,10 @@ const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);engage(s,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
-const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,speed:240,win:21600});
-const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,speed:20,win:600});
+const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,win:21600});
+const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,win:600});
 $('scCold').onclick=COLD;$('scHot').onclick=HOT;
-$('scCool').onclick=()=>{HOT();setC({heat:-13.5,speed:240,win:21600})};
+$('scCool').onclick=()=>{HOT();setC({heat:-13.5,win:21600})};
 $('scLoad').onclick=()=>{if(s)s.extra={Q:40e6,end:s.t+120}};
 
 const FAULT={'':'',dry:'All the liquid in the pressuriser has boiled away.',range:'The pressuriser state left the range of the model.',

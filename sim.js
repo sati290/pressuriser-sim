@@ -80,19 +80,28 @@ const demands=(s,c,dt)=>{
     q=1.8e6*clamp(0.2-eT/1.25,0,1);sp=40*clamp((eT-0.5)/2.5,0,1)}
   else{pset=c.set;q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);sp=40*clamp((e-0.1e6)/0.4e6,0,1)}
   // charging and letdown: a PI controller asks for a net inflow N = charging − letdown.
-  // 'pres': letdown is primary and holds pressure (water-solid); 'lev': charging is primary and holds level.
-  // The other one, in auto, holds the flow it had when switched to auto (s.hold) and moves off it
-  // only while the primary is at a limit.
+  // 'pres' holds the pressure setpoint (water-solid), 'lev' the level setpoint (steam bubble).
+  // Who controls: the one flow in auto; with both in auto, the mode's preferred flow ('pres' letdown,
+  // 'lev' charging) while the other is held at the flow it had when both went to auto (s.hold),
+  // taking over only while the preferred flow is at a limit.
+  // A flow's demand is what it would do if it were in auto with the other as it is now, so the
+  // notch on a manual slider shows what switching it to A would give.
   const lev=c.inv==='lev',err=lev?c.lset-d.level*100:-e,kp=lev?1.5:5e-5,ki=lev?0.004:2e-7,key=lev?'iC':'iL';
-  const H=s.hold||(s.hold={ch:c.ch,ld:c.ld});if(!A.ch)H.ch=c.ch;if(!A.ld)H.ld=c.ld;
-  const flows=I=>{const N=kp*err+I;let ch,ld;
-    if(lev){ch=clamp(H.ld+N,0,20);ld=clamp((A.ch?ch:c.ch)-N,0,20)}
-    else{ld=clamp(H.ch-N,0,20);ch=clamp((A.ld?ld:c.ld)+N,0,20)}
-    return {N,ch,ld,got:(A.ch?ch:c.ch)-(A.ld?ld:c.ld)}};
-  // integrate unless the demand is already at a limit in the direction the error pushes (anti-windup)
+  const pref=lev?'ch':'ld',H=s.hold||(s.hold={ch:c.ch,ld:c.ld});
+  const held=k=>A.ch&&A.ld&&k!==pref,eff=k=>A[k]?H[k]:c[k]; // eff: the flow as the other one sees it
+  const ctrl=A.ch&&!A.ld?'ch':A.ld&&!A.ch?'ld':pref;
+  // A held flow takes over while the preferred one is at 0 or 20 kg/s: its demand is the preferred
+  // demand ∓ N, which equals its held value until the preferred flow saturates.
+  const flows=I=>{const N=kp*err+I;let ch=clamp(eff('ld')+N,0,20),ld=clamp(eff('ch')-N,0,20);
+    if(held('ld'))ld=clamp(ch-N,0,20);if(held('ch'))ch=clamp(ld+N,0,20);
+    const both=A.ch&&A.ld;
+    return {N,ch,ld,got:both?ch-ld:ctrl==='ch'?ch-eff('ld'):eff('ch')-ld}};
+  // integrate unless the controlling flow is already at a limit in the direction the error pushes (anti-windup)
   let I=clamp(s[key]+ki*err*dt,-15,15),r=flows(I);
   if(Math.abs(r.got-r.N)>1e-9&&Math.sign(r.N-r.got)===Math.sign(err)){I=s[key];r=flows(I)}
   s[key]=I;
+  // a flow that is not held keeps its hold value current, so holding starts bumplessly
+  for(const k of ['ch','ld'])if(!held(k))H[k]=A[k]?r[k]:c[k];
   // relief valve: on/off with hysteresis at c.relSet
   if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false;
   s.dem={q,sp,ch:r.ch,ld:r.ld,rel:s.porv?1:0,pset};

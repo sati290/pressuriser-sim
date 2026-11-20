@@ -200,7 +200,7 @@ test('demands are computed while manual and applied only in auto', () => {
   assert.equal(r.dem.rel, 1); assert.equal(r.rel, 0);
 });
 
-test('level control: letdown in auto takes over when charging reaches zero', () => {
+test('level control, both in A: charging controls, letdown is held and takes over only when charging reaches zero', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.40 });
   const c = { ...HOT_CTL, ch: 2, ld: 2 };
   phys.engage(s, c);
@@ -240,4 +240,22 @@ test('ΔT mode water-solid: heaters warm the pressuriser to coolant + ΔT and st
   assert.equal(s.d.mode, 'solid');
   near(C(s.d.T) - C(s.Tr), 53, 1.5, 'pressuriser − coolant');
   near(MPa(s.d.P), 2.8, 0.1, 'letdown still holds the pressure setpoint');
+});
+
+test('inventory: a single flow in auto does the controlling, whichever the mode prefers', () => {
+  // level mode, only letdown in A: letdown draws the level down to the setpoint, charging stays manual
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.35 });
+  const c = { ...HOT_CTL, auto: { q: true, sp: true, ld: true, rel: true }, ch: 6, ld: 6 };
+  phys.engage(s, c);
+  run(s, c, 3 * 3600, 0.5);
+  near(s.d.level * 100, 25, 0.5, 'level held by letdown');
+  near(s.f.ch, 6, 1e-9, 'charging untouched');
+  // pressure mode, only charging in A: charging holds the water-solid pressure
+  const w = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
+  const cw = { ...COLD_CTL, auto: { ch: true, rel: true }, q: 0, heat: 2, ch: 5, ld: 5 };
+  phys.engage(w, cw);
+  run(w, cw, 3600, 1);
+  near(MPa(w.d.P), 2.8, 0.05, 'pressure held by charging');
+  assert.ok(w.f.ch < 5, `charging should fall below letdown to offset the expansion, got ${w.f.ch}`);
+  near(w.f.ld, 5, 1e-9, 'letdown untouched');
 });

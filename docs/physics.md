@@ -64,13 +64,16 @@ only when `c.auto[k]` is true (keys `ch, ld, q, sp, rel`), otherwise the operato
      so control stays proportionate at low pressure, where 0.15 MPa would be tens of kelvin.
      p* is stored as `s.dem.pset`. Letdown pressure control always uses `c.set`.
    - Charging/letdown: a PI controller asks for net inflow N = charging − letdown.
-     `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt; letdown is primary,
-     letdown = hold.ch − N. `c.inv === 'lev'` (bubble): N = 1.5·e + ∫0.004·e dt (e = level error, %);
-     charging is primary, charging = hold.ld + N. The other flow's demand is primary ± N, which equals
-     its hold value unless the primary is clamped at 0 or 20 kg/s. `s.hold` holds the operator's last
-     manual value of each flow (frozen while that flow is in A).
-     Anti-windup: the integrator (`iL` for 'pres', `iC` for 'lev') stops when the flows that will
-     actually be applied cannot deliver N in the direction the error pushes. So in M the demand runs
+     `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt, preferred flow letdown.
+     `c.inv === 'lev'` (bubble): N = 1.5·e + ∫0.004·e dt (e = level error, %), preferred flow charging.
+     Who controls: if only one flow is in A, that one (charging = other + N, or letdown = other − N);
+     if both are in A, the preferred one, with the other held at `s.hold` (its flow when it stopped
+     controlling, so holding is bumpless). The held flow's demand is preferred ∓ N, which equals its
+     held value until the preferred flow is clamped at 0 or 20 kg/s; then it takes over.
+     A flow's demand (`s.dem`) is what it would do if it were in A with the other as it is now, so
+     the notch on a manual slider shows what switching it to A gives.
+     Anti-windup: the integrator (`iL` for 'pres', `iC` for 'lev') stops when the controlling flow,
+     at 0 or 20 kg/s, cannot deliver N in the direction the error pushes. So in M the demand runs
      up to the actuator limit and stops there; it does not wind beyond.
      With a bubble, 'pres' winds letdown to its limit and drains the level.
    - `engage(s, c)` preloads both integrators with charging − letdown (call on an inventory-mode change).
@@ -108,6 +111,7 @@ RCS can't represent boiling).
 | ΔT mode, 53 K, hot standby then −13.5 MW cooldown 292 → 235 °C | ΔT 53.2–53.6 K throughout, 15.5 MPa at start |
 | ΔT mode, 53 K, cold water-solid start, letdown on pressure | pressuriser settles 53 K above the coolant at 2.8 MPa |
 | Level 40 → 25 % with charging and letdown both in A | charging goes to 0, letdown takes over, then returns to its held flow |
+| Only letdown in A in level mode; only charging in A in pressure mode | the flow in A controls; the manual one is untouched |
 | +40 MW for 120 s at hot standby | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
 | Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
 | Same, but nobody switches at the bubble | letdown winds up to 20 kg/s and drains the pressuriser |
