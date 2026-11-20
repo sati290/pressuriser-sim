@@ -16,7 +16,8 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `sim.js` | The simulation model: pure physics, no DOM. A classic script that defines `globalThis.PZSim` (no `import`/`export`, so the page still works opened from `file://`). |
 | `tests/load-physics.mjs` | Imports `sim.js` in Node and exposes `PZSim` as `phys`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tools/screenshot.py` | Playwright: renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
 
@@ -24,8 +25,8 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 ```bash
 npm test                      # physics regression suite
-npm run shots                 # screenshots into shots/ (needs: pip install playwright && playwright install chromium)
-python3 tools/screenshot.py --chrome /usr/bin/google-chrome   # use an existing Chrome
+npm run shots                 # screenshots into shots/ (needs: npm i -D playwright && npx playwright install chromium)
+node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Chrome
 npm run serve                 # http://localhost:8000 — or just open index.html
 ```
 
@@ -75,7 +76,7 @@ leak) that destructures what it needs from `PZSim`. Order:
    and writes the status line (warns when the chosen logic no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
-6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
+6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s (≤20×, ≤50×, ≤200×, above). Speed buttons (Pause, 1×…1000×) set `speed`/`running`.
 
 ## Conventions
 
@@ -100,7 +101,7 @@ leak) that destructures what it needs from `PZSim`. Order:
   fast compression, no wall heat capacity in the pressuriser.
 - RCS is one well-mixed liquid node; no loops, no hot/cold leg split, no SG secondary side.
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
-- Level is liquid volume fraction (straight-cylinder geometry).
+- Level is liquid volume fraction; the mimic draws it by volume in a cylinder with hemispherical heads (0 % = bottom, 100 % = top).
 - Compressibility table is approximate (± ~10 %).
 - Coolant pumps are not modelled: one signed net-heat control; pumps assumed running.
 - Relief valve flow is a rough scaling (steam ∝ P, liquid ∝ √ΔP), not a valve model.

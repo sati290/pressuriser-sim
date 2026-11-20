@@ -29,7 +29,13 @@ button,select{font:inherit;font-size:16px;color:var(--ink);background:var(--pane
 button{cursor:pointer;font-weight:500}
 button:hover{border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
+.seg{display:flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;margin-left:-1px;min-height:38px;padding:0 7px;font-size:14px;font-variant-numeric:tabular-nums;position:relative}
+.seg button:first-child{border-radius:6px;margin:0 6px 0 0;padding:0 10px}
+.seg button:nth-child(2){border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}
+.seg button:hover,.seg button:focus-visible{z-index:1}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink);z-index:1}
+.seg button.sel{border-color:var(--ink);z-index:1}
 /* desktop-first: mimic wide in the left column, controls beside it, charts in a row below */
 .main{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(300px,350px);grid-template-areas:"gauges controls" "vessel controls" "lower lower";grid-template-rows:auto 1fr auto;align-items:start}
 .main>.gauges{grid-area:gauges}.main>.vessel{grid-area:vessel}.main>.controls{grid-area:controls}.lower{grid-area:lower;display:grid;gap:16px;grid-template-columns:minmax(250px,.9fr) minmax(0,1.7fr) minmax(0,1.3fr);align-items:start}
@@ -111,9 +117,7 @@ code{font-size:14px;overflow-wrap:anywhere}
     <p>A pressuriser coupled to the reactor coolant system. Start cold and water-solid, draw the steam bubble, heat up to hot standby, then cool down again.</p>
   </div>
   <div class="bar">
-    <button id="run" class="primary">Pause</button>
-    <label for="speed" style="font-size:14px;color:var(--mute)">Speed</label>
-    <select id="speed"><option value="1" selected>1×</option><option value="5">5×</option><option value="20">20×</option><option value="60">60×</option><option value="240">240×</option><option value="600">600×</option></select>
+    <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
   </div>
 </div>
 <div class="wrap"><div id="alert" class="alert" role="status"></div></div>
@@ -279,8 +283,15 @@ for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
 let s,hist=[],running=true,halted='',lastS=0;
 const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
-const toggle=()=>{running=!running;$('run').textContent=running?'Pause':'Run'};
-$('run').onclick=()=>{if(halted)return;toggle()};
+// speed buttons: Pause plus 1×…1000×. Picking a speed resumes (unless the model has halted);
+// while paused the chosen speed stays outlined.
+let speed=1;const SPEEDS=[1,2,5,10,20,50,100,200,500,1000];
+for(const v of SPEEDS){const b=document.createElement('button');b.textContent=v+'×';b.dataset.speed=v;b.setAttribute('aria-pressed','false');
+  b.onclick=()=>{speed=v;if(!running&&!halted)running=true;showSpeed()};$('speed').append(b)}
+const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
+  for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
+const toggle=()=>{running=!running;showSpeed()};
+$('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
 const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
@@ -303,12 +314,15 @@ const physTick=simDt=>{
     if(s.t-lastS>=2){lastS=s.t;hist.push({t:s.t,P:d.P,T:d.T-273.15,R:s.Tr-273.15,L:d.level*100});if(hist.length>12000)hist.shift()}
   }
 };
-const ctl_dt=()=>{const v=+$('speed').value;return v<=20?0.25:v<=60?0.5:v<=240?1:2};
+const ctl_dt=()=>speed<=20?0.25:speed<=50?0.5:speed<=200?1:2;
 
 // ---------- readouts ----------
 const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
 const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
-const rate=k=>{if(hist.length<2)return 0;const b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=300;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
+// heat-up rate over a window of ~5 real seconds (5 s × speed), capped at 300 sim-s:
+// settles in 5 s at 1×, a full 5 min of sim time from 60× up. hist is sampled every 2 sim-s,
+// so at 1× the rate spans the last 4 s.
+const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',A=ctl.auto,D=s.dem;
   // in A the slider follows the demand; in M a notch and a readout show it
@@ -391,7 +405,7 @@ const drawSat=()=>{
   if(ctl.auto.rel){const yr=Y(ctl.relSet/1e6);o+=`<line x1="${L}" x2="${W-R}" y1="${yr}" y2="${yr}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${yr+(ctl.relSet>15.5e6?16:-6)}">Relief opens</text>`}
   // ΔT mode: where the coolant sits when a saturated pressuriser is ΔT hotter: the saturation curve shifted left by ΔT
   if(ctl.pzMode==='dT'){const tl=Math.min(250,365-ctl.dT),pts=curve.filter(q=>q[0]-ctl.dT>=20).map(q=>[q[0]-ctl.dT,q[1]]);
-    if(pts.length>1)o+=`<path d="${pts.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${X(tl)-8}" y="${Y(satX(tl+ctl.dT+273.15)[0]/1e6)}" text-anchor="end">ΔT ${ctl.dT} K</text>`}
+    if(pts.length>1)o+=`<path d="${pts.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${X(tl)-8}" y="${Y(satX(tl+ctl.dT+273.15)[0]/1e6)}" text-anchor="end">ΔT ${ctl.dT} K</text>`}
   o+=`<circle cx="${X(373.95)}" cy="${Y(22.064)}" r="4" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.5"/>`;
   const pts=hist.filter(h=>h.t>=s.t-(+$('win').value));
   if(pts.length>1){o+=`<path d="${pts.map((h,i)=>(i?'L':'M')+X(h.R).toFixed(1)+','+Y(h.P/1e6).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="2" opacity=".5"/>`;
@@ -422,11 +436,17 @@ const drawVessel=dtReal=>{
   // surge line as a schematic loop: down below the pressuriser, across, up the gap, over and into the vessel top
   const sb=Math.min(H-30,y1+Math.max(40,H*0.12)),gx=x0+vw+0.6*(rx-x0-vw),st=ry0-Math.max(34,H*0.08),dx=rx+rw*0.5,cyl=ry0+rh*0.3;
   const surge=[pcx,y1-4,pcx,sb,gx,sb,gx,st,dx,st,dx,ry0+4];
-  const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
+  const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1);
+  // level is a liquid volume fraction: draw it as the height in the vessel as drawn (cylinder with
+  // hemispherical heads), so 0 % is the bottom of the shell and 100 % the very top, same as water-solid
+  const levY=v=>{const L=y1-y0,R=Math.min(rad,L/2),Vt=Math.PI*R*R*(L-2*R)+4/3*Math.PI*R**3,
+    vol=z=>z<=R?Math.PI*z*z*(3*R-z)/3:z<=L-R?2/3*Math.PI*R**3+Math.PI*R*R*(z-R):Vt-Math.PI*(L-z)**2*(3*R-(L-z))/3;
+    v=clamp(v,0,1)*Vt;let a=0,b=L;for(let i=0;i<30;i++){const m=(a+b)/2;if(vol(m)<v)a=m;else b=m}return y1-(a+b)/2};
+  const ly=solid?y0-2:levY(lev);
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
   const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
   const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
-  // temperature with its heat-up rate (°C/h over the last 5 min): ▲ heating, ▼ cooling, orange above 55 °C/h.
+  // temperature with its heat-up rate (°C/h, window set in rate()): ▲ heating, ▼ cooling, orange above 55 °C/h.
   // The rate sits on the line below the value. Returns the extra height used.
   const rR=rate('R'),rT=rate('T');
   const tempL=(T,r,x,y,c)=>{
@@ -468,9 +488,9 @@ const drawVessel=dtReal=>{
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
   const gw=cx.createLinearGradient(0,ly,0,y1);gw.addColorStop(0,col.water);gw.addColorStop(1,col.water2);cx.fillStyle=gw;cx.fillRect(x0,ly,vw,y1-ly+2);
   // insurge layer: cooler RCS water sitting at the bottom until it mixes
-  const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,inBot-(inBot-inTop)*lf);
+  const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,levY(lf));
   if(!solid&&lf>0&&y1-yl>3){cx.fillStyle=col.water2;cx.fillRect(x0,yl,vw,y1-yl);cx.setLineDash([4,4]);cx.strokeStyle='rgba(255,255,255,.6)';cx.lineWidth=1;cx.beginPath();cx.moveTo(x0,yl);cx.lineTo(x0+vw,yl);cx.stroke();cx.setLineDash([])}
-  const hp=f.trip?0:f.Q/1.8e6,hT=inBot-(inBot-inTop)*0.1,hL=y1-hT; // heaters stay below the 12 % low-level trip
+  const hp=f.trip?0:f.Q/1.8e6,hT=levY(0.1),hL=y1-hT; // heaters stay below the 12 % low-level trip
   for(let i=0;i<5;i++){const hx=x0+vw*(0.18+i*0.16);cx.fillStyle=hp>0?`rgba(255,${120-80*hp|0},0,${0.45+0.55*hp})`:col.metal;cx.fillRect(hx-3,hT,6,hL)}
   if(!reduce&&!solid){
     const sp=Math.min(dtReal,100)/1000;
@@ -489,7 +509,7 @@ const drawVessel=dtReal=>{
     cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(x0+vw+6,ly);cx.lineTo(x0+vw+16,ly-7);cx.lineTo(x0+vw+16,ly+7);cx.fill();
     lbl((lev*100).toFixed(1)+'%',x0+vw+20,ly+5,col.ink,true);
   }
-  const tx=x0+12,heatTop=inBot-(inBot-inTop)*0.1; // labels sit left of the heater bundle's top where possible
+  const tx=x0+12,heatTop=hT; // labels sit left of the heater bundle's top where possible
   if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
   else{
     // steam and water share the saturation temperature (thermal equilibrium)
@@ -517,7 +537,7 @@ const drawVessel=dtReal=>{
 let last=performance.now(),acc=0,lastChart=0;
 const frame=now=>{
   const dtr=Math.min(100,now-last);last=now;
-  if(running&&!halted){acc+=dtr/1000*(+$('speed').value);const dt=ctl_dt(),n=Math.floor(acc/dt)*dt;if(n>0){physTick(Math.min(n,dt*1200));acc=Math.min(acc-n,dt)}}
+  if(running&&!halted){acc+=dtr/1000*speed;const dt=ctl_dt(),n=Math.floor(acc/dt)*dt;if(n>0){physTick(Math.min(n,dt*1200));acc=Math.min(acc-n,dt)}}
   drawVessel(running?dtr:0);
   if(now-lastChart>150){lastChart=now;syncAuto();updText();drawRec();drawSat()}
   requestAnimationFrame(frame);
