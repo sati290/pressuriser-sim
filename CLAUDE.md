@@ -49,7 +49,7 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`). Manual controls sit in the
-   right-hand card; assists in the "Automatic assists" section below the main panel.
+   card right of the mimic; assists in the "Automatic assists" section below the main panel.
    Every slider gets − / + buttons from JS (wrapped in `.ctl`; ids `<k>Dn`/`<k>Up`). Step sizes live in
    `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
    otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
@@ -68,7 +68,12 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 - Canvas colours must be resolved via the hidden `probe` element (`css('--var')`) — canvas
   can't parse `light-dark()`.
 - Theme: page must read in light, dark, and unset (`data-theme` on root set by the viewer).
-- Layout must not overflow at 390 px; phone layout stacks with sticky gauges.
+- **Primary target is desktop, full screen or close to it (≈1440–1920 px wide).** Design and check
+  layouts there first. Mobile is not a priority: it only has to stay usable (no horizontal overflow at
+  390 px; below 1100 px everything stacks in one column, gauges sticky on phones). Don't compromise
+  the desktop layout for phones.
+- Desktop layout: gauges strip, then the wide mimic canvas, with the manual controls in a column to the
+  right; stats, recorder and P–T plane in a row underneath; assists and notes below that.
 - Design language: "precision instrument" — Geist, aluminium ground, black ink, one orange
   accent (#ff4f00) for pressure / pointer, water blue. No new colours without reason.
 - Keep user-facing copy plain and specific; state limitations next to the feature they affect.

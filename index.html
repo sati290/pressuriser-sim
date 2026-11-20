@@ -20,7 +20,7 @@
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.5 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip}
 .band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
-.wrap{max-width:1360px;margin:0 auto}
+.wrap{max-width:1680px;margin:0 auto}
 header .wrap{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:end;justify-content:space-between}
 h1{font-size:clamp(30px,4vw,44px);line-height:1.05;letter-spacing:-.02em;margin:0;font-weight:700;text-wrap:balance}
 header p{margin:6px 0 0;color:var(--mute);max-width:62ch}
@@ -30,11 +30,12 @@ button{cursor:pointer;font-weight:500}
 button:hover{border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
-.main{display:grid;gap:16px;grid-template-columns:minmax(220px,290px) minmax(0,1fr) minmax(290px,350px)}
+/* desktop-first: mimic wide in the left column, controls beside it, charts in a row below */
+.main{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(300px,350px);grid-template-areas:"gauges controls" "vessel controls" "lower lower";grid-template-rows:auto 1fr auto;align-items:start}
+.main>.gauges{grid-area:gauges}.main>.vessel{grid-area:vessel}.main>.controls{grid-area:controls}.lower{grid-area:lower;display:grid;gap:16px;grid-template-columns:minmax(250px,.9fr) minmax(0,1.7fr) minmax(0,1.3fr);align-items:start}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:16px}
-.vessel{position:relative;min-height:700px;padding:0;overflow:hidden}
+.vessel{position:relative;min-height:clamp(520px,calc(100vh - 260px),760px);align-self:stretch;padding:0;overflow:hidden}
 .vessel canvas{position:absolute;inset:0;width:100%;height:100%}
-.centre{display:grid;gap:16px;align-content:start}
 .gauges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden}
 .g{background:var(--panel);padding:10px 14px}
 .g span{display:block;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -86,9 +87,9 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
 .notes ol,.notes ul{padding-left:20px;margin:0}
 code{font-size:14px;overflow-wrap:anywhere}
-@media(max-width:1100px){.main{grid-template-columns:minmax(200px,270px) minmax(0,1fr)}.controls{grid-column:1/-1;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}}
+@media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.main{grid-template-columns:minmax(0,1fr)}.gauges{position:sticky;top:0;z-index:2;order:-1}.centre{display:contents}.vessel{min-height:640px}.stats,.chartcard,.satcard{order:1}.controls{order:2}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
+@media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
 </style>
 </head>
 <body>
@@ -107,27 +108,13 @@ code{font-size:14px;overflow-wrap:anywhere}
 </header>
 
 <main class="band main wrap" style="padding-top:0">
-  <div class="card vessel" aria-label="Pressuriser and reactor vessel mimic"><canvas id="cv"></canvas></div>
-
-  <div class="centre">
-    <div class="gauges">
-      <div class="g p"><span>Pressure, MPa</span><b id="gP">–</b></div>
-      <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
-      <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
-      <div class="g"><span>Level, %</span><b id="gL">–</b></div>
-    </div>
-    <dl class="stats card" id="stats"></dl>
-    <div class="card chartcard">
-      <div class="chead"><h2>Recorder</h2>
-        <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600">Last 10 min</option><option value="3600" selected>Last hour</option><option value="21600">Last 6 hours</option></select></div>
-      <div class="fig"><svg id="rec"></svg></div>
-    </div>
-    <div class="card satcard">
-      <div class="chead"><h2>Pressure–temperature plane</h2>
-        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span></div></div>
-      <div class="fig sat"><svg id="sat"></svg></div>
-    </div>
+  <div class="gauges">
+    <div class="g p"><span>Pressure, MPa</span><b id="gP">–</b></div>
+    <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
+    <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
+    <div class="g"><span>Level, %</span><b id="gL">–</b></div>
   </div>
+  <div class="card vessel" aria-label="Pressuriser and reactor vessel mimic"><canvas id="cv"></canvas></div>
 
   <div class="card controls">
     <div class="grp">
@@ -155,6 +142,20 @@ code{font-size:14px;overflow-wrap:anywhere}
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
       <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
+    </div>
+  </div>
+
+  <div class="lower">
+    <dl class="stats card" id="stats"></dl>
+    <div class="card chartcard">
+      <div class="chead"><h2>Recorder</h2>
+        <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600">Last 10 min</option><option value="3600" selected>Last hour</option><option value="21600">Last 6 hours</option></select></div>
+      <div class="fig"><svg id="rec"></svg></div>
+    </div>
+    <div class="card satcard">
+      <div class="chead"><h2>Pressure–temperature plane</h2>
+        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span></div></div>
+      <div class="fig sat"><svg id="sat"></svg></div>
     </div>
   </div>
 </main>
@@ -484,22 +485,20 @@ const drawVessel=dtReal=>{
   cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
   const col={ink:css('--ink'),mute:css('--mute'),water:css('--water'),water2:css('--water2'),steam:css('--steam'),metal:css('--metal'),acc:'#ff4f00',rule:css('--rule')};
   const d=s.d,f=s.f,solid=d.mode==='solid',degC=T=>(T-273.15).toFixed(1)+' °C';
-  // layout: pressuriser top-left, reactor vessel below-right, joined by the surge line
-  const avail=H-64-64,vw=Math.min(150,W*0.42),rw=Math.min(180,W*0.5);
-  const rh=clamp(avail*0.36,150,rw*2),ph=clamp(avail-rh-110,220,vw*4.2);
-  const y0=64+Math.max(0,(avail-ph-rh-110)/2); // centre vertically when the card is tall
-  const x0=Math.max(40,Math.min(W*0.42-vw/2,W-vw-80)),y1=y0+ph,rad=vw/2,pcx=x0+vw/2;
-  const sy=y1+52,rx=W-rw-16,ry0=sy+58,ry1=ry0+rh,rcx=rx+rw*0.62;
+  // landscape layout: pressuriser left, elevated; reactor vessel right; surge line drops from the
+  // pressuriser bottom and runs across to the hot-leg nozzle, spray comes from the cold-leg side
+  const vw=Math.min(165,H*0.2,W*0.24),rw=Math.min(250,W*0.28),rad=vw/2;
+  const x0=Math.max(70,W*0.3-vw/2),y0=70,y1=y0+clamp(H*0.52,2.4*vw,3.4*vw),pcx=x0+vw/2;
+  const rx=Math.min(W-rw-60,Math.max(x0+vw+170,W*0.66-rw/2)),sy=y1+50,cyl=sy,ry0=Math.max(y0+40,sy-90),ry1=Math.max(sy+80,H-74),rh=ry1-ry0;
   const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
   const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
   const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
   cx.fillStyle='rgba(0,0,0,.12)';cx.beginPath();cx.ellipse(rx+rw/2+6,ry1+8,rw*0.5,6,0,0,7);cx.fill();
-  // piping: surge line (pressuriser bottom → hot leg / vessel), spray line (cold leg → top), relief (top → right)
-  pipe([pcx,y1-4,pcx,sy,rcx,sy,rcx,ry0+4],16);
-  const pt=y0-28;
-  pipe([rx+4,ry0+34,16,ry0+34,16,pt+8,x0+vw*0.3,pt+8,x0+vw*0.3,y0+8],10);
-  pipe([x0+vw*0.7,y0+8,x0+vw*0.7,pt-4,W,pt-4],12);
+  const pt=34,sx=x0+vw*0.7,qx=x0+vw*0.3;
+  pipe([pcx,y1-4,pcx,sy,rx+4,sy],16);
+  pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
+  pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
   // reactor vessel: coolant + core
   cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.clip();
   const gr=cx.createLinearGradient(0,ry0,0,ry1);gr.addColorStop(0,col.water);gr.addColorStop(1,col.water2);cx.fillStyle=gr;cx.fillRect(rx,ry0,rw,rh);
@@ -514,9 +513,9 @@ const drawVessel=dtReal=>{
   lbl('Reactor coolant',rx+12,ry0+24,'rgba(255,255,255,.9)');
   lbl(degC(s.Tr),rx+12,ry0+44,'#fff',true);
   cx.textAlign='center';lbl('Core',kx+kw/2,ky+kh+18,'rgba(255,255,255,.9)');
-  cx.textAlign='right';
-  lbl(`Net heat ${f.Qr>=0?'+':'−'}${Math.abs(f.Qr/1e6).toFixed(1)} MW`,W-8,ry1+26,col.mute);
-  lbl(`Charging ${f.ch.toFixed(1)} · letdown ${f.ld.toFixed(1)} kg/s`,W-8,ry1+44,col.mute);
+  cx.textAlign='center';
+  lbl(`Net heat ${f.Qr>=0?'+':'−'}${Math.abs(f.Qr/1e6).toFixed(1)} MW · charging ${f.ch.toFixed(1)} · letdown ${f.ld.toFixed(1)} kg/s`,rx+rw/2,ry1+32,col.mute);
+  lbl('Hot leg',(rx+pcx)/2+40,sy-14,col.mute);lbl('Cold leg',(rx+rw+W-22)/2,cyl-14,col.mute);
   // pressuriser interior
   cx.save();shape();cx.clip();
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
@@ -529,12 +528,12 @@ const drawVessel=dtReal=>{
   if(!reduce&&!solid){
     const sp=Math.min(dtReal,100)/1000;
     let nb=hp*60*sp;while(nb>0){if(rnd()<nb)parts.push({k:'b',x:x0+vw*(0.18+(rnd()*5|0)*0.16)+(rnd()-.5)*6,y:y1-rad*0.3-(hL-rad*0.3)*rnd(),v:40+rnd()*40});nb--}
-    let nd=f.ws/40*80*sp;while(nd>0){if(rnd()<nd)parts.push({k:'d',x:x0+vw*0.3,y:y0+rad*0.3+14,v:120+rnd()*80,vx:(rnd()-.5)*50});nd--}
+    let nd=f.ws/40*80*sp;while(nd>0){if(rnd()<nd)parts.push({k:'d',x:sx,y:y0+rad*0.3+14,v:120+rnd()*80,vx:(rnd()-.5)*50});nd--}
     for(const p of parts){p.y+=(p.k==='b'?-1:1)*p.v*sp;if(p.vx)p.x+=p.vx*sp}
     parts=parts.filter(p=>p.k==='b'?p.y>ly:p.y<ly);
     for(const p of parts){cx.beginPath();if(p.k==='b'){cx.strokeStyle='rgba(255,255,255,.75)';cx.lineWidth=1.2;cx.arc(p.x,p.y,2.2,0,7);cx.stroke()}else{cx.fillStyle=col.water;cx.arc(p.x,p.y,2,0,7);cx.fill()}}
   }else parts=[];
-  cx.fillStyle=col.metal;cx.fillRect(x0+vw*0.3-10,y0+rad*0.3,20,10);
+  cx.fillStyle=col.metal;cx.fillRect(sx-10,y0+rad*0.3,20,10);
   cx.restore();
   shape();cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
   cx.textAlign='left';
@@ -558,13 +557,13 @@ const drawVessel=dtReal=>{
       lbl('Insurge layer',ox,oy,col.mute);lbl(degC(Ts),ox,oy+20,col.ink,true);
     }
   }
-  lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',26,pt-6,col.mute);
-  cx.textAlign='right';lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',W-8,pt+22,col.mute);
+  cx.textAlign='left';lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',sx+14,pt-4,col.mute);
+  lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
+  cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
   cx.textAlign='left';
-  lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,pcx+16,y1+26,col.mute);
-  const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sy+28,col.mute);
-  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=y1+28,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
-  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(W-14-ph*10,pt+2-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
+  const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sy+30,col.mute);
+  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=(y1+sy)/2,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
+  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(26+ph*12,pt-8-ph*12,4+ph*7,0,7);cx.fill()}cx.globalAlpha=1}
 };
 
 // ---------- loop ----------
