@@ -126,7 +126,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 
 <main class="band main wrap" style="padding-top:0">
   <div class="gauges">
-    <div class="g p"><span>Pressure, MPa</span><b id="gP">–</b></div>
+    <div class="g p"><span>Pressure, MPa abs</span><b id="gP">–</b></div>
     <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
     <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
     <div class="g"><span>Level, %</span><b id="gL">–</b></div>
@@ -157,7 +157,7 @@ code{font-size:14px;overflow-wrap:anywhere}
       <h2>Pressuriser</h2>
       <div class="row"><label for="q">Heaters <output id="qo"></output></label><input id="q" type="range" min="0" max="1800" step="10" value="60"></div>
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
-      <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
+      <div class="row"><label for="amb">Ambient air <output id="ambo"></output></label><input id="amb" type="range" min="10" max="70" step="1" value="40"></div>
       <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
       <div class="row"><label for="n2">Nitrogen supply valve <output id="n2o"></output></label><input id="n2" type="range" min="0" max="100" step="5" value="0"></div>
     </div>
@@ -238,7 +238,9 @@ code{font-size:14px;overflow-wrap:anywhere}
         <li>Nitrogen comes from a 4.0 MPa header through a check valve: about 0.5 kg/s at 1 MPa difference with the valve fully open, in proportion to the opening.</li>
         <li>Nitrogen does not dissolve in the water: no Henry's-law solubility, so no degassing as the water heats, and none carried to the coolant by outsurge. Nitrogen stays in equilibrium with the water, so compressing it heats the whole pressuriser a little rather than the gas a lot; fast pressure swings on a cushion are softer than real. Nitrogen relief flow uses the ideal-gas choked-flow ratio to the steam figure.</li>
         <li>Liquid compressibility uses approximate saturated-liquid values, about 0.44 per GPa at 50 °C rising to 3 per GPa at 340 °C.</li>
-        <li>Relief valve flow scales with pressure: steam about 15 kg/s at 16.2 MPa, falling in proportion; water about 30 kg/s at 3.6 MPa, rising with the square root of pressure. The safety valve passes four times as much. These are rough sizing figures, not a valve model.</li>
+        <li>All pressures are absolute; atmospheric is 0.1 MPa. The relief and safety valves discharge to a relief tank held at 0.1 MPa, so they cannot vent below it.</li>
+        <li>Relief valve flow scales with pressure: steam about 15 kg/s at 16.2 MPa, falling in proportion while the flow is choked, then tapering to zero as the pressure nears 0.1 MPa (ideal-gas nozzle); water about 30 kg/s at 3.6 MPa, rising with the square root of the pressure above 0.1 MPa. The safety valve passes four times as much. These are rough sizing figures, not a valve model, and the relief tank does not fill or pressurise.</li>
+        <li>The pressuriser loses heat through its insulation to the ambient air at 200 W per kelvin of difference: about 61 kW at hot standby in 40 °C air, 4 kW at 60 °C. The coolant system's own losses are part of the net-heat control.</li>
         <li>Heaters cut out below 12 % level to protect the elements; this interlock is always on.</li>
         <li>The model stops if the coolant reaches saturation, the pressuriser dries out, or the pressure nears the critical point. Values are typical of a 4-loop PWR, not of any specific plant.</li>
       </ul></div>
@@ -256,10 +258,10 @@ const {hLiq,cpL,init,step,fault,VP}=PZSim;
 const Ctl=PZCtl;
 
 const $=id=>document.getElementById(id);
-const ids=['set','dT','lset','heat','ch','ld','q','sp','loss','relSet','relMan','n2'];
+const ids=['set','dT','lset','heat','ch','ld','q','sp','amb','relSet','relMan','n2'];
 // sliders with an M/A switch → key in ctl.auto (as control.js names the actuator)
 const AK={ch:'ch',ld:'ld',q:'q',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,q:false,sp:false,rel:true};
-const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',n2:v=>+v?v+' %':'shut',relSet:v=>(+v).toFixed(1)+' MPa'};
+const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',amb:v=>v+' °C',relMan:v=>+v?v+' %':'closed',n2:v=>+v?v+' %':'shut',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
 const invR=[...document.querySelectorAll('input[name=inv]')],pzR=[...document.querySelectorAll('input[name=pzMode]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
@@ -268,7 +270,7 @@ const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=f
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
 // about ten round steps over the range. Each press snaps to the next multiple of the step.
-const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,loss:25,relMan:10,n2:5,lset:5};
+const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,amb:5,relMan:10,n2:5,lset:5};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
@@ -313,10 +315,10 @@ const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0,n2:0};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();Ctl.engage(cs,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
-const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,win:21600});
-const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,win:600});
+const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,amb:40,relSet:3.6,win:21600});
+const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,amb:40,relSet:16.2,win:600});
 // nitrogen cushion: cold, the gas space is nitrogen over 60 °C water; charging/letdown on level
-const N2C=()=>start({n2:true,Tpz:60,Tr:60,P:2.8e6,L:0.25},{inv:'lev',set:2.8,lset:25,heat:0,ch:5,ld:5,q:60,sp:0,loss:60,relSet:3.6,win:21600});
+const N2C=()=>start({n2:true,Tpz:60,Tr:60,P:2.8e6,L:0.25},{inv:'lev',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,amb:40,relSet:3.6,win:21600});
 $('scCold').onclick=COLD;$('scHot').onclick=HOT;$('scN2').onclick=N2C;
 $('scCool').onclick=()=>{HOT();setC({heat:-13.5,win:21600})};
 $('scLoad').onclick=()=>{if(s)s.extra={Q:40e6,end:s.t+120}};
@@ -377,7 +379,7 @@ const updText=()=>{
   const rows=[['State',solid?'water-solid':n2?'nitrogen cushion':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
-    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],
+    ['Spray',f.ws.toFixed(1)+' kg/s'],['Heat loss',(f.loss/1e3).toFixed(0)+' kW'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],
     ['Nitrogen',n2?`${s.Mn.toFixed(0)} kg, ${(d.pN/1e6).toFixed(3)} MPa`:'none'],['Nitrogen flow',f.wn>0||f.wrn>0?`${f.wn>0?'in '+f.wn.toFixed(2):''}${f.wn>0&&f.wrn>0?' / ':''}${f.wrn>0?'vented '+f.wrn.toFixed(2):''} kg/s`:'none'],
     ['Steam mass',d.Mg.toFixed(0)+' kg'+(n2?`, ${(d.pS/1e6).toFixed(3)} MPa`:'')],
     ['Coolant mass',(s.Mr/1000).toFixed(1)+' t'],['Water mass',(d.Ml/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(m).padStart(2,'0')+' min']];

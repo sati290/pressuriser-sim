@@ -11,7 +11,8 @@
 | Net heat | −60 … +60 MW | One operator control: pump work + core/decay heat − RHR/steam dump − losses. Pumps are assumed running (mixed RCS, spray head available) |
 | Heater max | 1.8 MW | Pressuriser heaters (interlock: trip below 12 % level, always on) |
 | Spray max | 40 kg/s | Main spray at RCS temperature |
-| Relief valve | 15 kg/s steam at 16.2 MPa (∝ P); 30 kg/s liquid at 3.6 MPa (∝ √(P − 0.1 MPa)) | `relW(P, steam)` |
+| Relief valve | 15 kg/s steam at 16.2 MPa (∝ P while choked, × subsonic nozzle factor ψ(PB/P)/ψ* above the critical ratio 0.546, κ = 1.3, zero at PB); 30 kg/s liquid at 3.6 MPa (∝ √(P − PB)) | `relW(P, steam)`, `subF(P)`. Discharge to a relief tank at PB = 0.1 MPa abs (fixed: the tank does not fill or pressurise). All pressures in the model are absolute |
+| Pressuriser heat loss | UA·(T − T_amb), UA = 200 W/K (61 kW at hot standby in 40 °C air) | `u.amb` (K), default 40 °C; T is the saturated-region (or solid liquid) temperature; recorded as `s.f.loss` |
 | Safety valve | 4 × relief valve flow | Fixed 17.2 MPa open / 16.9 MPa reclose |
 | Gas with nitrogen | relief flow × √(R_s·T_sat(P) / (R_mix·T)) | `gasF(d)`: ideal-gas choked-flow ratio (∝ P/√(RT)) of the mixture vs saturated steam at the same P; exactly 1 for steam alone |
 | Nitrogen supply | 4.0 MPa header (`N2P`), 0.5 kg/s·√(ΔP / 1 MPa) (`N2W`), 20 °C, check valve | `n2W(P)`; flow × valve opening 0–1 (`u.n2`), operator only (no M/A) |
@@ -49,7 +50,7 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `sv`, `rel` | Safety-valve latch, relief valve opening fraction 0–1 (as commanded) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
-| `f` | What was applied in the last step: `{Q, ws, ch, ld, wr, wrn, wn, trip, Qr}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
+| `f` | What was applied in the last step: `{Q, ws, ch, ld, wr, wrn, wn, n2, trip, Qr, loss}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
 
 ## Controller memory (`cs`, from `PZCtl.init()`)
 
@@ -92,7 +93,7 @@ Manual control is primary. The automatic logic runs every step (`demands(cs, s, 
 demand for each actuator to `cs.dem`. `command(cs, c)` then builds the plant command: an actuator
 takes its demand only when `c.auto[k]` is true (keys `ch, ld, q, sp, rel`), otherwise the operator's
 value (`c.ch, c.ld, c.sp` kg/s, `c.q` kW, `c.relMan` %), converted to SI along with `c.heat` (MW) and
-`c.loss` (kW). The logic acts regardless of pressuriser state;
+`c.amb` (°C → K). The logic acts regardless of pressuriser state;
 **nothing switches between M and A, or between inventory modes, automatically**.
 
 1. **Demands**:
@@ -126,7 +127,7 @@ The controller reads the plant state directly (ideal, instantaneous measurements
 
 ## Plant step `PZSim.step(s, u, dt)` (sim.js)
 
-`u = {ch, ld, sp (kg/s), q (W), rel (0–1), n2 (0/1), heat (W), loss (W)}`, the final command.
+`u = {ch, ld, sp (kg/s), q (W), rel (0–1), n2 (0–1), heat (W), amb (K)}`, the final command.
 
 1. **Limits and protection**: each actuator is clamped to `LIM` (charging/letdown 0–20 kg/s, heaters
    0–1.8 MW, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level in either mode. Safety valve
@@ -134,7 +135,7 @@ The controller reads the plant state directly (ideal, instantaneous measurements
    These act whoever commands, and are recorded in `s.f`.
 2. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
 3. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
-   spray at RCS enthalpy, heater power, minus losses and relief. With nitrogen, the vented gas carries
+   spray at RCS enthalpy, heater power, minus the heat loss UA·(T − amb) and relief. With nitrogen, the vented gas carries
    nitrogen by its mass share, Mn·(1 − exp(−w·dt/(Mn + M_g))) per step (so it can't overdraw), at
    c_p·T; the rest is steam at h″(T). Nitrogen supply adds `u.n2`·`n2W(P)` at c_p·293 K.
 4. **Layer mixing**: m = Ms·dt/τ (+ small floor) moves from the layer into the saturated region with
