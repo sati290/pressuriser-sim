@@ -20,7 +20,7 @@
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.5 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip}
 .band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
-.wrap{max-width:1360px;margin:0 auto}
+.wrap{max-width:1680px;margin:0 auto}
 header .wrap{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:end;justify-content:space-between}
 h1{font-size:clamp(30px,4vw,44px);line-height:1.05;letter-spacing:-.02em;margin:0;font-weight:700;text-wrap:balance}
 header p{margin:6px 0 0;color:var(--mute);max-width:62ch}
@@ -30,11 +30,12 @@ button{cursor:pointer;font-weight:500}
 button:hover{border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
-.main{display:grid;gap:16px;grid-template-columns:minmax(220px,290px) minmax(0,1fr) minmax(290px,350px)}
+/* desktop-first: mimic wide in the left column, controls beside it, charts in a row below */
+.main{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(300px,350px);grid-template-areas:"gauges controls" "vessel controls" "lower lower";grid-template-rows:auto 1fr auto;align-items:start}
+.main>.gauges{grid-area:gauges}.main>.vessel{grid-area:vessel}.main>.controls{grid-area:controls}.lower{grid-area:lower;display:grid;gap:16px;grid-template-columns:minmax(250px,.9fr) minmax(0,1.7fr) minmax(0,1.3fr);align-items:start}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:16px}
-.vessel{position:relative;min-height:560px;padding:0;overflow:hidden}
+.vessel{position:relative;min-height:clamp(520px,calc(100vh - 260px),760px);align-self:stretch;padding:0;overflow:hidden}
 .vessel canvas{position:absolute;inset:0;width:100%;height:100%}
-.centre{display:grid;gap:16px;align-content:start}
 .gauges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden}
 .g{background:var(--panel);padding:10px 14px}
 .g span{display:block;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -86,9 +87,9 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
 .notes ol,.notes ul{padding-left:20px;margin:0}
 code{font-size:14px;overflow-wrap:anywhere}
-@media(max-width:1100px){.main{grid-template-columns:minmax(200px,270px) minmax(0,1fr)}.controls{grid-column:1/-1;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}}
+@media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.main{grid-template-columns:minmax(0,1fr)}.gauges{position:sticky;top:0;z-index:2;order:-1}.centre{display:contents}.vessel{min-height:420px}.stats,.chartcard,.satcard{order:1}.controls{order:2}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
+@media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
 </style>
 </head>
 <body>
@@ -107,27 +108,13 @@ code{font-size:14px;overflow-wrap:anywhere}
 </header>
 
 <main class="band main wrap" style="padding-top:0">
-  <div class="card vessel" aria-label="Pressuriser cross-section"><canvas id="cv"></canvas></div>
-
-  <div class="centre">
-    <div class="gauges">
-      <div class="g p"><span>Pressure, MPa</span><b id="gP">–</b></div>
-      <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
-      <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
-      <div class="g"><span>Level, %</span><b id="gL">–</b></div>
-    </div>
-    <dl class="stats card" id="stats"></dl>
-    <div class="card chartcard">
-      <div class="chead"><h2>Recorder</h2>
-        <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600">Last 10 min</option><option value="3600" selected>Last hour</option><option value="21600">Last 6 hours</option></select></div>
-      <div class="fig"><svg id="rec"></svg></div>
-    </div>
-    <div class="card satcard">
-      <div class="chead"><h2>Pressure–temperature plane</h2>
-        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span></div></div>
-      <div class="fig sat"><svg id="sat"></svg></div>
-    </div>
+  <div class="gauges">
+    <div class="g p"><span>Pressure, MPa</span><b id="gP">–</b></div>
+    <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
+    <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
+    <div class="g"><span>Level, %</span><b id="gL">–</b></div>
   </div>
+  <div class="card vessel" aria-label="Pressuriser and reactor vessel mimic"><canvas id="cv"></canvas></div>
 
   <div class="card controls">
     <div class="grp">
@@ -155,6 +142,20 @@ code{font-size:14px;overflow-wrap:anywhere}
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
       <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
+    </div>
+  </div>
+
+  <div class="lower">
+    <dl class="stats card" id="stats"></dl>
+    <div class="card chartcard">
+      <div class="chead"><h2>Recorder</h2>
+        <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600">Last 10 min</option><option value="3600" selected>Last hour</option><option value="21600">Last 6 hours</option></select></div>
+      <div class="fig"><svg id="rec"></svg></div>
+    </div>
+    <div class="card satcard">
+      <div class="chead"><h2>Pressure–temperature plane</h2>
+        <div class="key"><span><i style="background:var(--acc)"></i>Pressuriser</span><span><i style="background:var(--water)"></i>Coolant (RCS)</span></div></div>
+      <div class="fig sat"><svg id="sat"></svg></div>
     </div>
   </div>
 </main>
@@ -392,7 +393,6 @@ const ctl_dt=()=>{const v=+$('speed').value;return v<=20?0.25:v<=60?0.5:v<=240?1
 // ---------- readouts ----------
 const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
 const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
-const r0=x=>(Math.abs(x)<0.5?0:x).toFixed(0);
 const rate=k=>{if(hist.length<2)return 0;const b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=300;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',f=s.f;
@@ -414,7 +414,7 @@ const updText=()=>{
   $('gL').textContent=solid?'Solid':(d.level*100).toFixed(1);
   const h=Math.floor(s.t/3600),m=Math.floor(s.t%3600/60);
   const rows=[['State',solid?'water-solid':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
-    ['Coolant heat-up',r0(rate('R'))+' °C/h',Math.abs(rate('R'))>55],['Pressuriser heat-up',r0(rate('T'))+' °C/h',Math.abs(rate('T'))>55],['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
+    ['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
     ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(s.porv?'relief valve open':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],['Steam mass',d.Mg.toFixed(0)+' kg'],
     ['Coolant mass',(s.Mr/1000).toFixed(1)+' t'],['Water mass',(d.Ml/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(m).padStart(2,'0')+' min']];
@@ -483,45 +483,104 @@ const drawVessel=dtReal=>{
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
   cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
   const col={ink:css('--ink'),mute:css('--mute'),water:css('--water'),water2:css('--water2'),steam:css('--steam'),metal:css('--metal'),acc:'#ff4f00',rule:css('--rule')};
-  const d=s.d,f=s.f,solid=d.mode==='solid';
-  const vw=Math.min(160,W*0.48),x0=(W-vw)/2-10,y0=54,y1=H-80,rad=vw/2;
+  const d=s.d,f=s.f,solid=d.mode==='solid',degC=T=>(T-273.15).toFixed(1)+' °C';
+  // landscape layout: pressuriser left, elevated; reactor vessel right; surge line drops from the
+  // pressuriser bottom and runs across to the hot-leg nozzle, spray comes from the cold-leg side
+  const vw=Math.min(180,H*0.24,Math.max(70,W*0.15)),rad=vw/2;
+  const x0=Math.max(70,W*0.24-vw/2),y0=Math.max(80,H*0.13),y1=Math.max(y0+2*vw,H*0.7),pcx=x0+vw/2;
+  const rw=Math.max(140,Math.min(260,W*0.24)),rx=Math.max(x0+vw+120,Math.min(W*0.62-rw/2,W-rw-70)),ry0=Math.max(y0+60,H*0.33),ry1=H-74,rh=ry1-ry0;
+  // surge line as a schematic loop: down below the pressuriser, across, up the gap, over and into the vessel top
+  const sb=Math.min(H-30,y1+Math.max(40,H*0.12)),gx=x0+vw+0.6*(rx-x0-vw),st=ry0-Math.max(34,H*0.08),dx=rx+rw*0.5,cyl=ry0+rh*0.3;
+  const surge=[pcx,y1-4,pcx,sb,gx,sb,gx,st,dx,st,dx,ry0+4];
   const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
-  cx.fillStyle='rgba(0,0,0,.12)';cx.beginPath();cx.ellipse(x0+vw/2+8,y1+14,vw*0.6,8,0,0,7);cx.fill();
-  cx.fillStyle=col.metal;cx.fillRect(x0+vw/2-9,y1-4,18,40);cx.fillRect(x0+vw/2-9,y1+28,W,16);
-  cx.fillRect(x0+vw*0.7,18,12,y0-10);cx.fillRect(x0+vw*0.7,18,W,12);
-  cx.fillRect(x0+vw*0.3-6,8,12,y0);cx.fillRect(0,8,x0+vw*0.3+6,12);
+  const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
+  const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
+  // temperature with its heat-up rate (°C/h over the last 5 min): ▲ heating, ▼ cooling, orange above 55 °C/h.
+  // The rate sits on the line below the value. Returns the extra height used.
+  const rR=rate('R'),rT=rate('T');
+  const tempL=(T,r,x,y,c)=>{
+    lbl(degC(T),x,y,c,true);const ar=Math.abs(r)<0.5?0:Math.sign(r);
+    const t=ar?`${Math.abs(r).toFixed(0)} °C/h`:'steady';cx.font='13px Geist,system-ui,sans-serif';
+    const warn=Math.abs(r)>55,pd=warn?5:0,tw=cx.measureText(t).width+(ar?13:0)+2*pd,rx_=x+pd,ry_=y+18;
+    // above 55 °C/h (a typical plant limit) the rate becomes a white-on-orange pill, readable on steam and water
+    if(warn){cx.fillStyle=col.acc;cx.beginPath();cx.roundRect(rx_-pd,ry_-12,tw,16,8);cx.fill()}
+    cx.fillStyle=warn?'#fff':c;
+    if(ar){const yb=ar>0?ry_-1:ry_-9,yt=ar>0?ry_-9:ry_-1;cx.beginPath();cx.moveTo(rx_,yb);cx.lineTo(rx_+9,yb);cx.lineTo(rx_+4.5,yt);cx.fill()}
+    cx.globalAlpha=ar?1:0.75;cx.fillText(t,rx_+(ar?13:0),ry_);cx.globalAlpha=1;return 18};
+  cx.fillStyle='rgba(0,0,0,.12)';cx.beginPath();cx.ellipse(rx+rw/2+6,ry1+8,rw*0.5,6,0,0,7);cx.fill();
+  const pt=34,sx=x0+vw*0.7,qx=x0+vw*0.3;
+  pipe(surge,14);
+  // break mark on the riser: the drawing is schematic, a real surge line falls all the way to the hot leg
+  {const ym=(sb+st)/2;cx.clearRect(gx-12,ym-6,24,12);cx.strokeStyle=col.ink;cx.lineWidth=2;cx.lineCap='round';
+   for(const o of[-6,6]){cx.beginPath();cx.moveTo(gx-12,ym+o+4);cx.lineTo(gx+12,ym+o-4);cx.stroke()}}
+  pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
+  pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
+  // reactor vessel: coolant + core
+  cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.clip();
+  const gr=cx.createLinearGradient(0,ry0,0,ry1);gr.addColorStop(0,col.water);gr.addColorStop(1,col.water2);cx.fillStyle=gr;cx.fillRect(rx,ry0,rw,rh);
+  const kx=rx+rw*0.22,kw=rw*0.56,ky=ry0+rh*0.5,kh=rh*0.3;
+  cx.fillStyle=col.metal;cx.globalAlpha=0.55;cx.fillRect(kx,ky,kw,kh);cx.globalAlpha=1;
+  const hq=clamp(f.Qr/50e6,-1,1);
+  if(hq>0.002){cx.fillStyle=`rgba(255,79,0,${0.25+0.6*hq})`;cx.fillRect(kx,ky,kw,kh)}
+  cx.strokeStyle='rgba(255,255,255,.55)';cx.lineWidth=1;for(let i=1;i<8;i++){const xx=kx+kw*i/8;cx.beginPath();cx.moveTo(xx,ky+3);cx.lineTo(xx,ky+kh-3);cx.stroke()}
+  cx.restore();
+  cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
+  cx.textAlign='left';
+  lbl('Reactor coolant',rx+12,ry0+24,'rgba(255,255,255,.9)');
+  tempL(s.Tr,rR,rx+12,ry0+44,'#fff');
+  cx.textAlign='center';lbl('Core',kx+kw/2,ky+kh+18,'rgba(255,255,255,.9)');
+  cx.textAlign='center';
+  lbl(`Net heat ${f.Qr>=0?'+':'−'}${Math.abs(f.Qr/1e6).toFixed(1)} MW · charging ${f.ch.toFixed(1)} · letdown ${f.ld.toFixed(1)} kg/s`,rx+rw/2,ry1+32,col.mute);
+  cx.textAlign='left';lbl('To hot leg',dx+14,(st+ry0)/2+5,col.mute);cx.textAlign='center';lbl('Cold leg',(rx+rw+W-22)/2,cyl-14,col.mute);
+  // pressuriser interior
   cx.save();shape();cx.clip();
   const gs=cx.createLinearGradient(x0,0,x0+vw,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,y0,vw,y1-y0);
   const gw=cx.createLinearGradient(0,ly,0,y1);gw.addColorStop(0,col.water);gw.addColorStop(1,col.water2);cx.fillStyle=gw;cx.fillRect(x0,ly,vw,y1-ly+2);
-  const hp=f.trip?0:f.Q/1.8e6;
-  for(let i=0;i<5;i++){const hx=x0+vw*(0.18+i*0.16);cx.fillStyle=hp>0?`rgba(255,${120-80*hp|0},0,${0.45+0.55*hp})`:col.metal;cx.fillRect(hx-3,y1-rad*0.9-40,6,rad*0.9+40)}
+  // insurge layer: cooler RCS water sitting at the bottom until it mixes
+  const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,inBot-(inBot-inTop)*lf);
+  if(!solid&&lf>0&&y1-yl>3){cx.fillStyle=col.water2;cx.fillRect(x0,yl,vw,y1-yl);cx.setLineDash([4,4]);cx.strokeStyle='rgba(255,255,255,.6)';cx.lineWidth=1;cx.beginPath();cx.moveTo(x0,yl);cx.lineTo(x0+vw,yl);cx.stroke();cx.setLineDash([])}
+  const hp=f.trip?0:f.Q/1.8e6,hT=inBot-(inBot-inTop)*0.1,hL=y1-hT; // heaters stay below the 12 % low-level trip
+  for(let i=0;i<5;i++){const hx=x0+vw*(0.18+i*0.16);cx.fillStyle=hp>0?`rgba(255,${120-80*hp|0},0,${0.45+0.55*hp})`:col.metal;cx.fillRect(hx-3,hT,6,hL)}
   if(!reduce&&!solid){
     const sp=Math.min(dtReal,100)/1000;
-    let nb=hp*60*sp;while(nb>0){if(rnd()<nb)parts.push({k:'b',x:x0+vw*(0.18+(rnd()*5|0)*0.16)+(rnd()-.5)*6,y:y1-rad*0.9-40*rnd(),v:40+rnd()*40});nb--}
-    let nd=f.ws/40*80*sp;while(nd>0){if(rnd()<nd)parts.push({k:'d',x:x0+vw*0.3,y:y0+rad*0.3+14,v:120+rnd()*80,vx:(rnd()-.5)*50});nd--}
+    let nb=hp*60*sp;while(nb>0){if(rnd()<nb)parts.push({k:'b',x:x0+vw*(0.18+(rnd()*5|0)*0.16)+(rnd()-.5)*6,y:y1-rad*0.3-(hL-rad*0.3)*rnd(),v:40+rnd()*40});nb--}
+    let nd=f.ws/40*80*sp;while(nd>0){if(rnd()<nd)parts.push({k:'d',x:sx,y:y0+rad*0.3+14,v:120+rnd()*80,vx:(rnd()-.5)*50});nd--}
     for(const p of parts){p.y+=(p.k==='b'?-1:1)*p.v*sp;if(p.vx)p.x+=p.vx*sp}
     parts=parts.filter(p=>p.k==='b'?p.y>ly:p.y<ly);
     for(const p of parts){cx.beginPath();if(p.k==='b'){cx.strokeStyle='rgba(255,255,255,.75)';cx.lineWidth=1.2;cx.arc(p.x,p.y,2.2,0,7);cx.stroke()}else{cx.fillStyle=col.water;cx.arc(p.x,p.y,2,0,7);cx.fill()}}
   }else parts=[];
-  cx.fillStyle=col.metal;cx.fillRect(x0+vw*0.3-10,y0+rad*0.3,20,10);
+  cx.fillStyle=col.metal;cx.fillRect(sx-10,y0+rad*0.3,20,10);
   cx.restore();
   shape();cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
-  cx.font='600 15px Geist,system-ui,sans-serif';cx.textAlign='left';
+  cx.textAlign='left';
   if(!solid){
     cx.strokeStyle='rgba(255,255,255,.8)';cx.lineWidth=1.5;cx.beginPath();cx.moveTo(x0+4,ly);cx.lineTo(x0+vw-4,ly);cx.stroke();
     cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(x0+vw+6,ly);cx.lineTo(x0+vw+16,ly-7);cx.lineTo(x0+vw+16,ly+7);cx.fill();
-    cx.fillStyle=col.ink;cx.fillText((lev*100).toFixed(1)+'%',x0+vw+20,ly+5);
+    lbl((lev*100).toFixed(1)+'%',x0+vw+20,ly+5,col.ink,true);
   }
-  cx.font='13px Geist,system-ui,sans-serif';
-  if(solid){cx.fillStyle='rgba(255,255,255,.92)';cx.fillText('Water-solid',x0+14,y0+rad+10)}
-  else{cx.fillStyle=col.mute;if(ly-inTop>30)cx.fillText('Steam',x0+12,(y0+ly)/2+30);if(inBot-ly>30){cx.fillStyle='rgba(255,255,255,.9)';cx.fillText('Water',x0+12,ly+22)}}
-  cx.fillStyle=col.mute;cx.fillText(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',8,40);
-  cx.textAlign='right';cx.fillText(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',W-8,46);
-  const sw=s.surge;cx.fillText(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,W-8,y1+64);
-  cx.textAlign='left';cx.fillText(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,8,y1+64);
-  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=x0+vw/2,ay=y1+14,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
-  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(W-14-ph*10,24-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
+  const tx=x0+12,heatTop=inBot-(inBot-inTop)*0.1; // labels sit left of the heater bundle's top where possible
+  if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
+  else{
+    // steam and water share the saturation temperature (thermal equilibrium)
+    if(ly-y0>60){const yy=Math.max(y0+rad*0.6,(y0+ly)/2);lbl('Steam',tx,yy,col.mute);tempL(d.T,rT,tx,yy+20,col.ink)}
+    // water (and insurge layer) labels go inside when there is room, else beside the vessel under the level marker
+    const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop),ox=x0+vw+10;
+    let oy=Math.max(ly+30,inTop+30);
+    if(wb-ly>66){lbl('Water',tx,ly+22,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,ly+42,'#fff')}
+    else{oy=Math.min(oy,y1-68);lbl('Water',ox,oy,col.mute);oy+=48+tempL(d.T,rT,ox,oy+20,col.ink)}
+    if(lay){
+      let Ts=s.Tr;for(let i=0;i<3;i++)Ts+=(s.hs-hLiq(Ts,d.P))/cpL(Ts);
+      lbl('Insurge layer',ox,oy,col.mute);lbl(degC(Ts),ox,oy+20,col.ink,true);
+    }
+  }
+  cx.textAlign='left';lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',sx+14,pt-4,col.mute);
+  lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
+  cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
+  cx.textAlign='left';
+  const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sb-12,col.mute);
+  if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=y1+20,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
+  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=(1-ph)*(s.sv?1:Math.max(0.3,s.rel));cx.beginPath();cx.arc(26+ph*12,pt-8-ph*12,4+ph*7,0,7);cx.fill()}cx.globalAlpha=1}
 };
 
 // ---------- loop ----------
