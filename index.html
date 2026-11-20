@@ -233,15 +233,19 @@ code{font-size:14px;overflow-wrap:anywhere}
   </div>
 </section>
 
+<script src="common.js"></script>
 <script src="sim.js"></script>
+<script src="control.js"></script>
 <script>
 {
-// simulation model lives in sim.js (pure physics, no DOM)
-const {satX,Tsat,hLiq,cpL,engage,init,step,fault,clamp,VP,THI}=PZSim;
+// steam tables and limits in common.js; plant in sim.js (pure physics); automatic control in control.js
+const {satX,Tsat,clamp,THI}=PZCommon;
+const {hLiq,cpL,init,step,fault,VP}=PZSim;
+const Ctl=PZCtl;
 
 const $=id=>document.getElementById(id);
 const ids=['set','dT','lset','heat','ch','ld','q','sp','loss','relSet','relMan'];
-// sliders with an M/A switch → key in ctl.auto (as sim.js names the actuator)
+// sliders with an M/A switch → key in ctl.auto (as control.js names the actuator)
 const AK={ch:'ch',ld:'ld',q:'q',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,q:false,sp:false,rel:true};
 const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
@@ -278,10 +282,11 @@ for(const k of ids){
   const dem=document.createElement('span');dem.className='dem';dem.id=k+'d';lab.insertBefore(dem,lab.querySelector('output'));
   const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);
 }
-for(const r of invR)r.addEventListener('change',()=>{readCtl();if(s)engage(s,ctl)});
+for(const r of invR)r.addEventListener('change',()=>{readCtl();if(cs)Ctl.engage(cs,ctl)});
 for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
-let s,hist=[],running=true,halted='',lastS=0;
+// s: plant state (sim.js); cs: controller memory (control.js)
+let s,cs,hist=[],running=true,halted='',lastS=0;
 const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
 // speed buttons: Pause plus 1×…1000×. Picking a speed resumes (unless the model has halted);
 // while paused the chosen speed stays outlined.
@@ -295,7 +300,7 @@ $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
 const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
-const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);engage(s,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
+const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();Ctl.engage(cs,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,win:21600});
 const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,win:600});
 $('scCold').onclick=COLD;$('scHot').onclick=HOT;
@@ -308,7 +313,7 @@ const FAULT={'':'',dry:'All the liquid in the pressuriser has boiled away.',rang
 const physTick=simDt=>{
   const dt=ctl_dt();let n=Math.round(simDt/dt);
   while(n-->0&&!halted){
-    step(s,ctl,dt);
+    step(s,Ctl.update(cs,s,ctl,dt),dt); // controller first, then the plant, every sub-step
     const d=s.d,msg=FAULT[fault(s)];
     if(msg){halted=msg;setAlert(msg+' The model stops here; pick a scenario to start again.');if(running)toggle();break}
     if(s.t-lastS>=2){lastS=s.t;hist.push({t:s.t,P:d.P,T:d.T-273.15,R:s.Tr-273.15,L:d.level*100});if(hist.length>12000)hist.shift()}
@@ -324,7 +329,7 @@ const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color
 // so at 1× the rate spans the last 4 s.
 const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
-  const d=s.d,solid=d.mode==='solid',A=ctl.auto,D=s.dem;
+  const d=s.d,solid=d.mode==='solid',A=ctl.auto,D=cs.dem;
   // in A the slider follows the demand; in M a notch and a readout show it
   const dv={ch:D.ch,ld:D.ld,q:D.q/1e3,sp:D.sp,relMan:D.rel*100};
   const dtx={ch:v=>v.toFixed(1),ld:v=>v.toFixed(1),q:v=>Math.round(v),sp:v=>v.toFixed(1),relMan:v=>v?'open':'shut'};

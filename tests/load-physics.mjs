@@ -1,17 +1,36 @@
-// Loads the simulation model (sim.js) headless in Node, with no DOM.
-// sim.js is a plain script that defines globalThis.PZSim, so the browser can load it from file://.
+// Loads the model headless in Node, with no DOM: common.js (steam tables, limits), sim.js (plant)
+// and control.js (automatic control). Each is a plain script that defines one global
+// (PZCommon, PZSim, PZCtl), so the browser can load them from file://.
+import '../common.js';
 import '../sim.js';
+import '../control.js';
 
+export const common = globalThis.PZCommon;
 export const phys = globalThis.PZSim;
+export const ctrl = globalThis.PZCtl;
 
-// Helper: run the model for `seconds` with fixed controls; optional onStep(s) hook.
+// Controller memory for a plant state, created on first use, so a test can keep passing the
+// same `s` to run() the way the page keeps its plant and controller side by side.
+const ctls = new WeakMap();
+export const ctlOf = s => { if (!ctls.has(s)) ctls.set(s, ctrl.init()); return ctls.get(s); };
+export const engage = (s, c) => ctrl.engage(ctlOf(s), c);
+
+// Run plant + controller for `seconds` with settings c (panel units, see control.js);
+// optional onStep(s) hook, return false to stop.
 export function run(s, c, seconds, dt = 1, onStep) {
-  const n = Math.round(seconds / dt);
-  for (let k = 0; k < n; k++) {
-    phys.step(s, c, dt);
+  const k = ctlOf(s), n = Math.round(seconds / dt);
+  for (let i = 0; i < n; i++) {
+    phys.step(s, ctrl.update(k, s, c, dt), dt);
     if (onStep && onStep(s) === false) break;
     if (s.d.err) break;
   }
+  return s;
+}
+
+// Run the plant alone with a fixed SI command u (see sim.js step), no controller involved.
+export function runPlant(s, u, seconds, dt = 1) {
+  const n = Math.round(seconds / dt);
+  for (let i = 0; i < n && !s.d.err; i++) phys.step(s, u, dt);
   return s;
 }
 

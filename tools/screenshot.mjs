@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Render index.html (with sim.js) headless at three widths × light/dark and report JS errors /
+// Render index.html (with its scripts) headless at three widths × light/dark and report JS errors /
 // horizontal overflow. Exits 1 if any page has either.
 //
 // Usage:  node tools/screenshot.mjs [--wait SECONDS] [--speed 600] [--out shots/] [--chrome PATH]
