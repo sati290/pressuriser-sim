@@ -4,8 +4,9 @@
 // (index.html) or a module (tests); it only defines globalThis.PZCtl. See docs/physics.md.
 //
 // Settings c are in panel units: ch, ld, sp kg/s; q kW; relMan %; heat MW; loss kW; set, relSet Pa;
-// lset %; dT K; inv 'pres'|'lev'; pzMode 'pres'|'dT'; auto {ch,ld,q,sp,rel} booleans.
-// The command is SI: {ch, ld, sp kg/s; q W; rel 0–1; heat W; loss W}.
+// lset %; dT K; inv 'pres'|'lev'; pzMode 'pres'|'dT'; auto {ch,ld,q,sp,rel} booleans; n2 %
+// (nitrogen supply valve opening; always manual, no automatic logic).
+// The command is SI: {ch, ld, sp kg/s; q W; rel 0–1; n2 0–1; heat W; loss W}.
 globalThis.PZCtl = (() => {
 'use strict';
 const {sat,clamp,LIM,THI}=globalThis.PZCommon;
@@ -57,11 +58,12 @@ const demands=(k,s,c,dt)=>{
   if(P>c.relSet)k.porv=true;else if(P<c.relSet-relHys(c.relSet))k.porv=false;
   k.dem={q,sp,ch:r.ch,ld:r.ld,rel:k.porv?1:0,pset};
 };
-// final command: the demand for actuators in A, the operator's value for those in M, in SI
+// final command: the demand for actuators in A, the operator's value for those in M, in SI;
+// the nitrogen valve is always the operator's
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
   return {ch:A.ch?D.ch:c.ch,ld:A.ld?D.ld:c.ld,q:A.q?D.q:c.q*1e3,sp:A.sp?D.sp:c.sp,
-    rel:A.rel?D.rel:(c.relMan||0)/100,heat:c.heat*1e6,loss:c.loss*1e3};
+    rel:A.rel?D.rel:(c.relMan||0)/100,n2:(c.n2||0)/100,heat:c.heat*1e6,loss:c.loss*1e3};
 };
 // one control step: update the demands from the plant state, return the command for PZSim.step.
 // Call it before every plant step, with the same dt.

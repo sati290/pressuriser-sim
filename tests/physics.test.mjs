@@ -286,5 +286,118 @@ test('controller command: demand in A, operator value in M, converted to SI', ()
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   const k = ctrl.init(), c = { ...HOT_MAN, auto: { sp: true }, q: 600, relMan: 40, heat: 2.5, loss: 60 };
   const u = ctrl.update(k, s, c, 0.5);
-  assert.deepEqual(u, { ch: 6, ld: 6, q: 600e3, sp: k.dem.sp, rel: 0.4, heat: 2.5e6, loss: 60e3 });
+  assert.deepEqual(u, { ch: 6, ld: 6, q: 600e3, sp: k.dem.sp, rel: 0.4, n2: 0, heat: 2.5e6, loss: 60e3 });
+  assert.equal(ctrl.update(k, s, { ...c, n2: 40 }, 0.5).n2, 0.4, 'nitrogen valve is always the operator\'s');
+});
+
+// nitrogen cushion: the gas space holds nitrogen and water vapour (Dalton), same pz() as steam and solid
+
+const N2_COLD = { n2: true, Tpz: 60, Tr: 60, P: 2.8e6, L: 0.25 };
+const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 0, sp: 0, loss: 60, relSet: 3.6e6, relMan: 0, n2: 0 };
+
+test('nitrogen cushion round-trips through init', () => {
+  const s = phys.init(N2_COLD);
+  assert.equal(s.d.mode, 'two');
+  near(MPa(s.d.P), 2.8, 1e-6, 'P');
+  near(s.d.level, 0.25, 1e-6, 'level');
+  near(C(s.d.T), 60, 1e-4, 'T');
+  near(MPa(s.d.pS), 0.0199, 0.0005, 'steam partial pressure is p_sat(60 °C)');
+  near(s.Mn, 2.78e6 * 0.75 * phys.VP / (phys.RN * 333.15), 1, 'nitrogen mass, ideal gas');
+});
+
+test('the nitrogen branch tends to the steam and water-solid states as nitrogen goes to zero', () => {
+  for (const o of [{ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 }, { solid: false, Tr: 200, P: 2.8e6, L: 0.6 }, { solid: true, Tpz: 60, Tr: 60, P: 2.8e6 }, { solid: true, Tpz: 220, Tr: 200, P: 3e6 }]) {
+    const s = phys.init(o), d = s.d, e = 1e-6, n = phys.pz(s.M, s.U + e * phys.CVN * d.T, phys.VP, e);
+    near(n.P, d.P, 20, `P, ${d.mode} at ${MPa(d.P)} MPa`);
+    near(n.T, d.T, 1e-3, `T, ${d.mode}`);
+    near(n.level, d.level, 1e-4, `level, ${d.mode}`);
+  }
+});
+
+test('nitrogen cushion, cold, everything balanced: steady for an hour', () => {
+  const s = phys.init(N2_COLD);
+  run(s, { ...N2_CTL, auto: { rel: true }, q: 60 }, 3600, 1);
+  near(MPa(s.d.P), 2.8, 0.01, 'P');
+  near(s.d.level * 100, 25, 0.1, 'level');
+});
+
+test('closed system with nitrogen conserves water and nitrogen; relief vents both in proportion', () => {
+  const s = phys.init({ ...N2_COLD, Tpz: 150, Tr: 150 });
+  const w0 = s.M + s.Ms + s.Mr, n0 = s.Mn;
+  runPlant(s, { ...HOLD, q: 1e6, sp: 5, loss: 60e3, heat: 2e6 }, 1800, 0.5);
+  near(s.M + s.Ms + s.Mr, w0, 1, 'water (kg)');
+  near(s.Mn, n0, 1e-6, 'nitrogen (kg)');
+  // open the relief: what leaves is the gas mixture, nitrogen by its mass share
+  let wOut = 0, nOut = 0; const w1 = s.M + s.Ms + s.Mr, n1 = s.Mn;
+  for (let i = 0; i < 240; i++) { phys.step(s, { ...HOLD, rel: 1 }, 0.5); wOut += (s.f.wr - s.f.wrn) * 0.5; nOut += s.f.wrn * 0.5; }
+  assert.ok(nOut > 50 && wOut > 10, `vented ${nOut.toFixed(0)} kg nitrogen, ${wOut.toFixed(0)} kg steam`);
+  near(s.M + s.Ms + s.Mr, w1 - wOut, 1, 'water balance with venting');
+  near(s.Mn, n1 - nOut, 1e-6, 'nitrogen balance with venting');
+});
+
+test('relief flow: unchanged for steam, ideal-gas choked ratio for nitrogen', () => {
+  const st = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  assert.equal(phys.gasF(st.d), 1);
+  const n = phys.init(N2_COLD), f = phys.gasF(n.d);
+  near(f, 1.52, 0.03, 'cold nitrogen at 2.8 MPa vs saturated steam at 2.8 MPa');
+});
+
+test('nitrogen supply: flows below the header pressure through a check valve', () => {
+  near(phys.n2W(2.8e6), 0.5 * Math.sqrt(1.2), 1e-9, 'flow at 2.8 MPa');
+  assert.equal(phys.n2W(5e6), 0, 'no backflow above the header');
+  const t = phys.init(N2_COLD);
+  runPlant(t, { ...HOLD, n2: 0.25 }, 0.5, 0.5);
+  near(t.f.wn, 0.25 * phys.n2W(t.d.P), 0.01, 'flow scales with the valve opening');
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  runPlant(s, { ...HOLD, n2: 1 }, 10, 0.5);
+  assert.equal(s.Mn, 0, 'no nitrogen enters at hot standby pressure');
+});
+
+test('nitrogen into a water-solid pressuriser opens a gas space; letdown holds the pressure', () => {
+  const s = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
+  const c = { ...COLD_CTL, q: 0, n2: 100 };
+  engage(s, c);
+  let Pmax = 0;
+  // the operator shuts the supply once the level is down to 40 %
+  run(s, c, 2 * 3600, 1, x => { Pmax = Math.max(Pmax, x.d.P); if (x.d.level < 0.4) c.n2 = 0; });
+  assert.equal(s.d.mode, 'two');
+  assert.ok(s.Mn > 500, `nitrogen in: ${s.Mn.toFixed(0)} kg`);
+  // after the valve shuts, letdown keeps drawing water until the gas has expanded back to the setpoint
+  assert.ok(s.d.level > 0.25 && s.d.level < 0.4, `letdown made room for the gas: level ${s.d.level}`);
+  // while the supply was open, nitrogen came in faster (by volume) than full letdown could make room
+  assert.ok(MPa(Pmax) > 2.9 && MPa(Pmax) < 3.6, `pressure rose to ${MPa(Pmax)} MPa`);
+  near(MPa(s.d.P), 2.8, 0.05, 'pressure back at the setpoint, the gas a soft spring');
+  assert.ok(s.d.yN > 0.99, 'cold gas space is almost all nitrogen');
+});
+
+test('nitrogen startup: heaters plus venting replace nitrogen with steam; the gas becomes steam alone near Tsat', () => {
+  const s = phys.init(N2_COLD);
+  const c = { ...N2_CTL, q: 1800, relSet: 3.0e6 };
+  engage(s, c);
+  let at = null, jump = 0, prev = s.d.P, Pmax = 0;
+  run(s, c, 4 * 3600, 1, x => {
+    if (at === null && x.Mn === 0) { at = x.t; jump = Math.abs(x.d.P - prev); }
+    prev = x.d.P; Pmax = Math.max(Pmax, x.d.P);
+  });
+  assert.ok(at, 'nitrogen never purged');
+  assert.ok(at < 3.5 * 3600, `took ${(at / 3600).toFixed(2)} h`);
+  assert.ok(jump < 0.01e6, `pressure step at the switch ${MPa(jump)} MPa`);
+  near(C(s.d.T), C(common.Tsat(s.d.P)), 1e-6, 'steam alone: saturated');
+  assert.ok(MPa(Pmax) < 3.1, `relief held pressure, max ${MPa(Pmax)} MPa`);
+  near(s.d.level * 100, 25, 1, 'level held by charging');
+});
+
+test('nitrogen cooldown: spray cools the pressuriser, nitrogen from the line replaces condensed steam', () => {
+  const s = phys.init({ solid: false, Tr: 175, P: 2.8e6, L: 0.25 });
+  const c = { ...N2_CTL, heat: -1, sp: 3 };
+  engage(s, c);
+  let Pmin = 1e9;
+  run(s, c, 4 * 3600, 1, x => {
+    if (x.d.P < 2.75e6) c.n2 = 100; else if (x.d.P > 2.85e6) c.n2 = 0; // operator works the valve
+    if (x.t > 600) Pmin = Math.min(Pmin, x.d.P);
+  });
+  assert.ok(s.d.T - s.Tr < 2, `pressuriser cooled to the coolant: ΔT ${(s.d.T - s.Tr).toFixed(1)} K`);
+  assert.ok(s.d.yN > 0.6, `gas mostly nitrogen: ${(s.d.yN * 100).toFixed(0)} %`);
+  assert.ok(MPa(Pmin) > 2.7, `pressure held, min ${MPa(Pmin)} MPa`);
+  assert.equal(phys.fault(s), '');
 });

@@ -28,8 +28,8 @@ const sat=T=>{let f=(T-T0)/DT;if(f<0)f=0;if(f>N-1.0001)f=N-1.0001;const i=f|0,w=
   Q.hf=TB[a+4]+w*(TB[b+4]-TB[a+4]);Q.hg=TB[a+5]+w*(TB[b+5]-TB[a+5]);Q.uf=Q.hf-Q.p/Q.rf;Q.ug=Q.hg-Q.p/Q.rg;return Q};
 const Tsat=p=>{let a=T0,b=THI;for(let i=0;i<50;i++){const m=(a+b)/2;if(sat(m).p<p)a=m;else b=m}return (a+b)/2};
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
-// actuator ranges, SI: charging/letdown/spray kg/s, heaters W, relief opening fraction.
+// actuator ranges, SI: charging/letdown/spray kg/s, heaters W, relief and nitrogen valve opening fractions.
 // The plant clamps every command to these; the controller's anti-windup needs the same limits.
-const LIM=Object.freeze({ch:20,ld:20,q:1.8e6,sp:40,rel:1});
+const LIM=Object.freeze({ch:20,ld:20,q:1.8e6,sp:40,rel:1,n2:1});
 return {satX,sat,Tsat,clamp,LIM,T0,THI,Tc,pc,rc};
 })();
