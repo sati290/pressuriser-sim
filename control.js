@@ -38,7 +38,7 @@ const demands=(k,s,c,dt)=>{
   // taking over only while the preferred flow is at a limit.
   // A flow's demand is what it would do if it were in auto with the other as it is now, so the
   // notch on a manual slider shows what switching it to A would give.
-  const lev=c.inv==='lev',err=lev?c.lset-d.level*100:-e,kp=lev?3:5e-5,ki=lev?0.002:2e-7,key=lev?'iC':'iL';
+  const lev=c.inv==='lev',err=lev?c.lset-d.level*100:-e,kp=lev?20:5e-5,ki=lev?0.025:2e-7,key=lev?'iC':'iL';
   const pref=lev?'ch':'ld',H=k.hold||(k.hold={ch:c.ch,ld:c.ld});
   const held=f=>A.ch&&A.ld&&f!==pref,eff=f=>A[f]?H[f]:c[f]; // eff: the flow as the other one sees it
   const ctrl=A.ch&&!A.ld?'ch':A.ld&&!A.ch?'ld':pref;

@@ -107,7 +107,7 @@ value (`c.ch, c.ld, c.sp` kg/s, `c.q` kW, `c.relMan` %), converted to SI along w
      p* is stored as `cs.dem.pset`. Letdown pressure control always uses `c.set`.
    - Charging/letdown: a PI controller asks for net inflow N = charging − letdown.
      `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt, preferred flow letdown.
-     `c.inv === 'lev'` (bubble): N = 3·e + ∫0.002·e dt (e = level error, %), preferred flow charging.
+     `c.inv === 'lev'` (bubble): N = 20·e + ∫0.025·e dt (e = level error, %; full charging range over 1 %), preferred flow charging.
      Who controls: if only one flow is in A, that one (charging = other + N, or letdown = other − N);
      if both are in A, the preferred one, with the other held at `cs.hold` (its flow when it stopped
      controlling, so holding is bumpless). The held flow's demand is preferred ∓ N, which equals its
@@ -167,7 +167,8 @@ RCS can't represent boiling).
 | ΔT mode, 53 K, cold water-solid start, letdown on pressure | pressuriser settles 53 K above the coolant at 2.8 MPa |
 | Level 40 → 25 % with charging and letdown both in A | charging goes to 0, letdown takes over, then returns to its held flow |
 | Only letdown in A in level mode; only charging in A in pressure mode | the flow in A controls; the manual one is untouched |
-| +40 MW for 120 s at hot standby | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
+| +40 MW for 120 s at hot standby, charging/letdown in M | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
+| Same, charging/letdown in A on level | level peaks 25.6 %, back at 25 % in ~2 min, no undershoot below 24.9 % |
 | Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
 | Same, but nobody switches at the bubble | letdown winds up to 20 kg/s and drains the pressuriser |
 | Heat-up, net heat +19.5 MW | coolant ~40 °C/h; letdown carries expansion |

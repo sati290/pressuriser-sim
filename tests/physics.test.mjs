@@ -71,12 +71,13 @@ test('hot standby is a steady state', () => {
 });
 
 test('load step: insurge raises pressure, spray responds', () => {
-  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  run(s, HOT_CTL, 1800, 0.5);
+  // charging and letdown in manual, so the insurge stays in the pressuriser
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 }), c = { ...HOT_CTL, auto: { q: true, sp: true, rel: true } };
+  run(s, c, 1800, 0.5);
   const P0 = s.d.P;
   s.extra = { Q: 40e6, end: s.t + 120 };
   let Pmax = P0, sprayMax = 0, surgeMax = 0;
-  run(s, HOT_CTL, 300, 0.25, x => { Pmax = Math.max(Pmax, x.d.P); sprayMax = Math.max(sprayMax, x.f.ws); surgeMax = Math.max(surgeMax, x.surge); });
+  run(s, c, 300, 0.25, x => { Pmax = Math.max(Pmax, x.d.P); sprayMax = Math.max(sprayMax, x.f.ws); surgeMax = Math.max(surgeMax, x.surge); });
   assert.ok(surgeMax > 5, `insurge expected, max surge ${surgeMax}`);
   assert.ok(Pmax - P0 > 0.05e6, `pressure should rise on insurge, rise ${MPa(Pmax - P0)} MPa`);
   assert.ok(sprayMax > 0, 'spray should open');
@@ -436,4 +437,16 @@ test('bubble draw: level control brings the level down from 100 % without oversh
   assert.ok(t0, 'no bubble');
   assert.ok(Lmin > 0.24, `level undershot to ${(Lmin * 100).toFixed(1)} %`);
   near(s.d.level * 100, 25, 0.3, 'level settles at the setpoint');
+});
+
+test('load step at hot standby: level control holds the level within 1 % and settles without undershoot', () => {
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  const c = { ...HOT_CTL, q: 60 };
+  run(s, c, 600, 0.5);
+  s.extra = { Q: 40e6, end: s.t + 120 };
+  let mx = 0, mn = 2;
+  run(s, c, 1800, 0.5, x => { mx = Math.max(mx, x.d.level); mn = Math.min(mn, x.d.level); });
+  assert.ok(mx < 0.26, `level rose to ${(mx * 100).toFixed(1)} %`);
+  assert.ok(mn > 0.248, `level undershot to ${(mn * 100).toFixed(1)} %`);
+  near(s.d.level * 100, 25, 0.1, 'level back at the setpoint');
 });
