@@ -1,7 +1,8 @@
 # Pressuriser simulator — project context for Claude Code
 
 Interactive, single-file HTML simulator of a PWR pressuriser coupled to a lumped reactor
-coolant system (RCS). Built to explore how pressure, temperature and level relate, and to run
+coolant system (RCS). It is a sandbox: **manual control is primary**; automatic controllers are
+optional assists the operator switches on, and they never change mode by themselves. Built to explore how pressure, temperature and level relate, and to run
 startup (water-solid → bubble draw → hot standby) and shutdown (cooldown → refill solid).
 
 The owner is iterating on it for understanding the physics, not for licensing-grade analysis.
@@ -45,12 +46,14 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
      (compressed liquid) or two-phase (saturated mixture); returns `{mode,T,P,x,level,…}` or `{err}`.
    - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
    - `init(o)` builds a state; `step(s,c,dt)` advances one step (see docs/physics.md).
-2. DOM wiring: `ids`/`fmt`/`readCtl()` map sliders → `ctl` (SI units except where noted:
-   `q`, `loss` kW; `core`, `cool` MW; flows kg/s; `set` stored in Pa).
-3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s,
-   and handles solid↔two-phase handover side effects (heaters off on going solid, letdown slider
-   continuity).
-4. `syncAuto()` greys out and back-fills sliders that an automatic controller is driving.
+2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
+   `q`, `loss` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa;
+   `inv` is `'man'|'pres'|'lev'`; booleans `aP`, `relAuto`, `relMan`). Manual controls sit in the
+   right-hand card; assists in the "Automatic assists" section below the main panel.
+3. `physTick()` runs `step` repeatedly, halts on invalid states, records `hist` every 2 sim-s.
+   No solid↔two-phase side effects: the operator switches modes.
+4. `syncAuto()` greys out and back-fills sliders that an assist is driving, and writes the assist
+   status line (warns when the chosen mode no longer suits the pressuriser state).
 5. Renderers: `updText()` (gauges + stats), `drawRec()` (SVG recorder), `drawSat()` (P–T plane SVG),
    `drawVessel()` (canvas mimic with particles). Charts redraw at ~7 Hz; canvas every frame.
 6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s.
@@ -75,6 +78,8 @@ The `<script>` is one block `{ … }` (no globals leak). Order:
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
 - Level is liquid volume fraction (straight-cylinder geometry).
 - Compressibility table is approximate (± ~10 %).
+- Coolant pumps are not modelled: one signed net-heat control; pumps assumed running.
+- Relief valve flow is a rough scaling (steam ∝ P, liquid ∝ √ΔP), not a valve model.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
 ## Publishing

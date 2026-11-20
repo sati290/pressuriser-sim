@@ -8,10 +8,11 @@
 | `VR` | 280 m³ | RCS liquid volume (excluding pressuriser) |
 | `CM` | 0.6 GJ/K | RCS metal heat capacity |
 | `TAU` | 300 s | Insurge layer mixing time constant |
-| RCP heat | 5 MW per pump | Pump work into coolant |
-| RCS losses | 0.5 MW | Fixed ambient loss |
-| Heater max | 1.8 MW | Pressuriser heaters (trip below 12 % level) |
-| Spray max | 40 kg/s | Main spray, needs ≥1 RCP running |
+| Net heat | −60 … +60 MW | One operator control: pump work + core/decay heat − RHR/steam dump − losses. Pumps are assumed running (mixed RCS, spray head available) |
+| Heater max | 1.8 MW | Pressuriser heaters (interlock: trip below 12 % level, always on) |
+| Spray max | 40 kg/s | Main spray at RCS temperature |
+| Relief valve | 15 kg/s steam at 16.2 MPa (∝ P); 30 kg/s liquid at 3.6 MPa (∝ √(P − 0.1 MPa)) | `relW(P, steam)` |
+| Safety valve | 4 × relief valve flow | Fixed 17.2 MPa open / 16.9 MPa reclose |
 
 ## Properties
 
@@ -31,7 +32,7 @@
 | `d` | Derived pressuriser state from `pz(M, U, VP − Ms/rs)` |
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `iL`, `iC` | Integrators for letdown (solid pressure) and charging (level) controllers |
-| `porv`, `sv`, `lt` | Relief valve latches (PORV, safety valve, LTOP) |
+| `porv`, `sv`, `rel` | Auto-relief latch, safety-valve latch, relief valve actually open (auto or manual) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
 
 ## Pressuriser state solve `pz(M,U,V)`
@@ -45,14 +46,22 @@ Solid↔two-phase transition is continuous: at x = 0, v̄ = v_f and P = p_sat.
 
 ## One time step `step(s, c, dt)`
 
-1. **Controllers** (`c.autoP`, `c.autoL`):
-   - Solid + autoP: letdown = charging + 5e-5·(P − SP) + ∫2e-7·(P − SP)dt, clamped 0–20 kg/s.
-   - Two-phase + autoP: heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2); spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
-   - Two-phase + autoL: net = 1.5·e + ∫0.004·e dt (e in %); charging = letdown + net; if that is
-     negative, letdown is raised instead.
-2. **Relief**: below 150 °C RCS, LTOP opens > 3.6 MPa (30 kg/s); above, PORV 16.2/15.9 MPa
-   (15 kg/s) and safety valve 17.2/16.9 MPa (60 kg/s). Vents steam (two-phase) or liquid (solid).
-3. **RCS energy**: dTr = (RCP + core − cooling − loss + pulse)·dt / (Mr·cp + CM).
+Manual control is primary: every control value in `c` is used as-is unless the operator has
+switched on an assist. Assists act regardless of pressuriser state; **nothing hands over
+automatically** at bubble formation or when the pressuriser goes solid.
+
+1. **Assists** (all optional):
+   - `c.inv === 'pres'` (letdown holds pressure): letdown = charging + 5e-5·(P − SP) + ∫2e-7·(P − SP)dt,
+     clamped 0–20 kg/s. Meant for water-solid; with a bubble it winds up and drains the level.
+   - `c.inv === 'lev'` (charging holds level): net = 1.5·e + ∫0.004·e dt (e in %); charging = letdown + net;
+     if that is negative, letdown is raised instead. Water-solid with SP < 100 % it lowers inventory until
+     the pressure reaches saturation.
+   - `c.aP` (heaters + spray): heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2); spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
+   - `engage(s, c)` preloads the integrators from the current manual charging/letdown (bumpless switch).
+2. **Relief**: relief valve open if `c.relMan`, or if `c.relAuto` and P > `c.relSet` (recloses below
+   relSet − max(0.2 MPa, 2 %)). Safety valve 17.2/16.9 MPa always armed. Flow from `relW`; vents steam
+   (two-phase) or liquid (solid).
+3. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
 4. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
    spray at RCS enthalpy, heater power, minus losses and relief.
 5. **Layer mixing**: m = Ms·dt/τ (+ small floor) moves from the layer into the saturated region with
@@ -78,9 +87,12 @@ RCS can't represent boiling).
 | Check | Result |
 |---|---|
 | Saturation props vs IAPWS tables at 100/200/300/345 °C | within 0.2–0.3 % |
-| Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h | steady |
+| Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h, assists on or all manual | steady |
 | +40 MW for 120 s at hot standby | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
-| Cold solid start, 1.8 MW heaters, 2 RCPs, RHR 9.5 MW | bubble at ~230 °C after ~5.5 h; level to 25 % in ~2 h |
-| Heat-up 4 RCPs, no cooling | coolant ~40 °C/h; letdown carries expansion |
-| Refill to solid at 150 °C | goes solid, letdown holds 2.8 MPa |
+| Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
+| Same, but nobody switches at the bubble | letdown winds up to 20 kg/s and drains the pressuriser |
+| Heat-up, net heat +19.5 MW | coolant ~40 °C/h; letdown carries expansion |
+| Refill to solid at 150 °C, operator switches back to letdown | goes solid, letdown holds 2.8 MPa |
+| Manual relief at hot standby | ~13 kg/s steam, pressure falls |
+| Auto relief at 15.8 and 16.6 MPa | opens within 0.02 MPa of the setting |
 | Mass conservation, closed system | < 1 kg drift over 10 min |

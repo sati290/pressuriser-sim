@@ -71,6 +71,13 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .btns button{font-size:14px;padding:4px 8px;line-height:1.25}
 .alert{display:none;margin-top:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-weight:500}
 .alert.on{display:block}
+.assists .chead{flex-direction:column;align-items:start;gap:4px;margin-bottom:14px}
+.assists .chead p{margin:0;font-size:14px;color:var(--mute);max-width:70ch}
+.agrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px 40px}
+.agrid .grp{border:0;padding:0}
+.agrid h3{font-size:15px;margin:0;font-weight:600}
+.astat{margin:14px 0 0;font-size:14px;color:var(--mute);min-height:1.5em}
+.astat.bad{color:var(--warn)}
 .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px 40px}
 .notes h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
@@ -130,17 +137,9 @@ code{font-size:14px;overflow-wrap:anywhere}
       </div>
     </div>
     <div class="grp">
-      <h2>Automatic control</h2>
-      <label class="check"><input id="autoP" type="checkbox"> Pressure: letdown while solid, heaters and spray with a bubble</label>
-      <div class="row"><label for="set">Pressure setpoint <output id="seto"></output></label><input id="set" type="range" min="1" max="16" step="0.1" value="15.5"></div>
-      <label class="check"><input id="autoL" type="checkbox"> Level: charging follows the setpoint, once a bubble exists</label>
-      <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="15" max="100" step="1" value="25"></div>
-    </div>
-    <div class="grp">
       <h2>Reactor coolant system</h2>
-      <div class="row"><label for="rcp">Coolant pumps running <output id="rcpo"></output></label><input id="rcp" type="range" min="0" max="4" step="1" value="4"></div>
-      <div class="row"><label for="core">Core or decay heat <output id="coreo"></output></label><input id="core" type="range" min="0" max="60" step="0.5" value="0"></div>
-      <div class="row"><label for="cool">Cooling: RHR or steam dump <output id="coolo"></output></label><input id="cool" type="range" min="0" max="60" step="0.5" value="19.5"></div>
+      <div class="row"><label for="heat">Net heat to coolant <output id="heato"></output></label><input id="heat" type="range" min="-60" max="60" step="0.5" value="0"></div>
+      <p>Positive heats: pump work plus core or decay heat. Negative cools: RHR or steam dump winning.</p>
     </div>
     <div class="grp">
       <h2>Inventory</h2>
@@ -149,32 +148,63 @@ code{font-size:14px;overflow-wrap:anywhere}
     </div>
     <div class="grp">
       <h2>Pressuriser</h2>
-      <div class="row"><label for="q">Heaters <output id="qo"></output></label><input id="q" type="range" min="0" max="1800" step="10" value="200"></div>
-      <div class="row"><label for="sp">Spray, needs a coolant pump <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
+      <div class="row"><label for="q">Heaters <output id="qo"></output></label><input id="q" type="range" min="0" max="1800" step="10" value="60"></div>
+      <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="loss">Heat loss <output id="losso"></output></label><input id="loss" type="range" min="0" max="300" step="5" value="60"></div>
+      <label class="check"><input id="relMan" type="checkbox"> Open the relief valve by hand</label>
     </div>
   </div>
 </main>
 
-<section class="band wrap" style="padding-top:8px">
+<section class="band wrap" style="padding-top:0;padding-bottom:0">
+  <div class="card assists">
+    <div class="chead"><h2>Automatic assists</h2>
+      <p>Optional. Each assist drives the manual control it replaces, which is greyed out while it does. Nothing switches over by itself when the bubble forms or the pressuriser goes solid: you choose the mode.</p></div>
+    <div class="agrid">
+      <div class="grp">
+        <h3>Pressure setpoint</h3>
+        <div class="row"><label for="set">Used by heaters, spray and letdown <output id="seto"></output></label><input id="set" type="range" min="1" max="16" step="0.1" value="15.5"></div>
+        <label class="check"><input id="aP" type="checkbox"> Heaters and spray hold the setpoint</label>
+        <p>Works with a steam bubble. Water-solid, the heaters still raise pressure but spray does little.</p>
+      </div>
+      <div class="grp" role="radiogroup" aria-labelledby="invh">
+        <h3 id="invh">Charging and letdown</h3>
+        <label class="check"><input type="radio" name="inv" value="man" checked> Manual</label>
+        <label class="check"><input type="radio" name="inv" value="pres"> Letdown holds the pressure setpoint (water-solid)</label>
+        <label class="check"><input type="radio" name="inv" value="lev"> Charging holds the level setpoint (steam bubble)</label>
+        <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="15" max="100" step="1" value="25"></div>
+      </div>
+      <div class="grp">
+        <h3>Relief valve</h3>
+        <label class="check"><input id="relAuto" type="checkbox" checked> Opens automatically above</label>
+        <div class="row"><label for="relSet">Opening pressure <output id="relSeto"></output></label><input id="relSet" type="range" min="1" max="17" step="0.1" value="16.2"></div>
+        <p>Recloses 2 % below (at least 0.2 MPa). Set it low, about 3.6 MPa, while the coolant is cold. The safety valve at 17.2 MPa is always armed.</p>
+      </div>
+    </div>
+    <p class="astat" id="astat" role="status"></p>
+  </div>
+</section>
+
+<section class="band wrap" style="padding-top:16px">
   <div class="notes card">
     <div><h2>Running a startup</h2>
       <ol>
-        <li>Click <b>Cold, water-solid</b>. The pressuriser is full of liquid at 2.8 MPa. Letdown holds the pressure while the heaters raise the pressuriser temperature by about 30 °C per hour.</li>
-        <li>At about 230 °C the pressuriser reaches saturation and a steam bubble forms. Control hands over to the heaters and spray, and charging drains the level down toward 25%.</li>
-        <li>Raise the pressure setpoint step by step. Reduce the cooling so the coolant heats up, keeping the subcooling margin positive. Most of the coolant's expansion leaves through letdown.</li>
-        <li>For shutdown, start from <b>Cool down from hot standby</b>. Lower the pressure setpoint as the coolant cools, keeping the margin positive and the pressure low enough for the colder steel.</li>
-        <li>Once the coolant is below about 175 °C and the pressure near 2.8 MPa, set the level setpoint to 100%. Charging fills the pressuriser and the cooler water collapses the bubble. When the vessel goes solid, the heaters switch off and letdown takes over pressure control again.</li>
+        <li>Click <b>Cold, water-solid</b>. Every control starts manual. The pressuriser is full of liquid at 2.8 MPa, and liquid barely compresses, so a small mismatch between charging and letdown, or any heating, moves the pressure fast. Trim letdown by hand, or pick <b>Letdown holds the pressure setpoint</b> under Automatic assists. Then turn the heaters up; at 1.8 MW the pressuriser warms about 30 °C per hour.</li>
+        <li>At about 230 °C the pressuriser reaches saturation and a steam bubble forms: the level gauge changes from Solid to a number. Nothing switches over for you. Letdown can no longer control pressure, so move charging and letdown to level control, or drain the level by hand with letdown above charging, and hold pressure with the heaters, by hand or with the heater and spray assist.</li>
+        <li>Heat the coolant with a positive net heat and raise the pressure step by step, keeping the subcooling margin positive. Raise the relief opening pressure ahead of the operating pressure; plants disarm low-temperature relief above about 150 °C.</li>
+        <li>For shutdown, start from <b>Cool down from hot standby</b>, which sets the net heat to −13.5 MW. The shrinking coolant draws water out of the pressuriser, so charge to hold the level and lower the pressure as the coolant cools.</li>
+        <li>Below about 175 °C and near 2.8 MPa, lower the relief opening pressure to about 3.6 MPa and fill the pressuriser: level setpoint 100 %, or charging above letdown. The cooler water collapses the bubble. Once it is solid, turn the heaters off and put letdown back on pressure control, or the pressure climbs to the relief setpoint.</li>
       </ol></div>
     <div><h2>What the model solves</h2>
-      <p>The pressuriser (51 m³) tracks its own water mass and energy. When the liquid fills the vessel it is treated as compressed liquid; otherwise it is a saturated mixture. The coolant system (280 m³) is one block of liquid at one temperature, heated by pumps and the core and cooled by RHR or steam dump. Its heat capacity includes 0.6 GJ/K of steel.</p>
+      <p>The pressuriser (51 m³) tracks its own water mass and energy. When the liquid fills the vessel it is treated as compressed liquid; otherwise it is a saturated mixture. The coolant system (280 m³) is one block of liquid at one temperature. A single net-heat control stands for pump work and core or decay heat minus RHR or steam dump; the pumps are assumed to run, keeping the coolant mixed and the spray supplied. Its heat capacity includes 0.6 GJ/K of steel.</p>
       <p>Each step the surge flow is solved so the pressuriser and the coolant system are at the same pressure. Charging and letdown change the coolant mass, and spray takes cold-leg water into the steam space.</p></div>
     <div><h2>Assumptions and limits</h2>
       <ul>
         <li>Insurge water collects as a cooler layer at the bottom and mixes into the saturated water over about 5 minutes. The layer compresses the steam, which is why pressure rises on an insurge. Otherwise liquid and steam are in equilibrium, so the brief pressure dip before flashing on an outsurge is not shown.</li>
         <li>Charging enters at coolant temperature, so its cooling effect is ignored.</li>
         <li>Liquid compressibility uses approximate saturated-liquid values, about 0.44 per GPa at 50 °C rising to 3 per GPa at 340 °C.</li>
-        <li>Below 150 °C coolant temperature, low-temperature overpressure relief opens at 3.6 MPa. Above that, the relief valve opens at 16.2 MPa and the safety valve at 17.2 MPa.</li>
+        <li>Relief valve flow scales with pressure: steam about 15 kg/s at 16.2 MPa, falling in proportion; water about 30 kg/s at 3.6 MPa, rising with the square root of pressure. The safety valve passes four times as much. These are rough sizing figures, not a valve model.</li>
+        <li>Heaters cut out below 12 % level to protect the elements; this interlock is always on.</li>
         <li>The model stops if the coolant reaches saturation, the pressuriser dries out, or the pressure nears the critical point. Values are typical of a 4-loop PWR, not of any specific plant.</li>
       </ul></div>
   </div>
@@ -234,31 +264,36 @@ const rcsP=(Mr,Tr)=>{const q=sat(Tr),rho=Mr/VR;return q.p+(1-q.rf/rho)/kap(Tr-27
 const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
 const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
 const init=o=>{
-  const s={t:0,Tr:o.Tr+273.15,iL:0,iC:0,porv:false,sv:false,lt:false,extra:null,Ms:0,hs:0,rs:1000};
+  const s={t:0,Tr:o.Tr+273.15,iL:0,iC:0,porv:false,sv:false,rel:false,extra:null,Ms:0,hs:0,rs:1000};
   if(o.solid){const T=o.Tpz+273.15,q=sat(T),rho=liqRho(T,o.P);s.M=rho*VP;s.U=s.M*q.uf}
   else{const T=Tsat(o.P),q=sat(T),Mf=o.L*VP*q.rf,Mg=(1-o.L)*VP*q.rg;s.M=Mf+Mg;s.U=Mf*q.uf+Mg*q.ug}
   s.d=pz(s.M,s.U);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,trip:false,Qr:0};
   return s;
 };
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+// relief valve flow, kg/s: choked steam ∝ P (15 kg/s at 16.2 MPa); liquid ∝ √ΔP (30 kg/s at 3.6 MPa)
+const relW=(P,steam)=>steam?15*P/16.2e6:30*Math.sqrt(Math.max(0,P-0.1e6)/3.5e6);
+const relHys=set=>Math.max(0.2e6,0.02*set);
+// bumpless engage: preload the controller integrators from the current manual charging/letdown
+const engage=(s,c)=>{s.iL=clamp(c.ld-c.ch,-15,15);s.iC=clamp(c.ch-c.ld,-15,15)};
 const step=(s,c,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid';
-  let Q=c.q*1e3,ws=c.rcp>0?c.sp:0,ch=c.ch,ld=c.ld;
-  if(c.autoP){
-    const e=P-c.set;
-    if(solid){s.iL=clamp(s.iL+2e-7*e*dt,-15,15);ld=clamp(ch+5e-5*e+s.iL,0,20)}
-    else{Q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);ws=c.rcp>0?40*clamp((e-0.1e6)/0.4e6,0,1):0}
-  }
-  if(c.autoL&&!solid){const e=c.lset-d.level*100;s.iC=clamp(s.iC+0.004*e*dt,-15,15);const n=1.5*e+s.iC;ch=clamp(ld+n,0,20);if(ld+n<0)ld=clamp(-n,0,20)}
+  let Q=c.q*1e3,ws=c.sp,ch=c.ch,ld=c.ld;
+  const e=P-c.set;
+  // assists: each one only acts when the operator has switched it on; no automatic mode handover
+  if(c.inv==='pres'){s.iL=clamp(s.iL+2e-7*e*dt,-15,15);ld=clamp(ch+5e-5*e+s.iL,0,20)}
+  else if(c.inv==='lev'){const el=c.lset-d.level*100;s.iC=clamp(s.iC+0.004*el*dt,-15,15);const n=1.5*el+s.iC;ch=clamp(ld+n,0,20);if(ld+n<0)ld=clamp(-n,0,20)}
+  if(c.aP){Q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);ws=40*clamp((e-0.1e6)/0.4e6,0,1)}
   const trip=!solid&&d.level<0.12;if(trip)Q=0;
-  // relief
-  let wr=0;
-  if(s.Tr<423.15){s.porv=s.sv=false;if(P>3.6e6)s.lt=true;else if(P<3.4e6)s.lt=false;wr=s.lt?30:0}
-  else{s.lt=false;if(P>16.2e6)s.porv=true;else if(P<15.9e6)s.porv=false;if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;wr=(s.porv?15:0)+(s.sv?60:0)}
+  // relief: relief valve (manual and/or auto at c.relSet) plus a fixed safety valve
+  if(c.relAuto){if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false}else s.porv=false;
+  if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;
+  s.rel=s.porv||!!c.relMan;
+  const w1=relW(P,!solid),wr=(s.rel?w1:0)+(s.sv?4*w1:0);
   const hrel=solid?d.hl:d.hg;
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
-  const Qr=c.rcp*5e6+c.core*1e6-c.cool*1e6-0.5e6+pulse;
+  const Qr=c.heat*1e6+pulse;
   s.Tr+=Qr*dt/cap;
   s.Mr+=(ch-ld-ws)*dt;
   s.M+=(ws-wr)*dt;s.U+=(ws*hr+Q-c.loss*1e3-wr*hrel)*dt;
@@ -291,32 +326,35 @@ const step=(s,c,dt)=>{
 /*END*/
 
 const $=id=>document.getElementById(id);
-const ids=['set','lset','rcp','core','cool','ch','ld','q','sp','loss'];
-const fmt={set:v=>(+v).toFixed(1)+' MPa',lset:v=>v+' %',rcp:v=>v+' ('+v*5+' MW)',core:v=>(+v).toFixed(1)+' MW',cool:v=>(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW'};
+const ids=['set','lset','heat','ch','ld','q','sp','loss','relSet'],checks=['aP','relAuto','relMan'];
+const fmt={set:v=>(+v).toFixed(1)+' MPa',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
-const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}ctl.autoP=$('autoP').checked;ctl.autoL=$('autoL').checked;ctl.set*=1e6};
+const invR=[...document.querySelectorAll('input[name=inv]')];
+const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}for(const k of checks)ctl[k]=$(k).checked;
+  ctl.inv=invR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
-$('autoP').addEventListener('change',()=>{s.iL=0;readCtl()});$('autoL').addEventListener('change',()=>{s.iC=0;readCtl()});
+for(const k of checks)$(k).addEventListener('change',readCtl);
+for(const r of invR)r.addEventListener('change',()=>{readCtl();if(s)engage(s,ctl)});
 
 let s,hist=[],running=true,halted='',lastS=0;
 const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
 const toggle=()=>{running=!running;$('run').textContent=running?'Pause':'Run'};
 $('run').onclick=()=>{if(halted)return;toggle()};
-const setC=o=>{for(const k in o){if(k==='autoP'||k==='autoL')$(k).checked=o[k];else if(k==='speed'||k==='win')$(k).value=o[k];else $(k).value=o[k]}readCtl()};
-const start=(st,cfg)=>{setC(cfg);s=init(st);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
-const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{autoP:true,autoL:true,set:2.8,lset:25,rcp:2,core:0,cool:9.5,ch:5,ld:5,q:1800,sp:0,loss:60,speed:240,win:21600});
-const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{autoP:true,autoL:true,set:15.5,lset:25,rcp:4,core:0,cool:19.5,ch:6,ld:6,q:200,sp:0,loss:60,speed:20,win:600});
+const setC=o=>{for(const k in o){if(checks.includes(k))$(k).checked=o[k];else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
+// scenarios set the plant state and leave every assist off except automatic relief
+const MAN={aP:false,inv:'man',relMan:false,relAuto:true};
+const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);engage(s,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
+const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,loss:60,relSet:3.6,speed:240,win:21600});
+const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,loss:60,relSet:16.2,speed:20,win:600});
 $('scCold').onclick=COLD;$('scHot').onclick=HOT;
-$('scCool').onclick=()=>{HOT();setC({cool:33,speed:240,win:21600})};
+$('scCool').onclick=()=>{HOT();setC({heat:-13.5,speed:240,win:21600})};
 $('scLoad').onclick=()=>{if(s)s.extra={Q:40e6,end:s.t+120}};
 
 const physTick=simDt=>{
   const dt=ctl_dt();let n=Math.round(simDt/dt);
   while(n-->0&&!halted){
-    const pm=s.d.mode;
     step(s,ctl,dt);
     const d=s.d,sub=Tsat(s.Pr)-s.Tr;
-    if(pm!==d.mode&&ctl.autoP){ctl.ld=s.f.ld;$('ld').value=s.f.ld;if(d.mode==='solid'){ctl.q=0;$('q').value=0}}
     let msg='';
     if(d.err==='dry'||(d.mode==='two'&&d.level<0.002))msg='All the liquid in the pressuriser has boiled away.';
     else if(d.err)msg='The pressuriser state left the range of the model.';
@@ -335,8 +373,16 @@ const r0=x=>(Math.abs(x)<0.5?0:x).toFixed(0);
 const rate=k=>{if(hist.length<2)return 0;const b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=300;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',f=s.f;
-  const drv={ld:ctl.autoP&&solid,q:ctl.autoP&&!solid,sp:ctl.autoP&&!solid,ch:ctl.autoL&&!solid};
+  const drv={ld:ctl.inv==='pres',ch:ctl.inv==='lev',q:ctl.aP,sp:ctl.aP};
   for(const k in drv){$(k).disabled=drv[k];if(drv[k]){const v={ld:f.ld,q:f.Q/1e3,sp:f.ws,ch:f.ch}[k];$(k).value=v;ctl[k]=v;$(k+'o').textContent=fmt[k](v)}}
+  // tell the operator when a chosen mode no longer suits the pressuriser state
+  let m='',bad=false;
+  if(ctl.inv==='pres'&&!solid){m='There is a steam bubble, so letdown no longer controls pressure. Switch charging and letdown to level control or manual.';bad=true}
+  else if(ctl.inv==='lev'&&solid&&ctl.lset<100){m='Water-solid: level control will draw water out until the pressure falls to saturation and a bubble forms. Watch the subcooling margin.';bad=true}
+  else if(ctl.aP&&solid){m='Water-solid: the heaters still raise the pressure, but spray has little effect without a steam space.'}
+  else if(!ctl.relAuto){m='Automatic relief is off. Only the safety valve at 17.2 MPa limits pressure.';bad=true}
+  else m=solid?'Pressuriser is water-solid.':'Pressuriser has a steam bubble.';
+  $('astat').textContent=m;$('astat').classList.toggle('bad',bad);
 };
 const updText=()=>{
   const d=s.d;if(d.err)return;
@@ -347,7 +393,7 @@ const updText=()=>{
   const rows=[['State',solid?'water-solid':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Coolant heat-up',r0(rate('R'))+' °C/h',Math.abs(rate('R'))>55],['Pressuriser heat-up',r0(rate('T'))+' °C/h',Math.abs(rate('T'))>55],['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
-    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',s.lt?'LTOP relief open':s.sv?'safety valve open':s.porv?'relief valve open':'closed',s.lt||s.sv||s.porv],['Steam mass',d.Mg.toFixed(0)+' kg'],
+    ['Spray',f.ws.toFixed(1)+' kg/s'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.relMan?'opened by hand':'relief valve open'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],['Steam mass',d.Mg.toFixed(0)+' kg'],
     ['Coolant mass',(s.Mr/1000).toFixed(1)+' t'],['Water mass',(d.Ml/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(m).padStart(2,'0')+' min']];
   $('stats').innerHTML=rows.map(r=>`<div><dt>${r[0]}</dt><dd${r[2]?' class="bad"':''}>${r[1]}</dd></div>`).join('');
 };
@@ -391,7 +437,8 @@ const drawSat=()=>{
   o+=`<path d="M${X(20)},${Y(0)}${curve.map(q=>'L'+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}L${X(373.95)},${Y(0)}Z" fill="var(--rule)" opacity=".35"/>`;
   o+=`<path d="${curve.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>`;
   o+=`<text x="${X(330)}" y="${Y(3)}" text-anchor="middle">boiling</text><text x="${X(110)}" y="${Y(12)}" text-anchor="middle">subcooled liquid</text>`;
-  o+=`<line x1="${X(20)}" x2="${X(150)}" y1="${Y(3.6)}" y2="${Y(3.6)}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${Y(3.6)-6}">LTOP relief</text>`;
+  o+=`<line x1="${L}" x2="${W-R}" y1="${Y(17.2)}" y2="${Y(17.2)}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${Y(17.2)-6}">Safety valve</text>`;
+  if(ctl.relAuto){const yr=Y(ctl.relSet/1e6);o+=`<line x1="${L}" x2="${W-R}" y1="${yr}" y2="${yr}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${yr+(ctl.relSet>15.5e6?16:-6)}">Relief opens</text>`}
   o+=`<circle cx="${X(373.95)}" cy="${Y(22.064)}" r="4" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.5"/>`;
   const pts=hist.filter(h=>h.t>=s.t-(+$('win').value));
   if(pts.length>1){o+=`<path d="${pts.map((h,i)=>(i?'L':'M')+X(h.R).toFixed(1)+','+Y(h.P/1e6).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="2" opacity=".5"/>`;
@@ -447,11 +494,11 @@ const drawVessel=dtReal=>{
   if(solid){cx.fillStyle='rgba(255,255,255,.92)';cx.fillText('Water-solid',x0+14,y0+rad+10)}
   else{cx.fillStyle=col.mute;if(ly-inTop>30)cx.fillText('Steam',x0+12,(y0+ly)/2+30);if(inBot-ly>30){cx.fillStyle='rgba(255,255,255,.9)';cx.fillText('Water',x0+12,ly+22)}}
   cx.fillStyle=col.mute;cx.fillText(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',8,40);
-  cx.textAlign='right';cx.fillText(s.lt?'LTOP relief open':s.sv?'Safety valve open':s.porv?'Relief valve open':'Relief',W-8,46);
+  cx.textAlign='right';cx.fillText(s.sv?'Safety valve open':s.rel?'Relief valve open':'Relief',W-8,46);
   const sw=s.surge;cx.fillText(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,W-8,y1+64);
   cx.textAlign='left';cx.fillText(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,8,y1+64);
   if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=x0+vw/2,ay=y1+14,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
-  if(s.porv||s.sv||s.lt){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=1-ph;cx.beginPath();cx.arc(W-14-ph*10,24-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
+  if(s.rel||s.sv){cx.fillStyle=col.mute;const tt=performance.now()/300;for(let i=0;i<4;i++){const ph=(tt+i/4)%1;cx.globalAlpha=1-ph;cx.beginPath();cx.arc(W-14-ph*10,24-ph*14,4+ph*8,0,7);cx.fill()}cx.globalAlpha=1}
 };
 
 // ---------- loop ----------
