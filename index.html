@@ -319,9 +319,10 @@ const ctl_dt=()=>speed<=20?0.25:speed<=50?0.5:speed<=200?1:2;
 // ---------- readouts ----------
 const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
 const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
-// heat-up rate over a window of ~10 real seconds (10 s × speed), kept within 30–300 sim-s:
-// quick to settle at 1×, a full 5 min of sim time from 30× up
-const rate=k=>{if(hist.length<2)return 0;const w=clamp(10*speed,30,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
+// heat-up rate over a window of ~5 real seconds (5 s × speed), capped at 300 sim-s:
+// settles in 5 s at 1×, a full 5 min of sim time from 60× up. hist is sampled every 2 sim-s,
+// so at 1× the rate spans the last 4 s.
+const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',A=ctl.auto,D=s.dem;
   // in A the slider follows the demand; in M a notch and a readout show it
