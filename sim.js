@@ -13,6 +13,9 @@ const VP=51,VR=280,CM=0.6e9,TAU=300;
 // pressure (Pa), supply flow at 1 MPa across the valve (kg/s), supply temperature (K); below N2MIN of
 // the gas (by partial pressure) with the supply shut, the remaining nitrogen is dropped
 const RN=296.8,CVN=743,CPN=RN+CVN,RS=461.5,N2P=4e6,N2W=0.5,TN2=293.15,N2MIN=1e-3;
+// pressuriser heat loss through the insulation to ambient air at TAMB (fixed): UA·(T − TAMB), W/K;
+// 61 kW at hot standby
+const UA=200,TAMB=313.15;
 // pressuriser state from mass and energy (water M, U includes the nitrogen's cv·T), nitrogen mass Mn
 const pz=(M,U,V=VP,Mn=0)=>{
   if(Mn>0)return pzN(M,U,V,Mn);
@@ -87,11 +90,16 @@ const init=o=>{
     s.Mn=Math.max(0,o.P-ps)*Vg/(RN*T);s.M=Ml+Mg;s.U=Ml*uf+Mg*ug+s.Mn*CVN*T}
   else if(o.solid){const T=o.Tpz+273.15,q=sat(T),rho=liqRho(T,o.P);s.M=rho*VP;s.U=s.M*q.uf}
   else{const T=Tsat(o.P),q=sat(T),Mf=o.L*VP*q.rf,Mg=(1-o.L)*VP*q.rg;s.M=Mf+Mg;s.U=Mf*q.uf+Mg*q.ug}
-  s.d=pz(s.M,s.U,VP,s.Mn);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0};
+  s.d=pz(s.M,s.U,VP,s.Mn);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0,loss:0};
   return s;
 };
-// relief valve flow, kg/s: choked steam ∝ P (15 kg/s at 16.2 MPa); liquid ∝ √ΔP (30 kg/s at 3.6 MPa)
-const relW=(P,steam)=>steam?15*P/16.2e6:30*Math.sqrt(Math.max(0,P-0.1e6)/3.5e6);
+// Relief valve flow, kg/s, into the relief tank at atmospheric pressure PB (all pressures are absolute).
+// Steam: choked ∝ P (15 kg/s at 16.2 MPa) while PB/P is below the critical ratio, then the ideal-gas
+// subsonic nozzle factor (κ = 1.3), which falls to zero at PB. Liquid ∝ √(P − PB) (30 kg/s at 3.6 MPa).
+const PB=0.1e6,KAP=1.3,RCR=(2/(KAP+1))**(KAP/(KAP-1));
+const psi=r=>Math.sqrt(Math.max(0,r**(2/KAP)-r**((KAP+1)/KAP))),PSI=psi(RCR);
+const subF=P=>{if(P<=PB)return 0;const r=PB/P;return r<=RCR?1:psi(r)/PSI};
+const relW=(P,steam)=>steam?15*P/16.2e6*subF(P):30*Math.sqrt(Math.max(0,P-PB)/3.5e6);
 // gas with nitrogen: the steam figure times the ideal-gas choked-flow ratio (∝ P/√(R·T)) of the mixture
 // against saturated steam at the same pressure; exactly 1 for steam alone
 const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);return Math.sqrt(RS*Tsat(d.P)/(Rm*d.T))};
@@ -99,7 +107,7 @@ const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);retu
 // the flow scales with the valve opening
 const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
 // One step. u is the final command, SI: {ch, ld, sp kg/s; q W heaters; rel 0–1 relief opening;
-// n2 0–1 nitrogen supply valve opening; heat W net heat to coolant; loss W pressuriser heat loss}. Each actuator is clamped to LIM; the plant's
+// n2 0–1 nitrogen supply valve opening; heat W net heat to coolant}. Each actuator is clamped to LIM; the plant's
 // own protection (heater trip below 12 % level, spring safety valve) acts on top, whoever commands.
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid';
@@ -115,10 +123,10 @@ const step=(s,u,dt)=>{
   const n2=clamp(u.n2||0,0,LIM.n2),wn=n2*n2W(P);
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
-  const Qr=u.heat+pulse;
+  const Qr=u.heat+pulse,loss=UA*(d.T-TAMB);
   s.Tr+=Qr*dt/cap;
   s.Mr+=(ch-ld-ws)*dt;
-  s.M+=(ws-wrs)*dt;s.U+=(ws*hr+Q-u.loss-wrs*hrel+(wn*TN2-wrn*d.T)*CPN)*dt;s.Mn+=(wn-wrn)*dt;
+  s.M+=(ws-wrs)*dt;s.U+=(ws*hr+Q-loss-wrs*hrel+(wn*TN2-wrn*d.T)*CPN)*dt;s.Mn+=(wn-wrn)*dt;
   // insurge layer mixes into the saturated region with time constant TAU
   if(s.Ms>0){
     if(solid){s.U+=s.Ms*(s.hs-P/s.rs);s.M+=s.Ms;s.Ms=0}
@@ -145,7 +153,7 @@ const step=(s,u,dt)=>{
   if(s.Mn>0&&!wn&&!s.d.err&&s.d.yN<N2MIN){s.U-=s.Mn*CVN*s.d.T;s.Mn=0;s.d=pz(s.M,s.U,VP-s.Ms/s.rs)}
   if(!s.d.err&&s.Ms>0){s.d.level=(s.d.Ml/s.d.rf+s.Ms/s.rs)/VP}
   s.Pr=rcsP(s.Mr,s.Tr);
-  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr};
+  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss};
 };
 // why the model must stop, or '' while the state is valid:
 // 'dry' pressuriser boiled dry, 'range' state outside the model, 'critical' near the critical point,
@@ -158,5 +166,5 @@ const fault=s=>{
   if(Tsat(s.Pr)-s.Tr<0)return 'boiling';
   return '';
 };
-return {kap,pz,liqRho,rcsP,hLiq,cpL,relW,gasF,n2W,init,step,fault,VP,VR,CM,TAU,RN,CVN,N2P,N2MIN};
+return {kap,pz,liqRho,rcsP,hLiq,cpL,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
 })();
