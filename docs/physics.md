@@ -107,7 +107,7 @@ value (`c.ch, c.ld, c.sp` kg/s, `c.q` kW, `c.relMan` %), converted to SI along w
      p* is stored as `cs.dem.pset`. Letdown pressure control always uses `c.set`.
    - Charging/letdown: a PI controller asks for net inflow N = charging − letdown.
      `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt, preferred flow letdown.
-     `c.inv === 'lev'` (bubble): N = 1.5·e + ∫0.004·e dt (e = level error, %), preferred flow charging.
+     `c.inv === 'lev'` (bubble): N = 3·e + ∫0.002·e dt (e = level error, %), preferred flow charging.
      Who controls: if only one flow is in A, that one (charging = other + N, or letdown = other − N);
      if both are in A, the preferred one, with the other held at `cs.hold` (its flow when it stopped
      controlling, so holding is bumpless). The held flow's demand is preferred ∓ N, which equals its

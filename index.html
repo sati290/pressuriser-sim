@@ -269,7 +269,7 @@ const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=f
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
 // about ten round steps over the range. Each press snaps to the next multiple of the step.
-const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,relMan:10,n2:5,lset:5};
+const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,relMan:5,n2:5,lset:5};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);

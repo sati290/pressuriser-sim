@@ -422,3 +422,18 @@ test('pressuriser heat loss is UA·(T − 40 °C)', () => {
   near(s.f.loss, phys.UA * (T - phys.TAMB), 1, 'loss at hot standby, 40 °C air');
   assert.ok(s.f.loss > 50e3 && s.f.loss < 70e3, `hot standby loss ${s.f.loss / 1e3} kW`);
 });
+
+test('bubble draw: level control brings the level down from 100 % without overshooting much', () => {
+  const s = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
+  const c = { ...COLD_CTL };
+  engage(s, c);
+  let t0 = null, Lmin = 2;
+  run(s, c, 8 * 3600, 1, x => {
+    if (t0 === null && x.d.mode === 'two') { t0 = x.t; c.q = 1000; toBubble(x, c); }
+    if (t0 !== null) Lmin = Math.min(Lmin, x.d.level);
+    return t0 === null || x.t - t0 < 2 * 3600;
+  });
+  assert.ok(t0, 'no bubble');
+  assert.ok(Lmin > 0.24, `level undershot to ${(Lmin * 100).toFixed(1)} %`);
+  near(s.d.level * 100, 25, 0.3, 'level settles at the setpoint');
+});
