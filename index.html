@@ -494,12 +494,14 @@ const drawVessel=dtReal=>{
    for(const o of[-6,6]){cx.beginPath();cx.moveTo(gx-12,ym+o+4);cx.lineTo(gx+12,ym+o-4);cx.stroke()}}
   pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
   pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
-  // nitrogen supply: enters the upper shell from the left, valve on the line (filled shut, hollow open)
-  const ny=y0+rad+18,nvx=Math.max(26,x0*0.45),nopen=f.n2>0;
-  pipe([0,ny,x0+4,ny],8);
+  // nitrogen supply: nozzle on the top head left of the relief, rises, runs left under the relief line;
+  // valve on the horizontal run (filled shut, hollow open)
+  const nx=x0+vw*0.13,nsurf=y0+rad-Math.sqrt(Math.max(0,rad*rad-(nx-pcx)**2));
+  const ny=Math.min(Math.max(pt+44,(pt+nsurf)/2),nsurf-12),nvx=Math.max(26,nx*0.45),nopen=f.n2>0;
+  pipe([0,ny,nx,ny,nx,nsurf+8],8);
   cx.beginPath();cx.moveTo(nvx-11,ny-8);cx.lineTo(nvx+11,ny+8);cx.lineTo(nvx+11,ny-8);cx.lineTo(nvx-11,ny+8);cx.closePath();
   cx.fillStyle=nopen?css('--panel'):col.ink;cx.fill();cx.lineWidth=2;cx.strokeStyle=nopen&&f.wn>0?col.acc:col.ink;cx.lineJoin='miter';cx.stroke();
-  if(f.wn>0){cx.fillStyle=col.acc;const ax=(nvx+x0)/2;cx.beginPath();cx.moveTo(ax+8,ny);cx.lineTo(ax-4,ny-7);cx.lineTo(ax-4,ny+7);cx.fill()}
+  if(f.wn>0){cx.fillStyle=col.acc;const ax=(nvx+nx)/2;cx.beginPath();cx.moveTo(ax+8,ny);cx.lineTo(ax-4,ny-7);cx.lineTo(ax-4,ny+7);cx.fill()}
   // reactor vessel: coolant + core
   cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.clip();
   const gr=cx.createLinearGradient(0,ry0,0,ry1);gr.addColorStop(0,col.water);gr.addColorStop(1,col.water2);cx.fillStyle=gr;cx.fillRect(rx,ry0,rw,rh);
@@ -540,7 +542,7 @@ const drawVessel=dtReal=>{
   shape();cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
   cx.textAlign='left';
   if(!solid){
-    cx.strokeStyle='rgba(255,255,255,.8)';cx.lineWidth=1.5;cx.beginPath();cx.moveTo(x0+4,ly);cx.lineTo(x0+vw-4,ly);cx.stroke();
+    cx.save();shape();cx.clip();cx.strokeStyle='rgba(255,255,255,.8)';cx.lineWidth=1.5;cx.beginPath();cx.moveTo(x0+4,ly);cx.lineTo(x0+vw-4,ly);cx.stroke();cx.restore(); // clipped: in the heads the line is shorter
     cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(x0+vw+6,ly);cx.lineTo(x0+vw+16,ly-7);cx.lineTo(x0+vw+16,ly+7);cx.fill();
     lbl((lev*100).toFixed(1)+'%',x0+vw+20,ly+5,col.ink,true);
   }
@@ -564,7 +566,7 @@ const drawVessel=dtReal=>{
   }
   cx.textAlign='left';lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',sx+14,pt-4,col.mute);
   lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
-  {const nn=x0<160?'N₂':'Nitrogen';lbl(f.wn>0?`${nn} ${f.wn.toFixed(2)}${x0<160?'':' kg/s'}`:nopen?nn+(x0<160?' open':` ${Math.round(f.n2*100)} %, no flow`):nn,12,ny-16,col.mute)}
+  {const nn=x0<160?'N₂':'Nitrogen';lbl(f.wn>0?`${nn} ${f.wn.toFixed(2)}${x0<160?'':' kg/s'}`:nopen?nn+(x0<160?' open':` ${Math.round(f.n2*100)} %, no flow`):nn,12,ny+24,col.mute)}
   cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
   cx.textAlign='left';
   const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sb-12,col.mute);
