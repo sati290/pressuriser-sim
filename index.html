@@ -568,8 +568,11 @@ const drawVessel=dtReal=>{
   cx.textAlign='left';lbl(f.ws>0?`Spray ${f.ws.toFixed(1)} kg/s`:'Spray',sx+14,pt-4,col.mute);
   lbl(s.sv?'Safety valve open':s.rel?`Relief valve ${Math.round(s.rel*100)} %`:'Relief',12,pt+24,col.mute);
   {const nn=x0<160?'N₂':'Nitrogen';lbl(f.wn>0?`${nn} ${f.wn.toFixed(2)}${x0<160?'':' kg/s'}`:nopen?nn+(x0<160?' open':` ${Math.round(f.n2*100)} %, no flow`):nn,12,ny+24,col.mute)}
-  cx.textAlign='right';lbl(f.trip?'Heaters tripped':`Heaters ${(f.Q/1e3).toFixed(0)} kW`,x0-12,inBot,col.mute);
-  lbl(`Heat loss ${(f.loss/1e3).toFixed(0)} kW`,x0-12,inBot+18,col.mute);
+  // heater and heat-loss labels left of the vessel: the longest form that fits (phones have little room)
+  {const q=(f.Q/1e3).toFixed(0),l=(f.loss/1e3).toFixed(0),room=x0-16;cx.font='13px Geist,system-ui,sans-serif';
+   const forms=[[f.trip?'Heaters tripped':`Heaters ${q} kW`,`Heat loss ${l} kW`],[f.trip?'Htr trip':`Htr ${q} kW`,`Loss ${l} kW`],[f.trip?'Trip':`Htr ${q}`,`Loss ${l}`]];
+   const [h,o]=forms.find(([h,o])=>Math.max(cx.measureText(h).width,cx.measureText(o).width)<=room)||forms[2];
+   cx.textAlign='right';lbl(h,x0-12,inBot,col.mute);lbl(o,x0-12,inBot+18,col.mute)}
   cx.textAlign='left';
   const sw=s.surge;lbl(Math.abs(sw)<0.05?'Surge line':sw>0?`Insurge ${sw.toFixed(1)} kg/s`:`Outsurge ${(-sw).toFixed(1)} kg/s`,pcx+16,sb-12,col.mute);
   if(Math.abs(sw)>=0.05){cx.fillStyle=col.acc;const ax=pcx,ay=y1+20,dir=sw>0?-1:1;cx.beginPath();cx.moveTo(ax,ay+dir*12);cx.lineTo(ax-8,ay-dir*4);cx.lineTo(ax+8,ay-dir*4);cx.fill()}
