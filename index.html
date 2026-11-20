@@ -497,17 +497,17 @@ const drawVessel=dtReal=>{
   const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
   const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
   // temperature with its heat-up rate (°C/h over the last 5 min): ▲ heating, ▼ cooling, orange above 55 °C/h.
-  // The rate sits beside the value when it fits before maxX, else on the line below. Returns the extra height used.
+  // The rate sits on the line below the value. Returns the extra height used.
   const rR=rate('R'),rT=rate('T');
-  const tempL=(T,r,x,y,c,maxX)=>{
-    lbl(degC(T),x,y,c,true);const w=cx.measureText(degC(T)).width,ar=Math.abs(r)<0.5?0:Math.sign(r);
+  const tempL=(T,r,x,y,c)=>{
+    lbl(degC(T),x,y,c,true);const ar=Math.abs(r)<0.5?0:Math.sign(r);
     const t=ar?`${Math.abs(r).toFixed(0)} °C/h`:'steady';cx.font='13px Geist,system-ui,sans-serif';
-    const warn=Math.abs(r)>55,pd=warn?5:0,tw=cx.measureText(t).width+(ar?13:0)+2*pd,inl=x+w+10+tw<=maxX,rx_=(inl?x+w+10:x)+pd,ry_=inl?y:y+18;
+    const warn=Math.abs(r)>55,pd=warn?5:0,tw=cx.measureText(t).width+(ar?13:0)+2*pd,rx_=x+pd,ry_=y+18;
     // above 55 °C/h (a typical plant limit) the rate becomes a white-on-orange pill, readable on steam and water
     if(warn){cx.fillStyle=col.acc;cx.beginPath();cx.roundRect(rx_-pd,ry_-12,tw,16,8);cx.fill()}
     cx.fillStyle=warn?'#fff':c;
     if(ar){const yb=ar>0?ry_-1:ry_-9,yt=ar>0?ry_-9:ry_-1;cx.beginPath();cx.moveTo(rx_,yb);cx.lineTo(rx_+9,yb);cx.lineTo(rx_+4.5,yt);cx.fill()}
-    cx.globalAlpha=ar?1:0.75;cx.fillText(t,rx_+(ar?13:0),ry_);cx.globalAlpha=1;return inl?0:18};
+    cx.globalAlpha=ar?1:0.75;cx.fillText(t,rx_+(ar?13:0),ry_);cx.globalAlpha=1;return 18};
   cx.fillStyle='rgba(0,0,0,.12)';cx.beginPath();cx.ellipse(rx+rw/2+6,ry1+8,rw*0.5,6,0,0,7);cx.fill();
   const pt=34,sx=x0+vw*0.7,qx=x0+vw*0.3;
   pipe(surge,14);
@@ -528,7 +528,7 @@ const drawVessel=dtReal=>{
   cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
   cx.textAlign='left';
   lbl('Reactor coolant',rx+12,ry0+24,'rgba(255,255,255,.9)');
-  tempL(s.Tr,rR,rx+12,ry0+44,'#fff',rx+rw-10);
+  tempL(s.Tr,rR,rx+12,ry0+44,'#fff');
   cx.textAlign='center';lbl('Core',kx+kw/2,ky+kh+18,'rgba(255,255,255,.9)');
   cx.textAlign='center';
   lbl(`Net heat ${f.Qr>=0?'+':'−'}${Math.abs(f.Qr/1e6).toFixed(1)} MW · charging ${f.ch.toFixed(1)} · letdown ${f.ld.toFixed(1)} kg/s`,rx+rw/2,ry1+32,col.mute);
@@ -560,15 +560,15 @@ const drawVessel=dtReal=>{
     lbl((lev*100).toFixed(1)+'%',x0+vw+20,ly+5,col.ink,true);
   }
   const tx=x0+12,heatTop=inBot-(inBot-inTop)*0.1; // labels sit left of the heater bundle's top where possible
-  if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff',x0+vw-8)}
+  if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
   else{
     // steam and water share the saturation temperature (thermal equilibrium)
-    if(ly-y0>60){const yy=Math.max(y0+rad*0.6,(y0+ly)/2);lbl('Steam',tx,yy,col.mute);tempL(d.T,rT,tx,yy+20,col.ink,x0+vw-8)}
+    if(ly-y0>60){const yy=Math.max(y0+rad*0.6,(y0+ly)/2);lbl('Steam',tx,yy,col.mute);tempL(d.T,rT,tx,yy+20,col.ink)}
     // water (and insurge layer) labels go inside when there is room, else beside the vessel under the level marker
     const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop),ox=x0+vw+10;
     let oy=Math.max(ly+30,inTop+30);
-    if(wb-ly>66){lbl('Water',tx,ly+22,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,ly+42,'#fff',x0+vw-8)}
-    else{oy=Math.min(oy,y1-50);lbl('Water',ox,oy,col.mute);oy+=48+tempL(d.T,rT,ox,oy+20,col.ink,gx-14)}
+    if(wb-ly>66){lbl('Water',tx,ly+22,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,ly+42,'#fff')}
+    else{oy=Math.min(oy,y1-68);lbl('Water',ox,oy,col.mute);oy+=48+tempL(d.T,rT,ox,oy+20,col.ink)}
     if(lay){
       let Ts=s.Tr;for(let i=0;i<3;i++)Ts+=(s.hs-hLiq(Ts,d.P))/cpL(Ts);
       lbl('Insurge layer',ox,oy,col.mute);lbl(degC(Ts),ox,oy+20,col.ink,true);
