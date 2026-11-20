@@ -220,3 +220,16 @@ test('manual integrator does not wind past the actuator range', () => {
   near(s.dem.ld, 0, 1e-9, 'letdown demand at its limit');
   assert.ok(Math.abs(s.iL) < 5.1, `integrator held near the limit, got ${s.iL}`);
 });
+
+test('subcooling-margin mode: heaters and spray hold the margin, also while cooling down', () => {
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  const c = { ...HOT_CTL, pzMode: 'sub', sub: 50 };
+  const margin = x => phys.Tsat(x.d.P) - x.Tr;
+  run(s, c, 1800, 0.5);
+  near(margin(s), 50, 1, 'margin at hot standby');
+  near(MPa(s.d.P), MPa(phys.satX(s.Tr + 50)[0]), 0.1, 'pressure at Psat(Tr + 50 K)');
+  c.heat = -13.5; let lo = 99, hi = 0;
+  run(s, c, 2 * 3600, 1, x => { if (x.t > 2400) { lo = Math.min(lo, margin(x)); hi = Math.max(hi, margin(x)); } });
+  assert.ok(C(s.Tr) < 240, `coolant cooled to ${C(s.Tr)} °C`);
+  assert.ok(lo > 47 && hi < 53, `margin during cooldown ${lo.toFixed(1)}–${hi.toFixed(1)} K`);
+});

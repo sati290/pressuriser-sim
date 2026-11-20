@@ -72,8 +72,13 @@ const engage=(s,c)=>{s.iL=s.iC=clamp(c.ch-c.ld,-15,15)};
 // between auto and manual, or between inventory modes, by itself.
 const demands=(s,c,dt)=>{
   const d=s.d,P=d.P,A=c.auto||{},e=P-c.set;
-  // heaters and spray hold the pressure setpoint (proportional)
-  const q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1),sp=40*clamp((e-0.1e6)/0.4e6,0,1);
+  // heaters and spray (proportional): 'pres' holds the pressure setpoint; 'sub' holds the coolant
+  // subcooling margin c.sub (K), i.e. a pressure target Psat(Tr + c.sub) that follows the coolant
+  // temperature. The 'sub' bands are in kelvin of margin so they stay sensible at low pressure.
+  let q,sp,pset;
+  if(c.pzMode==='sub'){const Q=sat(Math.min(s.Tr+c.sub,THI));pset=Q.p;const eT=(P-pset)/Q.dpdT;
+    q=1.8e6*clamp(0.2-eT/1.25,0,1);sp=40*clamp((eT-0.5)/2.5,0,1)}
+  else{pset=c.set;q=1.8e6*clamp((c.set-P)/0.15e6+0.2,0,1);sp=40*clamp((e-0.1e6)/0.4e6,0,1)}
   // charging and letdown: a PI controller asks for a net inflow N = charging − letdown.
   // 'pres': letdown is primary and holds pressure (water-solid); 'lev': charging is primary and holds level.
   // The other one, in auto, holds the flow it had when switched to auto (s.hold) and moves off it
@@ -90,7 +95,7 @@ const demands=(s,c,dt)=>{
   s[key]=I;
   // relief valve: on/off with hysteresis at c.relSet
   if(P>c.relSet)s.porv=true;else if(P<c.relSet-relHys(c.relSet))s.porv=false;
-  s.dem={q,sp,ch:r.ch,ld:r.ld,rel:s.porv?1:0};
+  s.dem={q,sp,ch:r.ch,ld:r.ld,rel:s.porv?1:0,pset};
 };
 const step=(s,c,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid',A=c.auto||{};

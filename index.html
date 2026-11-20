@@ -177,10 +177,15 @@ code{font-size:14px;overflow-wrap:anywhere}
     <div class="chead"><h2>Automatic control</h2>
       <p>Charging, letdown, heaters, spray and the relief valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand, so you can match it before switching to A. The settings here choose the logic behind the demands. Nothing switches between M and A, or between logics, by itself.</p></div>
     <div class="agrid">
-      <div class="grp">
-        <h3>Heaters and spray</h3>
+      <div class="grp" role="radiogroup" aria-labelledby="pzh">
+        <h3 id="pzh">Heaters and spray</h3>
+        <label class="check"><input type="radio" name="pzMode" value="pres" checked> Hold the pressure setpoint</label>
+        <label class="check"><input type="radio" name="pzMode" value="sub"> Hold the coolant subcooling margin</label>
         <div class="row"><label for="set">Pressure setpoint <output id="seto"></output></label><input id="set" type="range" min="1" max="16" step="0.1" value="15.5"></div>
-        <p>Heaters run at 20 % at the setpoint and full power 0.12 MPa below it. Spray starts 0.1 MPa above and is full 0.5 MPa above. Water-solid, the heaters still raise pressure but spray does little. Letdown pressure control uses the same setpoint.</p>
+        <div class="row"><label for="sub">Subcooling margin <output id="subo"></output></label><input id="sub" type="range" min="10" max="100" step="1" value="50"></div>
+        <p id="pzT"></p>
+        <p>Pressure setpoint: heaters run at 20 % at the setpoint and full power 0.12 MPa below it; spray starts 0.1 MPa above and is full 0.5 MPa above. Subcooling margin: the target is the saturation pressure at coolant temperature plus the margin, so it falls as the coolant cools; heaters are full 1 K of margin short, spray starts 0.5 K over and is full 3 K over. Water-solid, the heaters still raise pressure but spray does little. Letdown pressure control always uses the pressure setpoint.</p>
+        <p>A cold coolant needs little pressure for the margin (60 °C + 50 K is 0.14 MPa). Real plants also keep a minimum pressure for the coolant pump seals; that is not modelled.</p>
       </div>
       <div class="grp" role="radiogroup" aria-labelledby="invh">
         <h3 id="invh">Charging and letdown</h3>
@@ -206,7 +211,7 @@ code{font-size:14px;overflow-wrap:anywhere}
         <li>Click <b>Cold, water-solid</b>. Every control starts manual. The pressuriser is full of liquid at 2.8 MPa, and liquid barely compresses, so a small mismatch between charging and letdown, or any heating, moves the pressure fast. Trim letdown by hand, or switch letdown to A with <b>Letdown holds the pressure setpoint</b> selected under Automatic control. Then turn the heaters up; at 1.8 MW the pressuriser warms about 30 °C per hour.</li>
         <li>At about 230 °C the pressuriser reaches saturation and a steam bubble forms: the level gauge changes from Solid to a number. Nothing switches over for you. Letdown can no longer control pressure, so select <b>Charging holds the level setpoint</b> and switch charging and letdown to A, or drain the level by hand with letdown above charging. Hold pressure with the heaters, by hand or with heaters and spray in A.</li>
         <li>Heat the coolant with a positive net heat and raise the pressure step by step, keeping the subcooling margin positive. Raise the relief opening pressure ahead of the operating pressure; plants disarm low-temperature relief above about 150 °C.</li>
-        <li>For shutdown, start from <b>Cool down from hot standby</b>, which sets the net heat to −13.5 MW. The shrinking coolant draws water out of the pressuriser, so charge to hold the level and lower the pressure as the coolant cools.</li>
+        <li>For shutdown, start from <b>Cool down from hot standby</b>, which sets the net heat to −13.5 MW. The shrinking coolant draws water out of the pressuriser, so charge to hold the level and lower the pressure as the coolant cools, by hand or with heaters and spray in A holding the subcooling margin.</li>
         <li>Below about 175 °C and near 2.8 MPa, lower the relief opening pressure to about 3.6 MPa and fill the pressuriser: level setpoint 100 %, or charging above letdown. The cooler water collapses the bubble. Once it is solid, turn the heaters off and select letdown pressure control again, or the pressure climbs to the relief setpoint.</li>
       </ol></div>
     <div><h2>What the model solves</h2>
@@ -231,19 +236,19 @@ code{font-size:14px;overflow-wrap:anywhere}
 const {satX,Tsat,hLiq,cpL,engage,init,step,fault,clamp,VP,THI}=PZSim;
 
 const $=id=>document.getElementById(id);
-const ids=['set','lset','heat','ch','ld','q','sp','loss','relSet','relMan'];
+const ids=['set','sub','lset','heat','ch','ld','q','sp','loss','relSet','relMan'];
 // sliders with an M/A switch → key in ctl.auto (as sim.js names the actuator)
 const AK={ch:'ch',ld:'ld',q:'q',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,q:false,sp:false,rel:true};
-const fmt={set:v=>(+v).toFixed(1)+' MPa',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',relSet:v=>(+v).toFixed(1)+' MPa'};
+const fmt={set:v=>(+v).toFixed(1)+' MPa',sub:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',loss:v=>v+' kW',relMan:v=>+v?v+' %':'closed',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
-const invR=[...document.querySelectorAll('input[name=inv]')];
+const invR=[...document.querySelectorAll('input[name=inv]')],pzR=[...document.querySelectorAll('input[name=pzMode]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
   ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
-  ctl.inv=invR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
+  ctl.inv=invR.find(r=>r.checked).value;ctl.pzMode=pzR.find(r=>r.checked).value;ctl.set*=1e6;ctl.relSet*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
 // about ten round steps over the range. Each press snaps to the next multiple of the step.
-const bump={ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,loss:25,relMan:10,lset:5};
+const bump={sub:5,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,loss:25,relMan:10,lset:5};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
@@ -270,12 +275,13 @@ for(const k of ids){
   const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);
 }
 for(const r of invR)r.addEventListener('change',()=>{readCtl();if(s)engage(s,ctl)});
+for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
 let s,hist=[],running=true,halted='',lastS=0;
 const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
 const toggle=()=>{running=!running;$('run').textContent=running?'Pause':'Run'};
 $('run').onclick=()=>{if(halted)return;toggle()};
-const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
+const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
 const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);engage(s,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
@@ -315,6 +321,9 @@ const syncAuto=()=>{
     $(k+'d').textContent=on?'':'auto '+dtx[k](v);
     m.hidden=on;m.style.setProperty('--f',clamp((v-el.min)/(el.max-el.min),0,1));
   }
+  // heater/spray target: the setpoint, or the saturation pressure for the margin (follows the coolant)
+  const sm=ctl.pzMode==='sub';
+  $('pzT').textContent=sm?`Target now ${(D.pset/1e6).toFixed(2)} MPa: saturation at ${(s.Tr-273.15+ctl.sub).toFixed(1)} °C, the coolant plus ${ctl.sub} K.`:`Target ${(ctl.set/1e6).toFixed(1)} MPa.`;
   // tell the operator when the chosen logic no longer suits the pressuriser state
   const inv=A.ch||A.ld,any=A.ch||A.ld||A.q||A.sp;
   let m='',bad=false;
@@ -380,6 +389,9 @@ const drawSat=()=>{
   o+=`<text x="${X(330)}" y="${Y(3)}" text-anchor="middle">boiling</text><text x="${X(110)}" y="${Y(12)}" text-anchor="middle">subcooled liquid</text>`;
   o+=`<line x1="${L}" x2="${W-R}" y1="${Y(17.2)}" y2="${Y(17.2)}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${Y(17.2)-6}">Safety valve</text>`;
   if(ctl.auto.rel){const yr=Y(ctl.relSet/1e6);o+=`<line x1="${L}" x2="${W-R}" y1="${yr}" y2="${yr}" stroke="var(--warn)" stroke-dasharray="4 3"/><text x="${X(22)}" y="${yr+(ctl.relSet>15.5e6?16:-6)}">Relief opens</text>`}
+  // subcooling-margin mode: pressure target Psat(T + margin) as a curve, shifted left of saturation by the margin
+  if(ctl.pzMode==='sub'){const tl=Math.min(250,365-ctl.sub),pts=curve.filter(q=>q[0]-ctl.sub>=20).map(q=>[q[0]-ctl.sub,q[1]]);
+    if(pts.length>1)o+=`<path d="${pts.map((q,i)=>(i?'L':'M')+X(q[0]).toFixed(1)+','+Y(q[1]).toFixed(1)).join('')}" fill="none" stroke="var(--acc)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${X(tl)-8}" y="${Y(satX(tl+ctl.sub+273.15)[0]/1e6)}" text-anchor="end">${ctl.sub} K margin</text>`}
   o+=`<circle cx="${X(373.95)}" cy="${Y(22.064)}" r="4" fill="var(--panel)" stroke="var(--ink)" stroke-width="1.5"/>`;
   const pts=hist.filter(h=>h.t>=s.t-(+$('win').value));
   if(pts.length>1){o+=`<path d="${pts.map((h,i)=>(i?'L':'M')+X(h.R).toFixed(1)+','+Y(h.P/1e6).toFixed(1)).join('')}" fill="none" stroke="var(--water)" stroke-width="2" opacity=".5"/>`;
