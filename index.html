@@ -488,10 +488,10 @@ const drawVessel=dtReal=>{
   // landscape layout: pressuriser left, elevated; reactor vessel right; surge line drops from the
   // pressuriser bottom and runs across to the hot-leg nozzle, spray comes from the cold-leg side
   const vw=Math.min(180,H*0.24,Math.max(70,W*0.15)),rad=vw/2;
-  const x0=Math.max(70,W*0.25-vw/2),y0=Math.max(80,H*0.14),y1=Math.max(y0+2*vw,H*0.74),pcx=x0+vw/2;
-  const rx=Math.max(x0+vw+120,W*0.5),rw=Math.max(140,Math.min(W*0.8,W-60)-rx),ry0=Math.max(y0+50,H*0.36),ry1=y1,rh=ry1-ry0;
+  const x0=Math.max(70,W*0.24-vw/2),y0=Math.max(80,H*0.13),y1=Math.max(y0+2*vw,H*0.7),pcx=x0+vw/2;
+  const rw=Math.max(140,Math.min(260,W*0.24)),rx=Math.max(x0+vw+120,Math.min(W*0.62-rw/2,W-rw-70)),ry0=Math.max(y0+60,H*0.33),ry1=H-74,rh=ry1-ry0;
   // surge line as a schematic loop: down below the pressuriser, across, up the gap, over and into the vessel top
-  const sb=Math.min(H-24,y1+Math.max(40,H*0.11)),gx=x0+vw+0.62*(rx-x0-vw),st=ry0-Math.max(30,H*0.07),dx=rx+rw*0.55,cyl=ry0+rh*0.3;
+  const sb=Math.min(H-30,y1+Math.max(40,H*0.12)),gx=x0+vw+0.6*(rx-x0-vw),st=ry0-Math.max(34,H*0.08),dx=rx+rw*0.5,cyl=ry0+rh*0.3;
   const surge=[pcx,y1-4,pcx,sb,gx,sb,gx,st,dx,st,dx,ry0+4];
   const inTop=y0+rad*0.55,inBot=y1-rad*0.55,lev=clamp(d.level,0,1),ly=solid?y0-2:inBot-(inBot-inTop)*lev;
   const shape=()=>{cx.beginPath();cx.roundRect(x0,y0,vw,y1-y0,[rad,rad,rad,rad])};
@@ -506,15 +506,15 @@ const drawVessel=dtReal=>{
   pipe([rx+rw-4,cyl,W-22,cyl,W-22,pt+10,sx,pt+10,sx,y0+8],10);
   pipe([qx,y0+8,qx,pt-4,0,pt-4],12);
   // reactor vessel: coolant + core
-  cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,10);cx.clip();
+  cx.save();cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.clip();
   const gr=cx.createLinearGradient(0,ry0,0,ry1);gr.addColorStop(0,col.water);gr.addColorStop(1,col.water2);cx.fillStyle=gr;cx.fillRect(rx,ry0,rw,rh);
-  const kw=Math.min(rw*0.4,rh*0.7),kx=rx+(rw-kw)/2,ky=ry0+rh*0.45,kh=rh*0.35;
+  const kx=rx+rw*0.22,kw=rw*0.56,ky=ry0+rh*0.5,kh=rh*0.3;
   cx.fillStyle=col.metal;cx.globalAlpha=0.55;cx.fillRect(kx,ky,kw,kh);cx.globalAlpha=1;
   const hq=clamp(f.Qr/50e6,-1,1);
   if(hq>0.002){cx.fillStyle=`rgba(255,79,0,${0.25+0.6*hq})`;cx.fillRect(kx,ky,kw,kh)}
   cx.strokeStyle='rgba(255,255,255,.55)';cx.lineWidth=1;for(let i=1;i<8;i++){const xx=kx+kw*i/8;cx.beginPath();cx.moveTo(xx,ky+3);cx.lineTo(xx,ky+kh-3);cx.stroke()}
   cx.restore();
-  cx.beginPath();cx.roundRect(rx,ry0,rw,rh,10);cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
+  cx.beginPath();cx.roundRect(rx,ry0,rw,rh,[14,14,rw*0.3,rw*0.3]);cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
   cx.textAlign='left';
   lbl('Reactor coolant',rx+12,ry0+24,'rgba(255,255,255,.9)');
   lbl(degC(s.Tr),rx+12,ry0+44,'#fff',true);
