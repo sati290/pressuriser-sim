@@ -557,10 +557,19 @@ const drawVessel=dtReal=>{
     // steam and water each at their own temperature (d.Tg, d.Tl); with nitrogen or a very small bubble
     // they share one (equilibrium). With nitrogen the gas is a mixture: name it and give the nitrogen share
     const Tst=d.ne?d.Tg:d.T,Twa=d.ne?d.Tl:d.T;
-    if(ly-y0>60){const n2=s.Mn>0,yy=Math.max(y0+rad*0.6,(y0+ly)/2-(n2?10:0));lbl(n2?'N₂ + steam':'Steam',tx,yy,col.mute);const hh=tempL(Tst,rT,tx,yy+20,col.ink);
-      if(n2&&ly-y0>100)lbl(`N₂ ${(d.yN*100).toFixed(d.yN>0.995||d.yN<0.01?1:0)} %`,tx,yy+38+hh,col.ink,true)}
+    // steam label block (name, temperature, rate, N₂ share), first that fits: inside the steam space above
+    // the level line; beside the vessel above the level marker (if clear of the surge riser); the same
+    // without rate and N₂ share; else left out
+    const ox=x0+vw+10,n2=s.Mn>0,bh=n2?60:42; // bh: first baseline to the bottom of the full block
+    const steamL=(x,y,full,c)=>{lbl(n2?'N₂ + steam':'Steam',x,y,col.mute);if(!full){lbl(degC(Tst),x,y+20,c,true);return}
+      const hh=tempL(Tst,rT,x,y+20,c);if(n2)lbl(`N₂ ${(d.yN*100).toFixed(d.yN>0.995||d.yN<0.01?1:0)} %`,x,y+38+hh,col.ink,true)};
+    const yIn=Math.max(y0+rad*0.6,(y0+ly)/2-(n2?10:0)),yIn2=Math.max(y0+rad*0.6,ly-30),top=pt+30,side=gx-14-ox>=80;
+    if(yIn+bh<=ly-6)steamL(tx,yIn,true,col.ink);
+    else if(side&&ly-18-bh>=top)steamL(ox,ly-18-bh,true,col.ink);
+    else if(yIn2+24<=ly-6)steamL(tx,yIn2,false,col.ink);
+    else if(side&&ly-42>=top)steamL(ox,ly-42,false,col.ink);
     // water (and insurge layer) labels go inside when there is room, else beside the vessel under the level marker
-    const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop),ox=x0+vw+10;
+    const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop);
     let oy=Math.max(ly+30,inTop+30);
     const wy=Math.max(ly+22,y0+rad*0.7); // below the curved top head, where the label would be clipped
     if(wb-wy>44){lbl('Water',tx,wy,'rgba(255,255,255,.9)');tempL(Twa,rT,tx,wy+20,'#fff')}
