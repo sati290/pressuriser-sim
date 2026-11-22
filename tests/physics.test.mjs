@@ -291,7 +291,7 @@ test('controller command: demand in A, operator value in M, converted to SI', ()
   assert.equal(ctrl.update(k, s, { ...c, n2: 40 }, 0.5).n2, 0.4, 'nitrogen valve is always the operator\'s');
 });
 
-// nitrogen cushion: the gas space holds nitrogen and water vapour (Dalton), same pz() as steam and solid
+// nitrogen cushion: the gas space holds nitrogen and water vapour (Dalton) at the gas temperature
 
 const N2_COLD = { n2: true, Tpz: 60, Tr: 60, P: 2.8e6, L: 0.25 };
 const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 0, sp: 0, relSet: 3.6e6, relMan: 0, n2: 0 };
@@ -306,12 +306,12 @@ test('nitrogen cushion round-trips through init', () => {
   near(s.Mn, 2.78e6 * 0.75 * phys.VP / (phys.RN * 333.15), 1, 'nitrogen mass, ideal gas');
 });
 
-test('the nitrogen branch tends to the steam and water-solid states as nitrogen goes to zero', () => {
-  for (const o of [{ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 }, { solid: false, Tr: 200, P: 2.8e6, L: 0.6 }, { solid: true, Tpz: 60, Tr: 60, P: 2.8e6 }, { solid: true, Tpz: 220, Tr: 200, P: 3e6 }]) {
-    const s = phys.init(o), d = s.d, e = 1e-6, n = phys.pz(s.M, s.U + e * phys.CVN * d.T, phys.VP, e);
-    near(n.P, d.P, 20, `P, ${d.mode} at ${MPa(d.P)} MPa`);
-    near(n.T, d.T, 1e-3, `T, ${d.mode}`);
-    near(n.level, d.level, 1e-4, `level, ${d.mode}`);
+test('the gas space tends to steam alone as nitrogen goes to zero', () => {
+  for (const [c, L] of [[344.8, 0.25], [230, 0.6], [150, 0.4]]) {
+    const T = c + 273.15, q = common.sat(T), rg = q.rg, ug = q.ug, Vg = (1 - L) * phys.VP, Mv = rg * Vg, e = 1e-6;
+    const a = phys.gas(Mv, 0, Mv * ug, Vg), b = phys.gas(Mv, e, Mv * ug + e * phys.CVN * T, Vg, T);
+    near(b.P, a.P, 20, `P at ${c} °C`);
+    near(b.Tg, a.Tg, 1e-3, `T at ${c} °C`);
   }
 });
 
@@ -449,4 +449,105 @@ test('load step at hot standby: level control holds the level within 1 % and set
   assert.ok(mx < 0.26, `level rose to ${(mx * 100).toFixed(1)} %`);
   assert.ok(mn > 0.248, `level undershot to ${(mn * 100).toFixed(1)} %`);
   near(s.d.level * 100, 25, 0.1, 'level back at the setpoint');
+});
+
+// ---------- water and steam off saturation ----------
+const HOT = { solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 };
+const BASE = { ch: 6, ld: 6, sp: 0, q: 61e3, rel: 0, n2: 0, heat: 0 };
+// near-equilibrium reference: every transfer much faster than the step
+const FAST = { tau: { fl: 0.25, sc: 1, sh: 1 } };
+// run the plant from hot standby (settled 10 min) through a disturbance f(t) → partial command; returns
+// the pressure change from the settled value at every step
+const trace = (o, f, seconds, dt, onStep) => {
+  const s = phys.init({ ...HOT, ...o });
+  runPlant(s, BASE, 600, dt);
+  const P0 = s.d.P, out = [];
+  for (let t = 0; t < seconds; t += dt) { phys.step(s, { ...BASE, ...f(t) }, dt); out.push(s.d.P - P0); if (onStep) onStep(s, t); }
+  return { s, dP: out };
+};
+const insurge = t => ({ heat: t < 120 ? 40e6 : 0 });
+const pk = a => Math.max(...a);
+
+test('steam properties off saturation follow IF97 region 2', () => {
+  // [°C saturation at this density, density, θ K, P − p_sat and u − u″ from IF97 region 2]
+  for (const [c, rho, th, dP, du] of [[345, 102.333, 10, 904686, 34667], [345, 102.333, 30, 2623882, 97540], [250, 19.9659, 15, 196036, 34946]]) {
+    const q = common.sat(c + 273.15), ps = q.p, ug = q.ug, v = phys.vap(rho, ug + du);
+    near(v.P - ps, dP, dP * (th > 20 ? 0.03 : 0.01), `P − p_sat at ${c} °C + ${th} K`);
+    near(v.T - 273.15, c + th, 0.02 * th, `T at ${c} °C + ${th} K`);
+    assert.equal(v.x, 1);
+    const w = phys.vapT(rho, v.T);
+    near(w.u, ug + du, 1, 'vapT inverts vap');
+  }
+  // below u″ at that density the steam is wet, at saturation
+  const q = common.sat(618), rg = q.rg, ug = q.ug, w = phys.vap(rg, ug - 20e3);
+  assert.ok(w.x < 1 && w.x > 0.95, `wet steam quality ${w.x}`);
+  near(w.P, common.sat(w.T).p, 1, 'wet steam is at saturation');
+});
+
+test('a steam bubble starts at saturation; hot standby stays there', () => {
+  const s = phys.init(HOT);
+  near(s.d.P, 15.5e6, 200, 'P');
+  near(s.d.Tl, s.d.Ti, 1e-3, 'water at saturation');
+  near(s.d.Tg, s.d.Ti, 0.01, 'steam at saturation');
+  runPlant(s, BASE, 3600, 1);
+  near(s.d.Tl - s.d.Ti, 0, 0.05, 'water − saturation (K)');
+  near(s.d.Tg - s.d.Ti, 0, 0.05, 'steam − saturation (K)');
+  near(MPa(s.d.P), 15.5, 0.02, 'P');
+});
+
+test('fast transfer rates keep water and steam at saturation and give the equilibrium insurge peak', () => {
+  let off = 0;
+  const f = trace(FAST, insurge, 600, 0.25, s => { off = Math.max(off, Math.abs(s.d.Tl - s.d.Ti), s.d.Tg - s.d.Ti); });
+  assert.ok(off < 0.15, `largest departure from saturation ${off.toFixed(3)} K`);
+  near(pk(f.dP), 0.30e6, 0.02e6, 'insurge peak (the former equilibrium model gave +0.30 MPa)');
+});
+
+test('insurge: the steam compresses ahead of condensation, so pressure overshoots the equilibrium value', () => {
+  let sh = 0, sub = 0;
+  const ne = trace({}, insurge, 900, 0.25, s => { sh = Math.max(sh, s.d.Tg - s.d.Ti); sub = Math.max(sub, s.d.Ti - s.d.Tl); });
+  const eq = trace(FAST, insurge, 900, 0.25);
+  const ne0 = pk(ne.dP), eq0 = pk(eq.dP);
+  assert.ok(ne0 > 1.4 * eq0, `peak +${(ne0 / 1e3).toFixed(0)} kPa vs fast rates +${(eq0 / 1e3).toFixed(0)} kPa`);
+  assert.ok(sh > 0.1, `steam superheats: ${sh.toFixed(2)} K`);
+  assert.ok(sub > 0.3, `water left subcooled: ${sub.toFixed(2)} K`);
+  // the overshoot decays as subcooled water condenses steam
+  assert.ok(ne.dP.at(-1) < 0.5 * ne0, `decays: +${(ne.dP.at(-1) / 1e3).toFixed(0)} kPa after 15 min`);
+});
+
+test('outsurge: superheated water flashes with a delay, so pressure dips and then recovers', () => {
+  // relief fully open for 60 s at hot standby, then shut
+  const relief = t => ({ rel: t < 60 ? 1 : 0 });
+  let sup = 0;
+  const ne = trace({}, relief, 180, 0.25, s => { sup = Math.max(sup, s.d.Tl - s.d.Ti); });
+  const eq = trace(FAST, relief, 180, 0.25);
+  assert.ok(sup > 0.3, `water superheats: ${sup.toFixed(2)} K`);
+  const at = (a, t) => a[Math.round(t / 0.25) - 1];
+  const rec = at(ne.dP, 120) - at(ne.dP, 60), recEq = at(eq.dP, 120) - at(eq.dP, 60);
+  assert.ok(rec > 20e3, `recovers ${(rec / 1e3).toFixed(0)} kPa after the valve shuts`);
+  assert.ok(recEq < 5e3, `fast rates: no recovery (${(recEq / 1e3).toFixed(0)} kPa)`);
+});
+
+test('results do not depend much on the time step', () => {
+  const p = dt => pk(trace({}, insurge, 400, dt).dP);
+  near(p(2), p(0.25), 0.02 * p(0.25), 'insurge peak, dt 2 s vs 0.25 s');
+});
+
+test('nitrogen into a steam bubble: no pressure step, cold nitrogen cools the gas', () => {
+  const s = phys.init({ solid: false, Tr: 200, P: 2.5e6, L: 0.4 });
+  const m0 = s.M + s.Ms + s.Mr, P0 = s.d.P;
+  phys.step(s, { ...BASE, n2: 1 }, 1);
+  assert.ok(Math.abs(s.d.P - P0) < 20e3, `first step ${((s.d.P - P0) / 1e3).toFixed(1)} kPa`);
+  runPlant(s, { ...BASE, n2: 1 }, 60, 1);
+  assert.ok(s.Mn > 0 && s.d.Tg < s.d.Tl, `nitrogen ${s.Mn.toFixed(1)} kg, gas ${(s.d.Tl - s.d.Tg).toFixed(2)} K below the water`);
+  near(s.M + s.Ms + s.Mr, m0, 1, 'water mass');
+});
+
+test('compressing a nitrogen cushion heats the gas, which then gives the heat to the water', () => {
+  const s = phys.init(N2_COLD);
+  let dTmax = 0;
+  runPlant(s, { ...BASE, ch: 20, ld: 0, q: phys.UA * 20 }, 120, 0.5); // fast insurge
+  dTmax = s.d.Tg - s.d.Tl;
+  assert.ok(dTmax > 1, `gas ${dTmax.toFixed(1)} K above the water after the insurge`);
+  runPlant(s, { ...BASE, ch: 0, ld: 0, q: phys.UA * 20 }, 600, 0.5);
+  assert.ok(s.d.Tg - s.d.Tl < 0.2 * dTmax, `relaxed to ${(s.d.Tg - s.d.Tl).toFixed(2)} K`);
 });
