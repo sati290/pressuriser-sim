@@ -157,7 +157,8 @@ code{font-size:14px;overflow-wrap:anywhere}
     </div>
     <div class="grp">
       <h2>Pressuriser</h2>
-      <div class="row"><label for="q">Heaters <output id="qo"></output></label><input id="q" type="range" min="0" max="1800" step="10" value="60"></div>
+      <div class="row"><label for="hp">Proportional heaters <output id="hpo"></output></label><input id="hp" type="range" min="0" max="100" step="1" value="15"></div>
+      <div class="row"><label for="hb">Backup heaters <output id="hbo"></output></label><input id="hb" type="range" min="0" max="3" step="1" value="0"></div>
       <div class="row"><label for="sp">Spray <output id="spo"></output></label><input id="sp" type="range" min="0" max="40" step="0.5" value="0"></div>
       <div class="row"><label for="relMan">Relief valve opening <output id="relMano"></output></label><input id="relMan" type="range" min="0" max="100" step="5" value="0"></div>
       <div class="row"><label for="n2">Nitrogen supply valve <output id="n2o"></output></label><input id="n2" type="range" min="0" max="100" step="5" value="0"></div>
@@ -182,7 +183,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 <section class="band wrap" style="padding-top:0;padding-bottom:0">
   <div class="card assists">
     <div class="chead"><h2>Automatic control</h2>
-      <p>Charging, letdown, heaters, spray and the relief valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand, so you can match it before switching to A. The settings here choose the logic behind the demands. Nothing switches between M and A, or between logics, by itself.</p></div>
+      <p>Charging, letdown, proportional heaters, backup heaters, spray and the relief valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand, so you can match it before switching to A. The settings here choose the logic behind the demands. Nothing switches between M and A, or between logics, by itself.</p></div>
     <div class="agrid">
       <div class="grp" role="radiogroup" aria-labelledby="pzh">
         <h3 id="pzh">Heaters and spray</h3>
@@ -191,7 +192,7 @@ code{font-size:14px;overflow-wrap:anywhere}
         <div class="row"><label for="set">Pressure setpoint <output id="seto"></output></label><input id="set" type="range" min="1" max="16" step="0.1" value="15.5"></div>
         <div class="row"><label for="dT">Pressuriser − coolant ΔT <output id="dTo"></output></label><input id="dT" type="range" min="10" max="150" step="1" value="53"></div>
         <p id="pzT"></p>
-        <p>Pressure setpoint: heaters run at 20 % at the setpoint and full power 0.12 MPa below it; spray starts 0.1 MPa above and is full 0.5 MPa above. ΔT: the pressuriser is held that much hotter than the coolant, so with a bubble the pressure target is the saturation pressure at coolant + ΔT and falls as the coolant cools; heaters are full 1 K short, spray starts 0.5 K over and is full 3 K over. The default 53 K gives 15.5 MPa at the 291.7 °C hot-standby coolant temperature. Water-solid, the heaters still raise pressure but spray does little. Letdown pressure control always uses the pressure setpoint.</p>
+        <p>The heaters are 78 elements of 23 kW: a proportional group of 18 (415 kW), varied continuously, and three backup groups of 20 (462 kW each), each switched fully on or off. Pressure setpoint: the proportional group runs at 15 % at the setpoint, about the hot-standby heat loss, full 0.085 MPa below and off 0.015 MPa above. Backup groups come in one by one at 0.14, 0.18 and 0.22 MPa below the setpoint and each goes out again 0.07 MPa higher, so they do not cycle while the proportional group holds pressure. Spray starts 0.1 MPa above and is full 0.5 MPa above. ΔT: the pressuriser is held that much hotter than the coolant, so with a bubble the pressure target is the saturation pressure at coolant + ΔT and falls as the coolant cools; the heaters treat 1 K as 0.12 MPa (proportional full 0.7 K short, backups at 1.2, 1.5 and 1.8 K short), spray starts 0.5 K over and is full 3 K over. The default 53 K gives 15.5 MPa at the 291.7 °C hot-standby coolant temperature. Water-solid, the heaters still raise pressure but spray does little. Letdown pressure control always uses the pressure setpoint.</p>
         <p>With a bubble, the ΔT is also the coolant's subcooling margin, since the pressuriser sits at saturation. Over a cold coolant it means little pressure (60 °C + 53 K is 0.16 MPa); real plants also keep a minimum pressure for the coolant pump seals, which is not modelled. Plants limit this ΔT (spray thermal stress, about 180 K); the stats flag it above 180 K.</p>
       </div>
       <div class="grp" role="radiogroup" aria-labelledby="invh">
@@ -215,7 +216,7 @@ code{font-size:14px;overflow-wrap:anywhere}
   <div class="notes card">
     <div><h2>Running a startup</h2>
       <ol>
-        <li>Click <b>Cold, water-solid</b>. Every control starts manual. The pressuriser is full of liquid at 2.8 MPa, and liquid barely compresses, so a small mismatch between charging and letdown, or any heating, moves the pressure fast. Trim letdown by hand, or switch letdown to A with <b>Letdown holds the pressure setpoint</b> selected under Automatic control. Then turn the heaters up; at 1.8 MW the pressuriser warms about 30 °C per hour.</li>
+        <li>Click <b>Cold, water-solid</b>. Every control starts manual. The pressuriser is full of liquid at 2.8 MPa, and liquid barely compresses, so a small mismatch between charging and letdown, or any heating, moves the pressure fast. Trim letdown by hand, or switch letdown to A with <b>Letdown holds the pressure setpoint</b> selected under Automatic control. Then turn the heaters up: proportional to 100 % and all three backup groups on. At 1.8 MW the pressuriser warms about 30 °C per hour.</li>
         <li>At about 230 °C the pressuriser reaches saturation and a steam bubble forms: the level gauge changes from Solid to a number. Nothing switches over for you. Letdown can no longer control pressure, so select <b>Charging holds the level setpoint</b> and switch charging and letdown to A, or drain the level by hand with letdown above charging. Hold pressure with the heaters, by hand or with heaters and spray in A.</li>
         <li>Heat the coolant with a positive net heat and raise the pressure step by step, keeping the subcooling margin positive. Raise the relief opening pressure ahead of the operating pressure; plants disarm low-temperature relief above about 150 °C.</li>
         <li>For shutdown, start from <b>Cool down from hot standby</b>, which sets the net heat to −13.5 MW. The shrinking coolant draws water out of the pressuriser, so charge to hold the level and lower the pressure as the coolant cools, by hand or with heaters and spray in A holding the pressuriser − coolant ΔT.</li>
@@ -244,6 +245,7 @@ code{font-size:14px;overflow-wrap:anywhere}
         <li>Relief valve flow scales with pressure: steam about 15 kg/s at 16.2 MPa, falling in proportion while the flow is choked, then tapering to zero as the pressure nears 0.1 MPa (ideal-gas nozzle); water about 30 kg/s at 3.6 MPa, rising with the square root of the pressure above 0.1 MPa. The safety valve passes four times as much. These are rough sizing figures, not a valve model, and the relief tank does not fill or pressurise.</li>
         <li>The pressuriser loses heat through its insulation to ambient air at a fixed 40 °C, 200 W per kelvin of difference: about 61 kW at hot standby, 4 kW at 60 °C. The coolant system's own losses are part of the net-heat control.</li>
         <li>Heaters cut out below 12 % level to protect the elements; this interlock is always on.</li>
+        <li>Heaters: one proportional group and three switched backup groups, as in a 4-loop Westinghouse-type plant. Backup heaters only respond to pressure; real plants also switch them on for a high level deviation (an insurge of cooler water), which is not modelled. Element heat-up time is ignored: heater power reaches the water at once.</li>
         <li>The model stops if the coolant reaches saturation, the pressuriser dries out, or the pressure nears the critical point. Values are typical of a 4-loop PWR, not of any specific plant.</li>
       </ul></div>
   </div>
@@ -255,17 +257,17 @@ code{font-size:14px;overflow-wrap:anywhere}
 <script>
 {
 // steam tables and limits in common.js; plant in sim.js (pure physics); automatic control in control.js
-const {satX,Tsat,clamp,THI}=PZCommon;
+const {satX,Tsat,clamp,THI,NB}=PZCommon;
 const {hLiq,cpL,init,step,fault,VP}=PZSim;
 const Ctl=PZCtl;
 // sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
-const SIM_API=2,simStale=PZSim.API!==SIM_API;
+const SIM_API=3,simStale=PZSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
-const ids=['set','dT','lset','heat','ch','ld','q','sp','relSet','relMan','n2'];
+const ids=['set','dT','lset','heat','ch','ld','hp','hb','sp','relSet','relMan','n2'];
 // sliders with an M/A switch → key in ctl.auto (as control.js names the actuator)
-const AK={ch:'ch',ld:'ld',q:'q',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,q:false,sp:false,rel:true};
-const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',q:v=>Math.round(v)+' kW',sp:v=>(+v).toFixed(1)+' kg/s',relMan:v=>+v?v+' %':'closed',n2:v=>+v?v+' %':'shut',relSet:v=>(+v).toFixed(1)+' MPa'};
+const AK={ch:'ch',ld:'ld',hp:'hp',hb:'hb',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,hp:false,hb:false,sp:false,rel:true};
+const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',hp:v=>Math.round(v)+' %',hb:v=>Math.round(v)+' of '+NB,sp:v=>(+v).toFixed(1)+' kg/s',relMan:v=>+v?v+' %':'closed',n2:v=>+v?v+' %':'shut',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
 const invR=[...document.querySelectorAll('input[name=inv]')],pzR=[...document.querySelectorAll('input[name=pzMode]')];
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
@@ -274,7 +276,7 @@ const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=f
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider. Fine steps where the control needs precision, otherwise
 // about ten round steps over the range. Each press snaps to the next multiple of the step.
-const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,q:200,sp:5,relMan:5,n2:5,lset:5};
+const bump={dT:1,ch:.1,ld:.1,heat:.5,set:.1,relSet:.1,hp:5,hb:1,sp:5,relMan:5,n2:5,lset:5};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
@@ -317,12 +319,12 @@ const toggle=()=>{running=!running;showSpeed()};
 $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
 const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='inv')invR.forEach(r=>r.checked=r.value===o[k]);else if(k==='pzMode')pzR.forEach(r=>r.checked=r.value===o[k]);else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state and put every control in M except the relief valve
-const MAN={auto:{ch:false,ld:false,q:false,sp:false,rel:true},relMan:0,n2:0};
+const MAN={auto:{ch:false,ld:false,hp:false,hb:false,sp:false,rel:true},relMan:0,n2:0};
 const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();Ctl.engage(cs,ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
-const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,relSet:3.6,win:21600});
-const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,q:60,sp:0,relSet:16.2,win:600});
+const COLD=()=>start({solid:true,Tpz:60,Tr:60,P:2.8e6},{inv:'pres',set:2.8,lset:25,heat:0,ch:5,ld:5,hp:0,hb:0,sp:0,relSet:3.6,win:21600});
+const HOT=()=>start({solid:false,Tr:291.7,P:15.5e6,L:0.25},{inv:'lev',set:15.5,lset:25,heat:0,ch:6,ld:6,hp:15,hb:0,sp:0,relSet:16.2,win:600});
 // nitrogen cushion: cold, the gas space is nitrogen over 60 °C water; charging/letdown on level
-const N2C=()=>start({n2:true,Tpz:60,Tr:60,P:2.8e6,L:0.25},{inv:'lev',set:2.8,lset:25,heat:0,ch:5,ld:5,q:0,sp:0,relSet:3.6,win:21600});
+const N2C=()=>start({n2:true,Tpz:60,Tr:60,P:2.8e6,L:0.25},{inv:'lev',set:2.8,lset:25,heat:0,ch:5,ld:5,hp:0,hb:0,sp:0,relSet:3.6,win:21600});
 $('scCold').onclick=COLD;$('scHot').onclick=HOT;$('scN2').onclick=N2C;
 $('scCool').onclick=()=>{HOT();setC({heat:-13.5,win:21600})};
 $('scLoad').onclick=()=>{if(s)s.extra={Q:40e6,end:s.t+120}};
@@ -351,8 +353,8 @@ const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[his
 const syncAuto=()=>{
   const d=s.d,solid=d.mode==='solid',n2=s.Mn>0,A=ctl.auto,D=cs.dem;
   // in A the slider follows the demand; in M a notch and a readout show it
-  const dv={ch:D.ch,ld:D.ld,q:D.q/1e3,sp:D.sp,relMan:D.rel*100};
-  const dtx={ch:v=>v.toFixed(1),ld:v=>v.toFixed(1),q:v=>Math.round(v),sp:v=>v.toFixed(1),relMan:v=>v?'open':'shut'};
+  const dv={ch:D.ch,ld:D.ld,hp:D.hp*100,hb:D.hb,sp:D.sp,relMan:D.rel*100};
+  const dtx={ch:v=>v.toFixed(1),ld:v=>v.toFixed(1),hp:v=>Math.round(v),hb:v=>Math.round(v),sp:v=>v.toFixed(1),relMan:v=>v?'open':'shut'};
   for(const k in AK){
     const on=A[AK[k]],el=$(k),v=dv[k],m=$(k+'m');
     el.disabled=$(k+'Dn').disabled=$(k+'Up').disabled=on;
@@ -364,11 +366,11 @@ const syncAuto=()=>{
   const tt=s.Tr-273.15+ctl.dT;
   $('pzT').textContent=ctl.pzMode==='dT'?`Pressuriser target now ${tt.toFixed(1)} °C, the coolant plus ${ctl.dT} K`+(solid?' (water-solid: pressure is set by letdown).':n2?`. With nitrogen in the gas this is not a pressure target: the steam partial pressure would be ${(D.pset/1e6).toFixed(2)} MPa, plus the nitrogen.`:`: ${(D.pset/1e6).toFixed(2)} MPa with a bubble.`):`Target ${(ctl.set/1e6).toFixed(1)} MPa.`;
   // tell the operator when the chosen logic no longer suits the pressuriser state
-  const inv=A.ch||A.ld,any=A.ch||A.ld||A.q||A.sp;
+  const inv=A.ch||A.ld,any=A.ch||A.ld||A.hp||A.hb||A.sp;
   let m='',bad=false;
   if(ctl.inv==='pres'&&!solid&&!n2&&inv){m='There is a steam bubble, so letdown no longer controls pressure: it drains the level instead. Select level control, or put charging and letdown in M.';bad=true}
   else if(ctl.inv==='lev'&&solid&&ctl.lset<100&&inv){m='Water-solid: level control will draw water out until the pressure falls to saturation and a bubble forms. Watch the subcooling margin.';bad=true}
-  else if((A.q||A.sp)&&solid){m='Water-solid: the heaters still raise the pressure, but spray has little effect without a steam space.'}
+  else if((A.hp||A.hb||A.sp)&&solid){m='Water-solid: the heaters still raise the pressure, but spray has little effect without a steam space.'}
   else if(ctl.n2&&s.f.wn>0&&d.P>ctl.relSet-0.3e6&&A.rel){m='Nitrogen supply open close to the relief setting: the relief valve will vent what comes in.'}
   else if(!A.rel){m='Relief valve in M. Only the safety valve at 17.2 MPa limits pressure.';bad=true}
   else m=(solid?'Pressuriser is water-solid.':n2?`Nitrogen cushion: the gas is ${(d.yN*100).toFixed(d.yN>0.995?1:0)} % nitrogen by partial pressure. Charging and letdown change the pressure by squeezing the gas; heaters add steam partial pressure.`:'Pressuriser has a steam bubble.')+(any?'':' Every control except the relief valve is in M; the notches show the automatic demand.');
@@ -385,7 +387,7 @@ const updText=()=>{
   const offSat=solid?'—':`${n2?'gas':'steam'} ${kv(d.Tg-d.Ti)}, water ${kv(d.Tl-d.Ti)}`;
   const rows=[['State',solid?'water-solid':n2?'nitrogen cushion':'steam bubble'],['Off saturation',offSat],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
-    ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
+    ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':`${(f.Q/1e3).toFixed(0)} kW (prop. ${Math.round(f.hp*100)} %, backup ${f.hb} of ${NB})`],
     ['Spray',f.ws.toFixed(1)+' kg/s'],['Heat loss',(f.loss/1e3).toFixed(0)+' kW'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],
     ['Nitrogen',n2?`${s.Mn.toFixed(0)} kg, ${(d.pN/1e6).toFixed(3)} MPa`:'none'],['Nitrogen flow',f.wn>0||f.wrn>0?`${f.wn>0?'in '+f.wn.toFixed(2):''}${f.wn>0&&f.wrn>0?' / ':''}${f.wrn>0?'vented '+f.wrn.toFixed(2):''} kg/s`:'none'],
     ['Steam mass',d.Mg.toFixed(0)+' kg'+(n2?`, ${(d.pS/1e6).toFixed(3)} MPa`:'')],
@@ -536,11 +538,14 @@ const drawVessel=dtReal=>{
   // insurge layer: cooler RCS water sitting at the bottom until it mixes
   const lf=s.Ms>0?s.Ms/s.rs/VP:0,yl=Math.max(ly,levY(lf));
   if(!solid&&lf>0&&y1-yl>3){cx.fillStyle=col.water2;cx.fillRect(x0,yl,vw,y1-yl);cx.setLineDash([4,4]);cx.strokeStyle='rgba(255,255,255,.6)';cx.lineWidth=1;cx.beginPath();cx.moveTo(x0,yl);cx.lineTo(x0+vw,yl);cx.stroke();cx.setLineDash([])}
-  const hp=f.trip?0:f.Q/1.8e6,hT=levY(0.1),hL=y1-hT; // heaters stay below the 12 % low-level trip
-  for(let i=0;i<5;i++){const hx=x0+vw*(0.18+i*0.16);cx.fillStyle=hp>0?`rgba(255,${120-80*hp|0},0,${0.45+0.55*hp})`:col.metal;cx.fillRect(hx-3,hT,6,hL)}
+  // one rod per heater group: the proportional group first (glows with its power), then the backups (on/off)
+  const hT=levY(0.1),hL=y1-hT; // heaters stay below the 12 % low-level trip
+  const rodP=i=>f.trip?0:i?(i<=f.hb?1:0):f.hp,rodX=i=>x0+vw*(0.2+i*0.6/NB);
+  for(let i=0;i<=NB;i++){const p=rodP(i),hx=rodX(i);cx.fillStyle=p>0?`rgba(255,${120-80*p|0},0,${0.45+0.55*p})`:col.metal;cx.fillRect(hx-3,hT,6,hL)}
   if(!reduce&&!solid){
     const sp=Math.min(dtReal,100)/1000;
-    let nb=hp*60*sp;while(nb>0){if(rnd()<nb)parts.push({k:'b',x:x0+vw*(0.18+(rnd()*5|0)*0.16)+(rnd()-.5)*6,y:y1-rad*0.3-(hL-rad*0.3)*rnd(),v:40+rnd()*40});nb--}
+    // bubbles at a random rod, kept in proportion to that rod's power (about 60/s with every heater on)
+    let nb=60*sp;while(nb>0){const r=rnd()*(NB+1)|0;if(rnd()<nb&&rnd()<rodP(r))parts.push({k:'b',x:rodX(r)+(rnd()-.5)*6,y:y1-rad*0.3-(hL-rad*0.3)*rnd(),v:40+rnd()*40});nb--}
     let nd=f.ws/40*80*sp;while(nd>0){if(rnd()<nd)parts.push({k:'d',x:sx,y:y0+rad*0.3+14,v:120+rnd()*80,vx:(rnd()-.5)*50});nd--}
     for(const p of parts){p.y+=(p.k==='b'?-1:1)*p.v*sp;if(p.vx)p.x+=p.vx*sp}
     parts=parts.filter(p=>p.k==='b'?p.y>ly:p.y<ly);

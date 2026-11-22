@@ -11,7 +11,7 @@
 | `TAUNE` | fl 5 s, sc 300 s, sh 30 s | Water–gas transfers: water above the interface temperature boils or evaporates (fl), water below it condenses steam at its surface (sc), the gas exchanges heat with the water (sh). Round illustrative values, not fitted to plant data; the same with nitrogen. Per state as `s.tau` (`init({tau})`) |
 | `MVMIN` | 1 g | Steam left with no nitrogen below this condenses into the water at once (the pressuriser goes solid) |
 | Net heat | −60 … +60 MW | One operator control: pump work + core/decay heat − RHR/steam dump − losses. Pumps are assumed running (mixed RCS, spray head available) |
-| Heater max | 1.8 MW | Pressuriser heaters (interlock: trip below 12 % level, always on) |
+| Heaters | 1.8 MW: 78 elements of 23.1 kW (`QE`) | One proportional group of 18 elements (`QP` = 415 kW, power varied continuously, command `hp` 0–1) and `NB` = 3 backup groups of 20 (`QB` = 462 kW each, on/off, command `hb` = number on). As in a 4-loop Westinghouse-type pressuriser. Interlock: all trip below 12 % level, always on. No element heat-up lag |
 | Spray max | 40 kg/s | Main spray at RCS temperature |
 | Relief valve | 15 kg/s steam at 16.2 MPa (∝ P while choked, × subsonic nozzle factor ψ(PB/P)/ψ* above the critical ratio 0.546, κ = 1.3, zero at PB); 30 kg/s liquid at 3.6 MPa (∝ √(P − PB)) | `relW(P, steam)`, `subF(P)`. Discharge to a relief tank at PB = 0.1 MPa abs (fixed: the tank does not fill or pressurise). All pressures in the model are absolute |
 | Pressuriser heat loss | UA·(T − T_amb), UA = 200 W/K (61 kW at hot standby in 40 °C air) | T_amb = 40 °C fixed (`TAMB`); shared between water and gas by volume fraction, each at its own temperature; recorded as `s.f.loss` |
@@ -62,14 +62,15 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `sv`, `rel` | Safety-valve latch, relief valve opening fraction 0–1 (as commanded) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
-| `f` | What was applied in the last step: `{Q, ws, ch, ld, wr, wrn, wn, n2, trip, Qr, loss}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
+| `f` | What was applied in the last step: `{hp, hb, Q, ws, ch, ld, wr, wrn, wn, n2, trip, Qr, loss}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
 
 ## Controller memory (`cs`, from `PZCtl.init()`)
 
 | Field | Meaning |
 |---|---|
 | `iL`, `iC` | Net-inflow integrators of the pressure ('pres') and level ('lev') inventory logic |
-| `dem` | Automatic demand for every actuator `{ch, ld, q (W), sp, rel (0–1)}`, plus `pset` |
+| `dem` | Automatic demand for every actuator `{ch, ld, hp (0–1), hb (groups), sp, rel (0–1)}`, plus `pset` |
+| `hb` | Backup heater groups the on/off logic has on (its hysteresis memory) |
 | `hold` | Charging/letdown flows held by a secondary actuator in A |
 | `porv` | Auto-relief latch (runs in M too) |
 
@@ -96,19 +97,26 @@ gas at Tpz, saturated steam plus nitrogen making up P − p_sat(Tpz).
 
 Manual control is primary. The automatic logic runs every step (`demands(cs, s, c, dt)`) and writes a
 demand for each actuator to `cs.dem`. `command(cs, c)` then builds the plant command: an actuator
-takes its demand only when `c.auto[k]` is true (keys `ch, ld, q, sp, rel`), otherwise the operator's
-value (`c.ch, c.ld, c.sp` kg/s, `c.q` kW, `c.relMan` %), converted to SI along with `c.heat` (MW). The logic acts regardless of pressuriser state;
+takes its demand only when `c.auto[k]` is true (keys `ch, ld, hp, hb, sp, rel`), otherwise the operator's
+value (`c.ch, c.ld, c.sp` kg/s, `c.hp` %, `c.hb` groups, `c.relMan` %), converted to SI along with `c.heat` (MW). The logic acts regardless of pressuriser state;
 **nothing switches between M and A, or between inventory modes, automatically**.
 
 1. **Demands**:
-   - Heaters and spray, `c.pzMode === 'pres'`: heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2);
+   - Heaters and spray, `c.pzMode === 'pres'`: the heater logic acts on the pressure error ep = P − SP.
+     Proportional group `propH(ep)` = clamp(0.15 − ep/0.1 MPa): 15 % at the setpoint (62 kW, about
+     the 61 kW hot-standby loss, so the setpoint holds with no offset), full 0.085 MPa below, off
+     0.015 MPa above. Backup group i = 1…3 (`backH`): on when ep < −`BON(i)` = −(0.10 + 0.04·i) MPa
+     (−0.14, −0.18, −0.22), off again when ep > −`BOFF(i)` = −`BON(i)` + 0.07 MPa. The groups stage in
+     one after another as pressure falls and out in reverse; the 0.07 MPa hysteresis keeps them from
+     cycling (at hot standby they stay off and the proportional group alone holds pressure).
      spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
      `c.pzMode === 'dT'` (hold pressuriser − coolant ΔT `c.dT`, K): error eT = (T_pz − Tr) − c.dT, with
      T_pz = `d.T`, the interface temperature (or the water temperature when solid). With a steam bubble T_pz = Tsat(P), so this holds
      P = p* = p_sat(Tr + c.dT), and the ΔT equals the coolant subcooling margin. Water-solid it acts on the
      liquid temperature while letdown sets the pressure. Default 53 K (15.5 MPa at 291.7 °C);
-     heaters = 1.8 MW·clamp(0.2 − eT/1.25 K); spray = 40·clamp((eT − 0.5 K)/2.5 K). Bands are in kelvin
-     so control stays proportionate at low pressure, where 0.15 MPa would be tens of kelvin.
+     the heaters use the same logic with ep = eT·0.12 MPa/K (proportional full 0.71 K short, backups
+     on 1.17, 1.5, 1.83 K short); spray = 40·clamp((eT − 0.5 K)/2.5 K). Bands are in kelvin
+     so control stays proportionate at low pressure, where 0.1 MPa would be tens of kelvin.
      p* is stored as `cs.dem.pset`. Letdown pressure control always uses `c.set`.
    - Charging/letdown: a PI controller asks for net inflow N = charging − letdown.
      `c.inv === 'pres'` (water-solid): N = −5e-5·(P − SP) + ∫−2e-7·(P − SP)dt, preferred flow letdown.
@@ -131,10 +139,11 @@ The controller reads the plant state directly (ideal, instantaneous measurements
 
 ## Plant step `PZSim.step(s, u, dt)` (sim.js)
 
-`u = {ch, ld, sp (kg/s), q (W), rel (0–1), n2 (0–1), heat (W)}`, the final command.
+`u = {ch, ld, sp (kg/s), hp (0–1), hb (backup groups on, rounded), rel (0–1), n2 (0–1), heat (W)}`, the final command.
+Heater power Q = hp·QP + hb·QB.
 
-1. **Limits and protection**: each actuator is clamped to `LIM` (charging/letdown 0–20 kg/s, heaters
-   0–1.8 MW, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level (not when solid). Safety valve
+1. **Limits and protection**: each actuator is clamped to `LIM` (charging/letdown 0–20 kg/s, proportional
+   heaters 0–1, backup groups 0–3, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level (not when solid). Safety valve
    17.2/16.9 MPa always armed. Relief flow = opening × `relW` (× `gasF` with nitrogen); vents gas, or
    water when solid. These act whoever commands, and are recorded in `s.f`.
 2. **RCS**: dTr = (net heat + pulse)·dt / (Mr·cp + CM); Mr += (charging − letdown − spray)·dt.
@@ -176,6 +185,7 @@ RCS can't represent boiling).
 |---|---|
 | Saturation props vs IAPWS tables at 100/200/300/345 °C | within 0.2–0.3 % |
 | Hot standby (15.5 MPa, 291.7 °C, 25 %) for 1 h, controls in A or all in M | steady |
+| Hot standby, heaters in A, 1 h; then spray 15 kg/s by hand for 10 min | no backup switching at hot standby, P within 0.01 MPa on the proportional group alone; with spray the backups stage in at 15.36/15.32/15.28 MPa and out at 15.35/15.39/15.43 MPa, each once |
 | ΔT mode, 53 K, hot standby then −13.5 MW cooldown 292 → 235 °C | ΔT 53.2–53.6 K throughout, 15.5 MPa at start |
 | ΔT mode, 53 K, cold water-solid start, letdown on pressure | pressuriser settles 53 K above the coolant at 2.8 MPa |
 | Level 40 → 25 % with charging and letdown both in A | charging goes to 0, letdown takes over, then returns to its held flow |
