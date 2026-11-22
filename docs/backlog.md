@@ -3,12 +3,12 @@
 Roughly in order of value for understanding the physics. None of these are committed; pick with the owner.
 
 ## Physics fidelity
-Done: non-equilibrium steam bubble with outsurge flashing delay (see docs/physics.md). Follow-ups:
-- **Tune the time constants** against published insurge/outsurge test data, or expose them (and an
-  equilibrium/finite-rate switch) on the page for comparison.
+Done: water and gas never forced into equilibrium — steam superheat, outsurge flashing delay, adiabatic
+nitrogen compression (see docs/physics.md). Follow-ups:
+- **Tune the time constants** against published insurge/outsurge test data, or expose them on the page.
 - **Water surface layer** — a thin top layer that heats on condensation would make surface condensation
   self-limiting instead of the 300 s constant on the whole water mass.
-- **Non-equilibrium with nitrogen** — today the gas space goes back to equilibrium when nitrogen flows in.
+- **Diffusion-limited evaporation with nitrogen** — today the same time constants apply with or without nitrogen.
 
 1. **Pressuriser wall heat capacity** — steel shell slows heat-up and stores energy during cooldown.
 2. **Auxiliary spray** — spray from charging (cold) when no RCPs run; enforce spray ΔT limit and show
@@ -16,7 +16,7 @@ Done: non-equilibrium steam bubble with outsurge flashing delay (see docs/physic
 3. **Charging enthalpy** — regenerative heat exchanger outlet temperature as a function of letdown flow.
 4. **Real level geometry** — hemispherical heads; level in % of span instead of volume fraction.
 5. **Nitrogen solubility** — the cushion itself is done (Dalton, venting, supply line); add Henry's-law
-   solution and degassing as the water heats, and non-equilibrium (adiabatic) gas compression.
+   solution and degassing as the water heats.
 
 ## Operations
 6. **P–T limit curves** — illustrative heat-up/cooldown brittle-fracture limit and minimum-pressure

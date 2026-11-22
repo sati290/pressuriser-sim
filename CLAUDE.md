@@ -59,22 +59,21 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 
 **Pure physics, no DOM, no M/A, no setpoints.**
 - `kap(°C)` approximate isothermal compressibility of liquid (1/Pa).
-- `pz(M,U,V,Mn)` pressuriser state from water mass, internal energy, available volume, nitrogen mass →
-  solid (compressed liquid) or two-phase (saturated mixture); with `Mn > 0` (`pzN`) liquid + a gas space
-  of nitrogen and saturated vapour (Dalton), which tends to the other two as `Mn → 0`. Returns
-  `{mode,T,P,x,level,pN,pS,yN,…}` or `{err}`. `mode` is `'two'` whenever there is a gas space; nitrogen
-  is `s.Mn > 0`. Nitrogen below 0.1 % of the gas with the supply shut is dropped in `step`.
+- The pressuriser is always two regions at one pressure, never forced into equilibrium: water (`s.Ml`,
+  `s.Ul`, `s.Vl`; compressed liquid, may be sub- or superheated) and a gas space (`s.Mv` steam, `s.Mn`
+  nitrogen, `s.Ug`, `s.Vg`) at its own temperature; no gas space = water-solid. `s.M`, `s.U` are totals.
+  `vap(ρ,u)` / `vapT(ρ,T)` steam (superheated from the IF97 fit `VT`, or wet); `gas(Mv,Mn,Ug,Vg)` the gas
+  space (Dalton). `neSolve`/`neAt` solve the pressure each step with the surge, boundary work and the
+  water–gas transfers (time constants `TAUNE`, per state `s.tau`, `init({tau})`). `derive` builds `s.d`
+  `{mode,T,Ti,Tl,Tg,P,level,pS,pN,yN,…}`; `mode` is `'two'` whenever there is a gas space; `T` is the
+  interface temperature T_sat(steam partial pressure), or the water temperature when solid.
+  Nitrogen below 0.1 % of the gas with the supply shut is dropped; steam below 1 g with no nitrogen joins the water.
 - `relW`, `gasF(d)` relief flow and its gas-mixture factor; `n2W(P)` nitrogen supply flow.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
 - `init(o)` builds a plant state; `step(s,u,dt)` advances one step from the final command
   `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
-- Steam bubble without nitrogen: split into water and steam regions (`s.ne`, `s.Mg`, `s.Ug`, `s.Vl`, `s.Vg`;
-  `s.M`, `s.U` stay totals) with finite-rate flashing, surface condensation, superheat decay and rain-out
-  (`stepNE`, `neSolve`, `vap`); back to one equilibrium region (`pz`) below 0.05 m³ of steam or when
-  nitrogen flows in. `d.T` is then T_sat(P); `d.Tl`, `d.Tg` the region temperatures. `init({neq:false})`
-  keeps the bubble in equilibrium, `init({tau})` overrides the time constants.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
 
@@ -130,13 +129,12 @@ leak) that destructures what it needs from `PZSim`. Order:
 
 ## Known limitations (keep the notes section in the page in sync)
 
-- Nitrogen: ideal gas in equilibrium with the water (no adiabatic heating on compression), no
-  solubility, supply from a fixed 4.0 MPa header, throttled valve, manual only (no M/A).
-- Steam bubble: water and steam regions relax towards saturation with illustrative time constants
-  (flashing 5 s, surface condensation 300 s, steam superheat 30 s), not fitted to data; the water is one
-  well-mixed region (no hot surface layer); spray reaches saturation. Superheated steam is a quadratic fit
-  to IF97 region 2 (~1 % to 10 K superheat; extrapolated above ~350 °C). Insurge layer mixes with τ = 300 s.
-  Nitrogen cushions and bubbles under 0.05 m³ stay in equilibrium. No wall heat capacity in the pressuriser.
+- Nitrogen: ideal gas, no solubility, supply from a fixed 4.0 MPa header, throttled valve, manual only (no M/A).
+- Water and gas relax towards each other with illustrative time constants (boiling/evaporation 5 s,
+  surface condensation 300 s, gas–water heat exchange 30 s), not fitted to data, the same with nitrogen
+  (no diffusion-limited evaporation); the water is one well-mixed region (no hot surface layer); spray
+  reaches the interface temperature. Superheated steam is a quadratic fit to IF97 region 2 (~1 % to 10 K
+  superheat; extrapolated above ~350 °C). Insurge layer mixes with τ = 300 s. No wall heat capacity.
 - RCS is one well-mixed liquid node; no loops, no hot/cold leg split, no SG secondary side.
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
 - Level is liquid volume fraction; the mimic draws it by volume in a cylinder with hemispherical heads (0 % = bottom, 100 % = top).

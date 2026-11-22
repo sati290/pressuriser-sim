@@ -8,8 +8,8 @@
 | `VR` | 280 m³ | RCS liquid volume (excluding pressuriser) |
 | `CM` | 0.6 GJ/K | RCS metal heat capacity |
 | `TAU` | 300 s | Insurge layer mixing time constant |
-| `TAUNE` | fl 5 s, sc 300 s, sh 30 s | Non-equilibrium steam bubble: superheated water flashes (fl), subcooled water condenses steam at its surface (sc), steam superheat goes to the water (sh). Round illustrative values, not fitted to plant data; per state as `s.tau` (`init({tau})`) |
-| `VNE` | 0.05 m³ | Below this steam volume the bubble is one equilibrium mixture (`pz`); it splits again above 2·VNE |
+| `TAUNE` | fl 5 s, sc 300 s, sh 30 s | Water–gas transfers: water above the interface temperature boils or evaporates (fl), water below it condenses steam at its surface (sc), the gas exchanges heat with the water (sh). Round illustrative values, not fitted to plant data; the same with nitrogen. Per state as `s.tau` (`init({tau})`) |
+| `MVMIN` | 1 g | Steam left with no nitrogen below this condenses into the water at once (the pressuriser goes solid) |
 | Net heat | −60 … +60 MW | One operator control: pump work + core/decay heat − RHR/steam dump − losses. Pumps are assumed running (mixed RCS, spray head available) |
 | Heater max | 1.8 MW | Pressuriser heaters (interlock: trip below 12 % level, always on) |
 | Spray max | 40 kg/s | Main spray at RCS temperature |
@@ -51,15 +51,14 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 
 | Field | Meaning |
 |---|---|
-| `M`, `U` | Water mass and internal energy of the pressuriser above the insurge layer (or the whole liquid when solid); `U` includes the nitrogen's c_v·T. Split bubble: totals of the water and steam regions |
-| `ne` | True while the steam bubble is split into water and steam regions (non-equilibrium) |
-| `Mg`, `Ug` | Split bubble: steam region mass and internal energy (water region = `M − Mg`, `U − Ug`) |
-| `Vl`, `Vg` | Split bubble: water and steam region volumes at the end of the last step (for the boundary work) |
-| `neq`, `tau` | Whether a steam bubble may split (`init({neq:false})` keeps it in equilibrium, for comparison); the time constants |
-| `Mn` | Nitrogen mass in the gas space (0 = steam bubble or water-solid) |
+| `Ml`, `Ul`, `Vl` | Water region (above the insurge layer): mass, internal energy, volume |
+| `Mv`, `Ug`, `Vg` | Gas space: steam mass, internal energy of the gas (steam u + nitrogen c_v·T), volume. All 0 when water-solid |
+| `M`, `U` | Totals `Ml + Mv`, `Ul + Ug` (kept for tests and displays) |
+| `tau` | The transfer time constants |
+| `Mn` | Nitrogen mass in the gas space (0 = steam alone or water-solid) |
 | `Ms`, `hs`, `rs` | Insurge layer: mass, specific enthalpy, density (bottom of pressuriser) |
 | `Mr`, `Tr` | RCS liquid mass and temperature |
-| `d` | Derived pressuriser state from `pz(M, U, VP − Ms/rs)`; split bubble: from the step's pressure solve, with `ne`, `Tl` (water), `Tg` (steam), and `T` = T_sat(P) at the interface |
+| `d` | Derived state (`derive`, at the step's solved pressure): `mode` ('solid' with no gas space, else 'two'), `P`, `Tl` water, `Tg` gas, `Ti` interface temperature = T_sat(steam partial pressure) (T_sat(P) with steam alone or solid), `T` = `Ti` with a gas space or `Tl` when solid (what the controller and gauges use), `level`, `pS` steam partial pressure, `pN`, `yN`, `Mg` steam mass, `Ml`, `Vg`, `hl`, `hg` steam enthalpy |
 | `Pr` | RCS pressure from `rcsP(Mr, Tr)` (equals `d.P` after the surge solve) |
 | `sv`, `rel` | Safety-valve latch, relief valve opening fraction 0–1 (as commanded) |
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
@@ -74,61 +73,24 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 | `hold` | Charging/letdown flows held by a secondary actuator in A |
 | `porv` | Auto-relief latch (runs in M too) |
 
-## Pressuriser state solve `pz(M,U,V,Mn)`
+## Pressuriser model: water and gas, never forced into equilibrium
 
-With `Mn = 0`:
+Above the insurge layer the pressuriser is two regions at one pressure P. **Water** (Ml, Ul): compressed
+liquid at T_l from u_f(T_l) = u_l, ρ_l(T_l, P); it may be below or above saturation. **Gas space** (Mv, Mn,
+Ug, volume Vg): steam and nitrogen at one gas temperature T_g. Nitrogen is an ideal gas, p_N = Mn·R_N·T_g/Vg;
+steam at density Mv/Vg and T_g is superheated (`vapT`, from the IF97 fit) or, below the saturation
+temperature for its density, wet; P = p_v + p_N (Dalton). With steam alone T_g comes straight from the energy
+(`vap`); with both, T_g solves Ug = Mv·u_v(ρ_v, T_g) + Mn·c_v·T_g (safeguarded Newton, `gas`).
+With no gas space the pressuriser is **water-solid**: the water fills what the layer leaves.
 
-1. Find T with u_f(T) = U/M. If ρ̄ = M/V ≥ ρ_f(T) → **solid**: P from compressed-liquid relation.
-2. Otherwise **two-phase**: find T with u_mix(T; v̄) = ū where x = (v̄ − v_f)/(v_g − v_f),
-   restricted to temperatures where 0 ≤ x ≤ 1 (bisection). P = p_sat(T).
-3. Errors: `dry` (no liquid left), `cold` (below table), `solid?` (no consistent state).
+The interface temperature is T_i = T_sat(p_v) (T_sat(P) with steam alone or when solid). The same equations
+cover water-solid, the steam bubble and the nitrogen cushion; nothing switches model. A bubble forms when
+water-solid water gets above T_sat(P) and boils into the empty gas space; the gas space disappears when the
+last steam (below `MVMIN`, no nitrogen) condenses. As Mn → 0 the gas tends to steam alone (tested to 20 Pa,
+1 mK at Mn = 1 µg).
 
-Solid↔two-phase transition is continuous: at x = 0, v̄ = v_f and P = p_sat.
-
-With `Mn > 0` (`pzN`): liquid and gas at one temperature T. The water vapour is saturated at T
-(partial pressure p_sat(T), density ρ″(T)); nitrogen is an ideal gas in the same volume; Dalton:
-P = p_sat(T) + Mn·R_N·T/V_g. The liquid is compressed liquid at P, ρ_l = ρ_f/(1 − κ(P − p_sat)), u = u_f(T).
-Water mass gives V_l = (M − ρ″V)/(ρ_l − ρ″), V_g = V − V_l.
-
-1. For a trial T, solve P = p_sat + Mn·R_N·T/V_g(P) (safeguarded Newton in P − p_sat; V_g grows with P
-   as the liquid compresses, so the root is unique).
-2. Find T where E(T) = M_l·u_f + M_g·u_g + Mn·c_v·T equals U (Illinois regula falsi, ~6–10 evaluations;
-   E is smooth and increasing). Upper bound where ρ″(T)·V = M (all water vapour → `dry`).
-3. There is always a gas space: squeezing it raises the pressure without bound, so this branch is never
-   water-solid. Nitrogen entering a solid pressuriser opens a gas space continuously.
-
-As Mn → 0 the result tends to the steam and water-solid states (tested to 20 Pa, 1 mK at Mn = 1 µg),
-so one model covers water-solid, nitrogen-cushion and steam-bubble operation.
-
-## Non-equilibrium steam bubble (split)
-
-With a steam bubble and no nitrogen, the region above the insurge layer is two regions at one pressure P:
-**water** (Ml, Ul; compressed liquid at T_l from u_f(T_l) = u_l, which may be below or above T_sat(P)) and
-**steam** (Mg, Ug; `vap`, superheated or, for one step, wet). The water–steam interface is at T_s = T_sat(P).
-`init` and `step` split an equilibrium bubble once its steam volume exceeds 2·`VNE`, at the common temperature
-(no jump). The split goes back to one equilibrium region (`pz`, any non-equilibrium relaxed at once) when the
-steam volume falls below `VNE`, or when nitrogen flows in.
-
-Each step (`stepNE`), with h′, h″ at T_s:
-
-1. Heat loss UA·(T − 40 °C) is shared by volume fraction, each region at its own temperature. Heaters go to the water.
-   Relief takes steam at its enthalpy h_v (at most half the steam per step).
-2. Inside the pressure solve, with h′(P), h″(P) linearised about the start of the step (implicit targets, which
-   keep a small steam space stable):
-   - Spray (at RCS enthalpy h_r) joins the water and condenses w_s·(h′ − h_r)/(h_v − h′) of steam (drops reach saturation).
-   - Water above saturation, Δ = h_l − h′ > 0, flashes m = Ml·Δ·(1 − e^(−dt/τ_fl))/(h″ − h′), entering the steam at h″.
-   - Water below saturation condenses m = Ml·(−Δ)·(1 − e^(−dt/τ_sc))/(h_v − h′) of steam at the surface.
-3. Steam above saturation hands Mg·(h_v − h″)·(1 − e^(−dt/τ_sh)) of heat to the water.
-4. The insurge layer mixes into the water (enthalpy h_s).
-5. **Pressure solve** (one unknown, P; Illinois regula falsi): the surge follows from P explicitly,
-   dm = Mr − VR·ρ_l(Tr, P) (insurge to the layer; outsurge from the layer first, then water at h_l). Each region
-   does boundary work −P·ΔV against its start-of-step volume (two fixed-point passes for the water). The steam then
-   fills what the layer and the water leave, and the residual is P_steam(ρ_g, u_g) − P, which falls as P rises.
-6. If the steam came out wet, the condensate rains into the water at u′, with its volume (pressure unchanged).
-
-All transfers carry enthalpy and every region does its own boundary work, so water mass and energy are conserved
-between regions. As the time constants go to zero the result tends to the equilibrium model (tested); the
-step is about 15× cheaper than the nested equilibrium surge solve.
+`init` builds water at Tpz (solid), a bubble with water and steam at T_sat(P), or a cushion with water and
+gas at Tpz, saturated steam plus nitrogen making up P − p_sat(Tpz).
 
 ## Control step `PZCtl.update(cs, s, c, dt)` (control.js)
 
@@ -142,7 +104,7 @@ value (`c.ch, c.ld, c.sp` kg/s, `c.q` kW, `c.relMan` %), converted to SI along w
    - Heaters and spray, `c.pzMode === 'pres'`: heaters = 1.8 MW·clamp((SP − P)/0.15 MPa + 0.2);
      spray = 40·clamp((P − SP − 0.1 MPa)/0.4 MPa).
      `c.pzMode === 'dT'` (hold pressuriser − coolant ΔT `c.dT`, K): error eT = (T_pz − Tr) − c.dT, with
-     T_pz the saturated-region (or solid liquid) temperature. With a bubble T_pz = Tsat(P), so this holds
+     T_pz = `d.T`, the interface temperature (or the water temperature when solid). With a steam bubble T_pz = Tsat(P), so this holds
      P = p* = p_sat(Tr + c.dT), and the ΔT equals the coolant subcooling margin. Water-solid it acts on the
      liquid temperature while letdown sets the pressure. Default 53 K (15.5 MPa at 291.7 °C);
      heaters = 1.8 MW·clamp(0.2 − eT/1.25 K); spray = 40·clamp((eT − 0.5 K)/2.5 K). Bands are in kelvin
@@ -169,34 +131,39 @@ The controller reads the plant state directly (ideal, instantaneous measurements
 
 ## Plant step `PZSim.step(s, u, dt)` (sim.js)
 
-Steps 3–7 below are the equilibrium path (water-solid, nitrogen, small bubble); a split steam bubble takes
-`stepNE` instead (see above) after the same limits, protection and RCS update.
-
 `u = {ch, ld, sp (kg/s), q (W), rel (0–1), n2 (0–1), heat (W)}`, the final command.
 
 1. **Limits and protection**: each actuator is clamped to `LIM` (charging/letdown 0–20 kg/s, heaters
-   0–1.8 MW, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level in either mode. Safety valve
-   17.2/16.9 MPa always armed. Relief flow = opening × `relW`; vents steam (two-phase) or liquid (solid).
-   These act whoever commands, and are recorded in `s.f`.
-2. **RCS energy**: dTr = (net heat + pulse)·dt / (Mr·cp + CM).
-3. **Boundary flows**: Mr += (charging − letdown − spray)·dt; pressuriser saturated region gains
-   spray at RCS enthalpy, heater power, minus the heat loss UA·(T − 40 °C) and relief. With nitrogen, the vented gas carries
-   nitrogen by its mass share, Mn·(1 − exp(−w·dt/(Mn + M_g))) per step (so it can't overdraw), at
-   c_p·T; the rest is steam at h″(T). Nitrogen supply adds `u.n2`·`n2W(P)` at c_p·293 K.
-4. **Layer mixing**: m = Ms·dt/τ (+ small floor) moves from the layer into the saturated region with
-   energy m·(hs − P/ρs) and volume m/ρs. If the pressuriser is solid the layer merges at once.
-5. **Surge solve** (implicit): find dm (RCS → pressuriser, kg) such that
-   P_pz(after dm) = P_rcs(Mr − dm, Tr). Bracket ±400 kg, expand ×3, then 44 bisections.
-   - Insurge (dm > 0, two-phase): mass goes to the layer; saturated region gets compression work
-     P·dm/ρr and loses volume dm/ρr.
-   - Outsurge (dm < 0): drawn from the layer first, then saturated liquid at h_l. Hot outsurge
-     water heats the RCS.
-6. Re-derive `d`, total level = (saturated liquid volume + layer volume)/VP, and `Pr`.
-7. **Nitrogen gone**: if the supply delivered nothing this step and the nitrogen is below `N2MIN` of the
-   gas, Mn = 0 and its c_v·T leaves U; the pressure steps down by under 0.1 %.
+   0–1.8 MW, spray 0–40 kg/s, relief 0–1). Heaters trip below 12 % level (not when solid). Safety valve
+   17.2/16.9 MPa always armed. Relief flow = opening × `relW` (× `gasF` with nitrogen); vents gas, or
+   water when solid. These act whoever commands, and are recorded in `s.f`.
+2. **RCS**: dTr = (net heat + pulse)·dt / (Mr·cp + CM); Mr += (charging − letdown − spray)·dt.
+3. **Explicit transfers**: heat loss UA·(T − 40 °C) shared by volume fraction, each region at its own
+   temperature; heaters into the water. Relief takes gas, nitrogen by its mass share
+   Mn·(1 − e^(−m/(Mv + Mn))) (so it can't overdraw) at c_p·T_g, the rest steam at h_v; or water at h_l when solid.
+   Nitrogen supply adds `u.n2`·`n2W(P)` at c_p·293 K. The gas exchanges heat with the water,
+   (Ug − Ug at T_t)·(1 − e^(−dt/τ_sh)) at constant density, with T_t = T_i for steam alone (superheat only;
+   steam below saturation is wet and rains out instead) and T_t = T_l with nitrogen. Spray joins the water.
+   The insurge layer mixes into the water (m = Ms·dt/τ plus a small floor, enthalpy h_s; all at once when solid).
+4. **Pressure solve** (one unknown, P; Illinois regula falsi; `neSolve`/`neAt`):
+   - The surge follows from P explicitly, dm = Mr − VR·ρ_l(Tr, P): insurge to the layer (straight into the
+     water when solid), outsurge from the layer first, then water at h_l. Hot outsurge water heats the RCS.
+   - Interface transfers, with T_i taken at P (linearised about the start of the step, through the steam
+     partial pressure), which keeps a small gas space stable:
+     spray condenses w_s·(h′ − h_r)/(h_v − h′) of steam (drops reach T_i);
+     water above T_i, Δ = u_l − u′(T_i) > 0, boils or evaporates m = Ml·Δ·(1 − e^(−dt/τ_fl))/(h″ − h′) into the gas
+     at h″ (with nitrogen at most up to ρ″(T_l)·Vg − Mv, saturation at the water temperature);
+     water below T_i condenses m = Ml·(−Δ)·(1 − e^(−dt/τ_sc))/(h_v − h′) of steam.
+   - Each region does boundary work −P·ΔV against its start-of-step volume (two fixed-point passes for the water).
+   - Residual: P_gas(Vg, Ug) − P with a gas space, else −(room left)·10¹⁰; it falls as P rises.
+5. **Rain-out**: wet steam's condensate moves into the water at u′(T_g) with its volume.
+6. **Nitrogen gone**: with the supply shut and nitrogen below `N2MIN` of the gas, Mn = 0 and its c_v·T leaves Ug.
+   **Steam gone**: with no nitrogen and Mv < `MVMIN`, the steam joins the water (water-solid).
+7. Re-derive `d` and `Pr`.
 
-The implicit surge solve is essential: RCS stiffness per kg is ~4–8 kPa when liquid, so an explicit
-coupling would oscillate whenever the pressuriser is solid.
+All transfers carry enthalpy and every region does its own boundary work, so water and nitrogen mass and
+energy are conserved between regions. The implicit surge solve is essential: RCS stiffness per kg is
+~4–8 kPa when liquid, so an explicit coupling would oscillate whenever the pressuriser is solid.
 
 ## Halts (`fault(s)` in sim.js; `physTick` stops on it)
 
@@ -215,7 +182,7 @@ RCS can't represent boiling).
 | Only letdown in A in level mode; only charging in A in pressure mode | the flow in A controls; the manual one is untouched |
 | +40 MW for 120 s at hot standby, charging/letdown in M | insurge ~12 kg/s, P +~0.1 MPa, spray opens |
 | Same, charging/letdown in A on level | level peaks 25.6 %, back at 25 % in ~2 min, no undershoot below 24.9 % |
-| Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.5 h; operator switches to level control; level to 25 % in ~2 h |
+| Cold solid start, 1.8 MW heaters, net heat 0, letdown on pressure | bubble at ~230 °C after ~5.4 h; operator switches to level control; level to 25 % in ~2 h |
 | Same, but nobody switches at the bubble | letdown winds up to 20 kg/s and drains the pressuriser |
 | Heat-up, net heat +19.5 MW | coolant ~40 °C/h; letdown carries expansion |
 | Refill to solid at 150 °C, operator switches back to letdown | goes solid, letdown holds 2.8 MPa |
@@ -223,14 +190,16 @@ RCS can't represent boiling).
 | Auto relief at 15.8 and 16.6 MPa | opens within 0.02 MPa of the setting |
 | Mass conservation, closed system (with the controller, and plant alone with fixed commands) | < 1 kg drift over 10 min |
 | Superheated steam fit vs IF97 region 2 at 345 °C + 10 K and 250 °C + 15 K | P − p_sat within 1 %, T within 0.2 K |
-| Split bubble at hot standby, 1 h, heaters matching losses | water and steam within 0.05 K of saturation |
-| +40 MW for 120 s at hot standby, everything manual, split vs equilibrium | peak +0.51 MPa vs +0.30 MPa; steam superheats ~0.3 K, water ends ~2.4 K subcooled; overshoot decays over ~10 min |
-| Same with τ = 0.25/1/1 s | follows the equilibrium model within 15 kPa |
-| Relief fully open 60 s at hot standby, then shut | water superheats ~0.7 K; pressure recovers ~30 kPa in the next minute (equilibrium: keeps falling) |
+| Hot standby, 1 h, heaters matching losses | water and steam within 0.05 K of saturation |
+| +40 MW for 120 s at hot standby, everything manual | peak +0.60 MPa; steam superheats ~0.9 K, water ~3 K subcooled; overshoot decays over ~10 min |
+| Same with τ = 0.25/1/1 s (near equilibrium) | peak +0.31 MPa (the former equilibrium model: +0.30), within 0.15 K of saturation |
+| Relief fully open 60 s at hot standby, then shut | water superheats ~0.7 K; pressure recovers ~30 kPa in the next minute (fast rates: none) |
 | Insurge peak, dt 2 s vs 0.25 s | within 2 % |
-| Nitrogen branch at Mn = 1 µg vs steam and water-solid states | P within 20 Pa, T within 1 mK, level within 1e-4 |
+| Gas at Mn = 1 µg vs steam alone | P within 20 Pa, T within 1 mK |
+| Nitrogen into a steam bubble at 2.5 MPa | no pressure step; cold nitrogen cools the gas below the water |
+| 2.4 t insurge into a cold cushion in 2 min | gas heats above the water, relaxes within 10 min |
 | Cold nitrogen cushion (60 °C, 2.8 MPa, 25 %), balanced, 1 h | steady |
 | Closed system with nitrogen, then relief open | water and nitrogen balances close (< 1 kg, < 1 µg) |
 | Nitrogen into water-solid, letdown on pressure | gas space forms; pressure rises to ~3.1 MPa while open (inflow beats 20 kg/s letdown), back to 2.8 MPa once shut |
-| Nitrogen startup, 1.8 MW heaters, relief in A at 3.0 MPa, level in A | nitrogen purged ~2.9 h at ~232 °C; pressure step at the switch < 0.01 MPa |
+| Nitrogen startup, 1.8 MW heaters, relief in A at 3.0 MPa, level in A | nitrogen purged ~2.8 h at ~232 °C; pressure step at the switch < 0.01 MPa |
 | Cooldown from 175 °C steam bubble, spray 3 kg/s, operator works the nitrogen valve | pressuriser reaches coolant temperature, gas > 60 % nitrogen, P ≥ 2.7 MPa |

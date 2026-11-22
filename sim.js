@@ -1,10 +1,15 @@
 // Pressuriser + RCS plant model: pure physics, no DOM, no automatic control.
 // step() takes final actuator commands (from the operator or from control.js; the plant can't tell).
-// Loaded after common.js, as a classic <script> (index.html) or a module (tests); it only
-// defines globalThis.PZSim. Equations and constants are described in docs/physics.md.
+// Loaded after common.js, as a classic <script> (index.html) or a module (tests); it only defines
+// globalThis.PZSim. Equations and constants are described in docs/physics.md.
+//
+// The pressuriser is two regions at one pressure, never forced into equilibrium: water (compressed
+// liquid, may be below or above saturation) and a gas space of steam and/or nitrogen with its own
+// temperature (steam superheated, saturated, or wet for one step before the condensate rains out).
+// With no gas space it is water-solid. Below the water sits the insurge layer.
 globalThis.PZSim = (() => {
 'use strict';
-const {sat,Tsat,clamp,LIM,T0,THI,rc}=globalThis.PZCommon;
+const {sat,Tsat,clamp,LIM,T0,THI}=globalThis.PZCommon;
 // isothermal compressibility of liquid water, 1/Pa (approximate, near saturation)
 const KT=[[0,.509],[25,.452],[50,.441],[75,.456],[100,.49],[150,.58],[200,.74],[250,1.03],[300,1.6],[325,2.2],[340,3],[350,3.8],[360,5.5],[374,12]];
 const kap=c=>{if(c<=0)return .509e-9;for(let i=1;i<KT.length;i++)if(c<=KT[i][0]){const[a,x]=KT[i-1],[b,y]=KT[i];return (x+(y-x)*(c-a)/(b-a))*1e-9}return 12e-9};
@@ -16,81 +21,11 @@ const RN=296.8,CVN=743,CPN=RN+CVN,RS=461.5,N2P=4e6,N2W=0.5,TN2=293.15,N2MIN=1e-3
 // pressuriser heat loss through the insulation to ambient air at TAMB (fixed): UA·(T − TAMB), W/K;
 // 61 kW at hot standby
 const UA=200,TAMB=313.15;
-// pressuriser state from mass and energy (water M, U includes the nitrogen's cv·T), nitrogen mass Mn
-const pz=(M,U,V=VP,Mn=0)=>{
-  if(Mn>0)return pzN(M,U,V,Mn);
-  const v=V/M,u=U/M,rho=M/V;
-  if(sat(T0).uf>u)return {err:'cold',P:0};
-  if(sat(THI).uf>u){
-    let a=T0,b=THI;for(let i=0;i<46;i++){const m=(a+b)/2;if(sat(m).uf<u)a=m;else b=m}
-    const T=(a+b)/2,q=sat(T);
-    if(rho>=q.rf){const P=q.p+(1-q.rf/rho)/kap(T-273.15);return {mode:'solid',T,P,x:0,level:V/VP,rf:q.rf,rg:q.rg,hl:u+P/rho,hg:q.hg,dpdT:q.dpdT,Ml:M,Mg:0,Vg:0,Mn:0,pN:0,yN:0}}
-  }
-  const g=T=>{const q=sat(T);return Math.min(1/q.rg-v,v-1/q.rf)};
-  if(g(T0)<0)return {err:'dry',P:0};
-  let a=T0,b=THI,Tmax=THI;
-  if(g(THI)<0){for(let i=0;i<46;i++){const m=(a+b)/2;if(g(m)>=0)a=m;else b=m}Tmax=a}
-  const mixU=T=>{const q=sat(T),x=(v-1/q.rf)/(1/q.rg-1/q.rf);return q.uf+x*(q.ug-q.uf)};
-  if(mixU(Tmax)<u)return {err:v<1/rc?'solid?':'dry',P:0};
-  a=T0;b=Tmax;for(let i=0;i<46;i++){const m=(a+b)/2;if(mixU(m)<u)a=m;else b=m}
-  const T=(a+b)/2,q=sat(T),x=(v-1/q.rf)/(1/q.rg-1/q.rf),Ml=M*(1-x);
-  return {mode:'two',T,P:q.p,x,level:Ml/q.rf/VP,rf:q.rf,rg:q.rg,hl:q.hf,hg:q.hg,dpdT:q.dpdT,Ml,Mg:M*x,Vg:M*x/q.rg,Mn:0,pN:0,yN:0};
-};
-// Liquid + gas space holding nitrogen and water vapour, one temperature T (equilibrium). The vapour is
-// saturated at T (partial pressure p_sat(T), density ρ″(T)); nitrogen is an ideal gas filling the same
-// volume; P = p_sat(T) + Mn·RN·T/Vg (Dalton). The liquid is compressed liquid at P, u = u_f(T).
-// For a given T, P solves P = p_sat + Mn·RN·T/Vg(P) (safeguarded Newton; Vg grows with P as the liquid
-// compresses), then T is found by bisection on the energy. There is always a gas space: squeezing it
-// raises the pressure without limit, so this branch never goes water-solid.
-const pzN=(M,U,V,Mn)=>{
-  const at=T=>{
-    const q=sat(T),ps=q.p,rf=q.rf,rg=q.rg,uf=q.uf,ug=q.ug,hg=q.hg,k=kap(T-273.15),K=Mn*RN*T,A=M-rg*V;
-    if(A<=0)return null; // the water would all be vapour
-    // x = P − p_sat; liquid density, gas volume and residual r(x) = K/Vg − x (decreasing in x)
-    const rl=x=>rf/(1-k*x),Vg=x=>V-A/(rl(x)-rg),r=x=>{const g=Vg(x);return g>0?K/g-x:Infinity};
-    let lo=0,hi,x;const g0=Vg(0);
-    if(g0>0)hi=K/g0;else{hi=1e5;while(r(hi)>0&&hi<0.4/k)hi*=2}
-    x=hi;
-    for(let i=0;i<60;i++){
-      const g=Vg(x),rv=g>0?K/g-x:Infinity;
-      if(rv>0)lo=x;else hi=x;
-      if(hi-lo<=1e-9*(ps+hi)+1e-3)break;
-      let xn=NaN;if(g>0){const l=rl(x),dg=A*(l*l*k/rf)/((l-rg)**2);xn=x-rv/(-K/(g*g)*dg-1)}
-      x=xn>lo&&xn<hi?xn:(lo+hi)/2;
-    }
-    const P=ps+x,l=rl(x),Vl=A/(l-rg),Ml=l*Vl,Mg=M-Ml;
-    return {T,P,ps,rl:l,rg,Ml,Mg,Vg:V-Vl,hl:uf+P/l,hg,E:Ml*uf+Mg*ug+Mn*CVN*T};
-  };
-  let Tmax=THI;
-  if(sat(THI).rg*V>=M){let a=T0,b=THI;for(let i=0;i<46;i++){const m=(a+b)/2;if(sat(m).rg*V<M)a=m;else b=m}Tmax=a}
-  const e0=at(T0);if(!e0||e0.E>U)return {err:'cold',P:0};
-  const e1=at(Tmax);if(e1&&e1.E<U)return {err:'dry',P:0};
-  // Illinois (regula falsi) on E(T) = U: E is smooth and increasing, so this takes ~6–10 evaluations
-  let a=T0,b=Tmax,fa=e0.E-U,fb=e1?e1.E-U:Infinity,side=0,e=null;
-  if(!isFinite(fb)){for(let i=0;i<60&&!isFinite(fb);i++){const m=(a+b)/2,em=at(m);if(em&&em.E<U){a=m;fa=em.E-U}else{b=m;fb=em?em.E-U:Infinity}}}
-  for(let i=0;i<60;i++){
-    let m=isFinite(fb)?(a*fb-b*fa)/(fb-fa):(a+b)/2;if(!(m>a&&m<b))m=(a+b)/2;
-    e=at(m);const fm=e?e.E-U:Infinity;
-    if(fm<0){a=m;fa=fm;if(side<0)fb/=2;side=-1}else{b=m;fb=fm;if(side>0)fa/=2;side=1}
-    if(b-a<1e-10||Math.abs(fm)<1e-11*Math.abs(U))break;
-  }
-  if(!e||e.Ml<=0)return {err:'dry',P:0};
-  const q=sat(e.T),pN=e.P-e.ps;
-  return {mode:'two',T:e.T,P:e.P,x:e.Mg/M,level:e.Ml/e.rl/VP,rf:e.rl,rg:e.rg,hl:e.hl,hg:e.hg,dpdT:q.dpdT,
-    Ml:e.Ml,Mg:e.Mg,Vg:e.Vg,Mn,pN,pS:e.ps,yN:pN/e.P};
-};
-const liqRho=(T,P)=>{const q=sat(T);return q.rf/(1-kap(T-273.15)*(P-q.p))};
-const rcsP=(Mr,Tr)=>{const q=sat(Tr),rho=Mr/VR;return q.p+(1-q.rf/rho)/kap(Tr-273.15)};
-const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
-const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
-// ---------- non-equilibrium steam bubble (no nitrogen) ----------
-// The saturated region splits into water (Ml, Ul at Tl: compressed liquid, may be sub- or superheated
-// against Tsat(P)) and steam (Mg, Ug at Tg: superheated, or wet for one step before the condensate rains
-// out). They share the pressure P; the interface is at Tsat(P). Transfers between them relax with time
-// constants (s), overridable per state as s.tau: superheated water flashes (fl), subcooled water
-// condenses steam at the surface (sc), superheated steam gives its superheat to the water (sh).
-// Below VNE (m³) of steam, or with nitrogen, the region is one equilibrium mixture again (pz).
-const TAUNE=Object.freeze({fl:5,sc:300,sh:30}),VNE=0.05;
+// Transfers between water and gas relax with time constants (s), overridable per state as s.tau:
+// water above the interface temperature boils or evaporates (fl), water below it condenses steam at
+// the surface (sc), the gas exchanges heat with the water (sh). Round illustrative values.
+// Steam left with no nitrogen below MVMIN (kg) condenses into the water: the pressuriser is solid.
+const TAUNE=Object.freeze({fl:5,sc:300,sh:30}),MVMIN=1e-3;
 // superheated steam near saturation, at constant density ρ″(Ts) and temperature Ts + θ:
 // P − p_sat(Ts) = a1·θ + a2·θ², u − u″(Ts) = b1·θ + b2·θ²   [°C, a1 Pa/K, a2 Pa/K², b1 J/(kg·K), b2 J/(kg·K²)]
 // From IAPWS-IF97 region 2 (generated by tools/vapour-table.mjs): within ~1 % up to 10 K superheat,
@@ -113,35 +48,63 @@ const vap=(rho,u)=>{
   for(let i=0;i<10;i++){const f1=mixU(T,v)-u,f2=mixU(T-0.01,v)-u,dT=f1*0.01/(f1-f2);T-=dT;if(Math.abs(dT)<1e-7)break}
   const r=sat(T),x=(v-1/r.rf)/(1/r.rg-1/r.rf);return {P:r.p,T,x};
 };
-// state at trial pressure P. o: water Ml, Ul; steam Mg, Ug; layer volume Vs. Optional: start-of-step
-// volumes Vl0, Vg0 (each region then does boundary work −P·ΔV); surge from an RCS of mass Mr at Tr
-// (dm = Mr − VR·ρ(Tr, P) into the pressuriser: insurge to the layer, outsurge from the layer first (Ms,
-// rs), then water at hl); interface transfers o.x, whose saturation targets h′, h″ are taken at P
-// (linearised about the start of the step), which keeps a small steam space stable.
-// Residual r = P_steam − P falls as P rises.
+// steam of density rho at temperature T → {p, u, x}: superheated above the saturation temperature for
+// that density, else a saturated mixture at T (explicit both ways)
+const vapT=(rho,T)=>{
+  const Ts=Trg(Math.log(rho));
+  if(T>=Ts){const q=sat(Ts),p=q.p,ug=q.ug,[a1,a2,b1,b2]=vtc(Ts),th=Math.min(T-Ts,b2<0?-b1/(2*b2):Infinity);return {p:p+a1*th+a2*th*th,u:ug+b1*th+b2*th*th,x:1}}
+  const q=sat(T),v=1/rho,x=(v-1/q.rf)/(1/q.rg-1/q.rf);return {p:q.p,u:q.uf+x*(q.ug-q.uf),x};
+};
+// gas space: steam Mv, nitrogen Mn, internal energy Ug (steam u + nitrogen cv·T), volume Vg →
+// {P, pv steam partial pressure, pN, Tg, xv steam quality}. Both at Tg; P = pv + Mn·RN·Tg/Vg (Dalton).
+// With both present Tg solves the energy (safeguarded Newton; T0 hint).
+const gas=(Mv,Mn,Ug,Vg,T0h)=>{
+  if(!(Mn>0)){const g=vap(Mv/Vg,Ug/Mv);return {P:g.P,pv:g.P,pN:0,Tg:g.T,xv:g.x}}
+  if(!(Mv>0)){const T=Ug/(Mn*CVN),pN=Mn*RN*T/Vg;return {P:pN,pv:0,pN,Tg:T,xv:1}}
+  const rv=Mv/Vg,F=T=>Mv*vapT(rv,T).u+Mn*CVN*T-Ug;
+  let lo=T0+0.01,hi=1500,T=clamp(T0h||400,lo+1,hi-1);
+  for(let i=0;i<50;i++){const f=F(T);if(f>0)hi=T;else lo=T;if(Math.abs(f)<1e-6*Math.abs(Ug)+1e-3||hi-lo<1e-9)break;
+    const dF=(F(T+0.01)-f)/0.01;let Tn=T-f/dF;if(!(Tn>lo&&Tn<hi))Tn=(lo+hi)/2;T=Tn}
+  const v=vapT(rv,T),pN=Mn*RN*T/Vg;return {P:v.p+pN,pv:v.p,pN,Tg:T,xv:v.x};
+};
+const liqRho=(T,P)=>{const q=sat(T);return q.rf/(1-kap(T-273.15)*(P-q.p))};
+const rcsP=(Mr,Tr)=>{const q=sat(Tr),rho=Mr/VR;return q.p+(1-q.rf/rho)/kap(Tr-273.15)};
+const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
+const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
+// State at trial pressure P. o: water Ml, Ul; gas Mv, Mn, Ug; layer volume Vs; start-of-step volumes Vl0,
+// Vg0 (each region does boundary work −P·ΔV); surge from an RCS of mass Mr at Tr (dm = Mr − VR·ρ(Tr, P)
+// into the pressuriser: insurge to the layer, or straight into the water when solid; outsurge from the
+// layer first (Ms, rs), then water at hl); interface transfers o.x, with the interface temperature
+// taken at P (linearised about the start of the step), which keeps a small gas space stable.
+// Residual r falls as P rises: P_gas − P with a gas space, else −(room left)·1e10.
 const neAt=(o,P)=>{
-  let Ml=o.Ml,Ul=o.Ul,Mg=o.Mg,Ugx=o.Ug,Vs=o.Vs,dm=0;
-  if(o.x){const x=o.x,dP=P-x.P0,hf=x.hf+x.dhf*dP,hg=x.hg+x.dhg*dP,hfg=hg-hf;
-    // spray drops heated to saturation by condensing steam (spray efficiency 1); spray and condensate join the water
-    const mc=hf>x.hr?Math.min(x.wsdt*(hf-x.hr)/(x.hv-hf),0.5*Mg):0;Ml+=mc;Ul+=mc*x.hv;Mg-=mc;Ugx-=mc*x.hv;
-    // water above saturation flashes into steam; water below it condenses steam at the surface
-    const dl=x.hl-hf;
-    if(dl>0){const m=Math.min(x.Ml*dl*x.ffl/hfg,0.5*Ml);Ml-=m;Ul-=m*hg;Mg+=m;Ugx+=m*hg}
-    else{const m=Math.min(x.Ml*-dl*x.fsc/(x.hv-hf),0.5*Mg);Ml+=m;Ul+=m*x.hv;Mg-=m;Ugx-=m*x.hv}}
-  if(o.Mr!==undefined){dm=o.Mr-VR*liqRho(o.Tr,P);
-    if(dm>=0)Vs+=dm/o.rr;else{const m=-dm,ml=Math.min(m,o.Ms),mr=m-ml;Vs-=ml/o.rs;Ml-=mr;Ul-=mr*o.hl}}
+  let Ml=o.Ml,Ul=o.Ul,Mv=o.Mv,Ug=o.Ug,Vs=o.Vs,dm=0;const Mn=o.Mn;
+  dm=o.Mr-VR*liqRho(o.Tr,P);
+  if(dm>=0){if(o.solid){Ml+=dm;Ul+=dm*o.hr}else Vs+=dm/o.rr}
+  else{const m=-dm,ml=Math.min(m,o.Ms),mr=m-ml;Vs-=ml/o.rs;Ml-=mr;Ul-=mr*o.hl}
   if(!(Ml>0))return {r:-Infinity};
-  const W=o.Vl0!==undefined;let Vl=W?o.Vl0:Ml/liqRho(Tuf(Ul/Ml),P),Tl=0;
-  for(let k=0;k<2;k++){Tl=Tuf((Ul-(W?P*(Vl-o.Vl0):0))/Ml);Vl=Ml/liqRho(Tl,P)}
-  const Vg=VP-Vs-Vl;if(!(Vg>0))return {r:Infinity};
-  const Ug=Ugx-(W?P*(Vg-o.Vg0):0),g=vap(Mg/Vg,Ug/Mg);
-  return {r:g.P-P,P,dm,Vs,Ml,Ul:Ul-(W?P*(Vl-o.Vl0):0),Mg,Vl,Vg,Ug,Tg:g.T,xg:g.x};
+  {const x=o.x,dT=clamp((P-x.P0)*x.yv/x.dpdT,-20,20),uf=x.uf+x.duf*dT,hf=x.hf+x.dhf*dT,hg=x.hg+x.dhg*dT;
+    // spray drops heated to the interface temperature by condensing steam (spray efficiency 1)
+    if(Mv>0&&hf>x.hr&&x.hv>hf){const mc=Math.min(x.wsdt*(hf-x.hr)/(x.hv-hf),0.5*Mv);Ml+=mc;Ul+=mc*x.hv;Mv-=mc;Ug-=mc*x.hv}
+    // water above the interface temperature boils / evaporates (with nitrogen at most up to saturation at
+    // the water temperature); water below it condenses steam at the surface
+    const dl=x.ul-uf;
+    if(dl>0){const m=Math.min(x.Ml*dl*x.ffl/(hg-hf),0.5*Ml,x.cap);Ml-=m;Ul-=m*hg;Mv+=m;Ug+=m*hg}
+    else if(Mv>0&&x.hv>hf){const m=Math.min(x.Ml*-dl*x.fsc/(x.hv-hf),0.5*Mv);Ml+=m;Ul+=m*x.hv;Mv-=m;Ug-=m*x.hv}}
+  let Vl=o.Vl0,Tl=0;
+  for(let k=0;k<2;k++){Tl=Tuf((Ul-P*(Vl-o.Vl0))/Ml);Vl=Ml/liqRho(Tl,P)}
+  Ul-=P*(Vl-o.Vl0);
+  const Vg=VP-Vs-Vl,e={P,dm,Vs,Ml,Ul,Mv,Vl,Vg};
+  if(!(Mv>0)&&!(Mn>0)){e.r=-Vg*1e10;e.Ug=0;e.Tg=Tl;e.xv=1;return e}
+  if(!(Vg>0))return {r:Infinity};
+  e.Ug=Ug-P*(Vg-o.Vg0);const g=gas(Mv,Mn,e.Ug,Vg,o.Tg0);
+  e.r=g.P-P;e.Tg=g.Tg;e.xv=g.xv;return e;
 };
 // bracket around o.P0, then Illinois regula falsi
 const neSolve=o=>{
   const f=P=>neAt(o,P).r;
-  let dP=Math.max(2e4,0.005*o.P0),lo=o.P0-dP,hi=o.P0+dP,flo=f(lo),fhi=f(hi);
-  for(let k=0;k<60&&flo<0&&lo>200;k++){hi=lo;fhi=flo;dP*=2;lo=Math.max(100,lo-dP);flo=f(lo)}
+  let dP=Math.max(2e4,0.005*o.P0),lo=Math.max(100,o.P0-dP),hi=o.P0+dP,flo=f(lo),fhi=f(hi);
+  for(let k=0;k<60&&flo<0&&lo>100;k++){hi=lo;fhi=flo;dP*=2;lo=Math.max(100,lo-dP);flo=f(lo)}
   for(let k=0;k<60&&fhi>0;k++){lo=hi;flo=fhi;dP*=2;hi+=dP;fhi=f(hi)}
   if(!(flo>=0&&fhi<=0))return null;
   let side=0,m=(lo+hi)/2;
@@ -152,56 +115,31 @@ const neSolve=o=>{
   }
   const e=neAt(o,m);return isFinite(e.r)?e:null;
 };
-// derived state of a split pressuriser at pressure P; T is the interface (saturation) temperature
-const neD=(s,P)=>{
-  const Ml=s.M-s.Mg;if(!(Ml>0)||!(s.Vl>0))return {err:'dry',P:0};
-  const ul=(s.U-s.Ug)/Ml,rl=Ml/s.Vl,rg=s.Mg/s.Vg,g=vap(rg,s.Ug/s.Mg),T=Tsat(P);
-  return {mode:'two',ne:true,T,P,Tl:Tuf(ul),Tg:g.T,x:s.Mg/s.M,level:(s.Vl+s.Ms/s.rs)/VP,rf:rl,rg,hl:ul+P/rl,hg:s.Ug/s.Mg+P/rg,
-    dpdT:sat(T).dpdT,Ml,Mg:s.Mg,Vg:s.Vg,Mn:0,pN:0,pS:P,yN:0};
+// derived state at pressure P (from the solve). T is the pressuriser temperature the controller and the
+// displays use: the interface temperature (saturation at the steam partial pressure; T_sat(P) with steam
+// alone) with a gas space, the water temperature when solid. Ti is the interface temperature.
+const derive=(s,P)=>{
+  const Ml=s.Ml,Vl=s.Vl;if(!(Ml>0)||!(Vl>0))return {err:'dry',P:0};
+  const ul=s.Ul/Ml,Tl=Tuf(ul),rl=Ml/Vl,lev=(Vl+s.Ms/s.rs)/VP;
+  if(!(s.Mv>0)&&!(s.Mn>0)){const q=sat(Tl),dpdT=q.dpdT;
+    return {mode:'solid',T:Tl,Ti:Tsat(P),P,Tl,Tg:Tl,x:0,level:lev,rf:rl,rg:0,hl:ul+P/rl,hg:0,dpdT,Ml,Mg:0,Vg:0,Mn:0,pN:0,pS:0,yN:0}}
+  const g=gas(s.Mv,s.Mn,s.Ug,s.Vg,s.d&&s.d.Tg),pv=s.Mn>0?g.pv:P,pN=s.Mn>0?Math.max(0,P-pv):0,Ti=pv>0?Tsat(pv):T0;
+  const rg=s.Mv/s.Vg,uv=s.Mv>0?(s.Ug-s.Mn*CVN*g.Tg)/s.Mv:0;
+  return {mode:'two',T:Ti,Ti,P,Tl,Tg:g.Tg,x:s.Mv/(Ml+s.Mv),level:lev,rf:rl,rg,hl:ul+P/rl,hg:s.Mv>0?uv+pv/rg:0,
+    dpdT:sat(Ti).dpdT,Ml,Mg:s.Mv,Vg:s.Vg,Mn:s.Mn,pN,pS:pv,yN:pN/P};
 };
-// equilibrium steam bubble → split at the common temperature (no jump)
-const split=s=>{const d=s.d;s.ne=true;s.Mg=d.Mg;s.Ug=d.Mg*sat(d.T).ug;s.Vg=d.Vg;s.Vl=VP-s.Ms/s.rs-d.Vg;s.d=neD(s,d.P)};
-// split → one equilibrium region (relaxes any non-equilibrium at once)
-const merge=s=>{s.ne=false;s.Mg=s.Ug=s.Vl=s.Vg=0;s.d=pz(s.M,s.U,VP-s.Ms/s.rs,s.Mn);if(!s.d.err&&s.Ms>0)s.d.level=(s.d.Ml/s.d.rf+s.Ms/s.rs)/VP};
-// one step of the split pressuriser (after the RCS update in step); returns the heat loss
-const stepNE=(s,d,dt,Q,ws,wr,hr,rr)=>{
-  const P=d.P,q=sat(d.T),hfS=q.hf,hgS=q.hg,hv=d.hg,hl=d.hl,tau=s.tau;
-  const a=sat(d.T+0.05),pa=a.p,hfa=a.hf,hga=a.hg,b=sat(d.T-0.05),dp=pa-b.p,dhf=(hfa-b.hf)/dp,dhg=(hga-b.hg)/dp;
-  let Mg=s.Mg,Ug=s.Ug,Ml=s.M-s.Mg,Ul=s.U-s.Ug,Ms=s.Ms;
-  // heat loss from each region by its share of the volume; heaters in the water
-  const fg=s.Vg/VP,lossG=UA*fg*(d.Tg-TAMB),lossL=UA*(1-fg)*(d.Tl-TAMB);
-  Ul+=(Q-lossL)*dt;Ug-=lossG*dt;
-  // relief takes steam (at most half the steam in one step)
-  const mv=Math.min(wr*dt,0.5*Mg);Mg-=mv;Ug-=mv*hv;
-  // spray water joins the water region (its condensing effect is in neAt, with the flashing)
-  const Ml0=Ml;Ml+=ws*dt;Ul+=ws*dt*hr;
-  // superheated steam hands its superheat to the water (walls and surface)
-  const dg=hv-hgS;if(dg>0){const E=Mg*dg*(1-Math.exp(-dt/tau.sh));Ug-=E;Ul+=E}
-  // insurge layer mixes into the water
-  if(Ms>0){const m=Math.min(Ms,Ms*dt/TAU+0.02*dt);Ml+=m;Ul+=m*s.hs;Ms-=m}
-  const x={P0:P,hf:hfS,hg:hgS,dhf,dhg,hv,hl,hr,wsdt:ws*dt,Ml:Ml0,ffl:1-Math.exp(-dt/tau.fl),fsc:1-Math.exp(-dt/tau.sc)};
-  const e=neSolve({Ml,Ul,Mg,Ug,Vs:Ms/s.rs,Vl0:s.Vl,Vg0:s.Vg,P0:P,Mr:s.Mr,Tr:s.Tr,Ms,rs:s.rs,rr,hl,x});
-  if(!e){s.d={err:'range',P:0};s.t+=dt;return lossG+lossL}
-  const dm=e.dm;s.Mr-=dm;
-  if(dm>0){s.hs=(Ms*s.hs+dm*hr)/(Ms+dm);s.rs=(Ms+dm)/(Ms/s.rs+dm/rr);Ms+=dm}
-  else if(dm<0){const m=-dm,ml=Math.min(m,Ms),mr=m-ml;Ms-=ml;s.Tr+=(ml*(s.hs-hr)+mr*(hl-hr))/(s.Mr*cpL(s.Tr)+CM)}
-  Ml=e.Ml;Ul=e.Ul;Mg=e.Mg;Ug=e.Ug;let Vl=e.Vl,Vg=e.Vg;
-  // wet steam (after expansion or cooling): the condensate rains out into the water
-  if(e.xg<1){const r=sat(e.Tg),m=Mg*(1-e.xg),uf=r.uf,vf=1/r.rf;Ml+=m;Ul+=m*uf;Mg-=m;Ug-=m*uf;Vl+=m*vf;Vg-=m*vf}
-  s.Ms=Ms;s.M=Ml+Mg;s.U=Ul+Ug;s.Mg=Mg;s.Ug=Ug;s.Vl=Vl;s.Vg=Vg;s.surge=dm/dt;s.t+=dt;
-  s.d=Vg<VNE?(merge(s),s.d):neD(s,e.P);
-  return lossG+lossL;
-};
+// totals kept for callers that want the whole pressuriser above the layer (tests, displays)
+const tot=s=>{s.M=s.Ml+s.Mv;s.U=s.Ul+s.Ug};
+// o: {solid, Tpz, Tr, P} water-solid; {Tr, P, L} steam bubble at saturation; {n2:true, Tpz, Tr, P, L}
+// nitrogen cushion over water at Tpz with saturated steam; tau overrides the time constants
 const init=o=>{
-  const s={t:0,Tr:o.Tr+273.15,sv:false,rel:0,extra:null,Ms:0,hs:0,rs:1000,Mn:0,ne:false,Mg:0,Ug:0,Vl:0,Vg:0,
-    neq:o.neq!==false,tau:{...TAUNE,...o.tau}};
-  if(o.n2){ // nitrogen cushion: liquid and gas at Tpz, nitrogen makes up P − p_sat(Tpz)
-    const T=o.Tpz+273.15,q=sat(T),ps=q.p,uf=q.uf,ug=q.ug,rg=q.rg,Vl=o.L*VP,Vg=VP-Vl,Ml=liqRho(T,o.P)*Vl,Mg=rg*Vg;
-    s.Mn=Math.max(0,o.P-ps)*Vg/(RN*T);s.M=Ml+Mg;s.U=Ml*uf+Mg*ug+s.Mn*CVN*T}
-  else if(o.solid){const T=o.Tpz+273.15,q=sat(T),rho=liqRho(T,o.P);s.M=rho*VP;s.U=s.M*q.uf}
-  else{const T=Tsat(o.P),q=sat(T),Mf=o.L*VP*q.rf,Mg=(1-o.L)*VP*q.rg;s.M=Mf+Mg;s.U=Mf*q.uf+Mg*q.ug}
-  s.d=pz(s.M,s.U,VP,s.Mn);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0,loss:0};
-  if(s.neq&&s.d.mode==='two'&&!(s.Mn>0)&&s.d.Vg>2*VNE)split(s);
+  const s={t:0,Tr:o.Tr+273.15,sv:false,rel:0,extra:null,Ms:0,hs:0,rs:1000,Mn:0,Mv:0,Ug:0,Vg:0,tau:{...TAUNE,...o.tau}};
+  const T=o.solid||o.n2?o.Tpz+273.15:Tsat(o.P),q=sat(T),ps=q.p,uf=q.uf,ug=q.ug,rg=q.rg,rl=liqRho(T,o.P);
+  if(o.solid){s.Vl=VP;s.Ml=rl*VP;s.Ul=s.Ml*uf}
+  else{s.Vl=o.L*VP;s.Vg=VP-s.Vl;s.Ml=rl*s.Vl;s.Ul=s.Ml*uf;s.Mv=rg*s.Vg;s.Ug=s.Mv*ug;
+    if(o.n2){s.Mn=Math.max(0,o.P-ps)*s.Vg/(RN*T);s.Ug+=s.Mn*CVN*T}}
+  tot(s);s.d=null;s.d=derive(s,o.P);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;
+  s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0,loss:0};
   return s;
 };
 // Relief valve flow, kg/s, into the relief tank at atmospheric pressure PB (all pressures are absolute).
@@ -213,7 +151,7 @@ const subF=P=>{if(P<=PB)return 0;const r=PB/P;return r<=RCR?1:psi(r)/PSI};
 const relW=(P,steam)=>steam?15*P/16.2e6*subF(P):30*Math.sqrt(Math.max(0,P-PB)/3.5e6);
 // gas with nitrogen: the steam figure times the ideal-gas choked-flow ratio (∝ P/√(R·T)) of the mixture
 // against saturated steam at the same pressure; exactly 1 for steam alone
-const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);return Math.sqrt(RS*Tsat(d.P)/(Rm*d.T))};
+const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);return Math.sqrt(RS*Tsat(d.P)/(Rm*d.Tg))};
 // nitrogen supply, kg/s, valve fully open: from the N2P header through a check valve, ∝ √ΔP (N2W at 1 MPa);
 // the flow scales with the valve opening
 const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
@@ -221,55 +159,59 @@ const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
 // n2 0–1 nitrogen supply valve opening; heat W net heat to coolant}. Each actuator is clamped to LIM; the plant's
 // own protection (heater trip below 12 % level, spring safety valve) acts on top, whoever commands.
 const step=(s,u,dt)=>{
-  const n2=clamp(u.n2||0,0,LIM.n2);
-  if(s.ne&&n2*n2W(s.d.P)>0)merge(s); // nitrogen coming in: the gas space is one equilibrium region again
-  const d=s.d,P=d.P,solid=d.mode==='solid';
+  const d=s.d,P=d.P,solid=d.mode==='solid',tau=s.tau;
   let Q=clamp(u.q,0,LIM.q);const ws=clamp(u.sp,0,LIM.sp),ch=clamp(u.ch,0,LIM.ch),ld=clamp(u.ld,0,LIM.ld);
   const trip=!solid&&d.level<0.12;if(trip)Q=0;
   // relief valve (as commanded) plus a fixed spring safety valve, always armed
   if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;
   s.rel=clamp(u.rel||0,0,LIM.rel); // opening fraction 0–1
   const w1=relW(P,!solid)*(solid?1:gasF(d)),wr=s.rel*w1+(s.sv?4*w1:0);
-  const hrel=solid?d.hl:d.hg; // steam leaves at h″(T) whether or not nitrogen is present
-  // vented gas carries nitrogen in proportion to its share of the gas mass (exponential, so it can't overdraw)
-  const wrn=!solid&&s.Mn>0?s.Mn*(1-Math.exp(-wr*dt/(s.Mn+Math.max(0,d.Mg))))/dt:0,wrs=wr-wrn;
-  const wn=n2*n2W(P);
+  const n2=clamp(u.n2||0,0,LIM.n2),wn=n2*n2W(P);
   const hr=hLiq(s.Tr,P),rr=liqRho(s.Tr,P),cap=s.Mr*cpL(s.Tr)+CM;
   const pulse=s.extra&&s.t<s.extra.end?s.extra.Q:0;if(s.extra&&s.t>=s.extra.end)s.extra=null;
   const Qr=u.heat+pulse;
   s.Tr+=Qr*dt/cap;
   s.Mr+=(ch-ld-ws)*dt;
-  if(s.ne){const loss=stepNE(s,d,dt,Q,ws,wr,hr,rr);s.Pr=rcsP(s.Mr,s.Tr);s.f={Q,ws,ch,ld,wr,wrn:0,wn:0,n2,trip,Qr,loss};return}
-  const loss=UA*(d.T-TAMB);
-  s.M+=(ws-wrs)*dt;s.U+=(ws*hr+Q-loss-wrs*hrel+(wn*TN2-wrn*d.T)*CPN)*dt;s.Mn+=(wn-wrn)*dt;
-  // insurge layer mixes into the saturated region with time constant TAU
-  if(s.Ms>0){
-    if(solid){s.U+=s.Ms*(s.hs-P/s.rs);s.M+=s.Ms;s.Ms=0}
-    else{const m=Math.min(s.Ms,s.Ms*dt/TAU+0.02*dt);s.U+=m*(s.hs-P/s.rs);s.M+=m;s.Ms-=m}
-  }
-  // surge: dm>0 is insurge from RCS into pressuriser; equalise pressures
-  const hout=d.hl,M=s.M,U=s.U,Mr=s.Mr,Tr=s.Tr,Ms=s.Ms,rs=s.rs,Mn=s.Mn;
-  const sat_=(dm)=>{
-    if(dm>=0){if(solid)return [M+dm,U+dm*hr,VP];return [M,U+P*dm/rr,VP-Ms/rs-dm/rr]}
-    const m=-dm,ml=Math.min(m,Ms),mr=m-ml;return [M-mr,U-P*ml/rs-mr*hout,VP-(Ms-ml)/rs];
-  };
-  const f=dm=>{const[a,b,v]=sat_(dm);return pz(a,b,v,Mn).P-rcsP(Mr-dm,Tr)};
-  let lo=-400,hi=400,k=0;
-  while(f(lo)>0&&k++<12)lo*=3;k=0;
-  while(f(hi)<0&&k++<12)hi*=3;
-  for(let i=0;i<44;i++){const m=(lo+hi)/2;if(f(m)<0)lo=m;else hi=m}
-  const dm=(lo+hi)/2;
-  const[a2,b2]=sat_(dm);s.M=a2;s.U=b2;s.Mr-=dm;
-  if(dm>0&&!solid){s.hs=(s.Ms*s.hs+dm*hr)/(s.Ms+dm);s.rs=(s.Ms+dm)/(s.Ms/s.rs+dm/rr);s.Ms+=dm}
-  if(dm<0){const m=-dm,ml=Math.min(m,Ms),mr=m-ml;s.Ms-=ml;s.Tr+=(ml*(s.hs-hr)+mr*(hout-hr))/(s.Mr*cpL(s.Tr)+CM)}
-  s.surge=dm/dt;s.t+=dt;
-  s.d=pz(s.M,s.U,VP-s.Ms/s.rs,s.Mn);
-  // the gas becomes steam alone once the nitrogen is a negligible share and none is coming in
-  if(s.Mn>0&&!wn&&!s.d.err&&s.d.yN<N2MIN){s.U-=s.Mn*CVN*s.d.T;s.Mn=0;s.d=pz(s.M,s.U,VP-s.Ms/s.rs)}
-  if(!s.d.err&&s.Ms>0){s.d.level=(s.d.Ml/s.d.rf+s.Ms/s.rs)/VP}
-  if(s.neq&&!s.d.err&&s.d.mode==='two'&&!(s.Mn>0)&&s.d.Vg>2*VNE)split(s);
+  let Ml=s.Ml,Ul=s.Ul,Mv=s.Mv,Mn=s.Mn,Ug=s.Ug,Ms=s.Ms;
+  // heat loss from each region by its share of the volume, each at its own temperature; heaters in the water
+  const fg=s.Vg/VP,lossG=solid?0:UA*fg*(d.Tg-TAMB),lossL=UA*(1-fg)*(d.Tl-TAMB);
+  Ul+=(Q-lossL)*dt;Ug-=lossG*dt;
+  // relief: gas (nitrogen in proportion to its share of the gas mass, exponential so it can't overdraw), or water when solid
+  let wrn=0;
+  if(solid){const m=Math.min(wr*dt,0.5*Ml);Ml-=m;Ul-=m*d.hl}
+  else{const Mt=Mv+Mn,m=Math.min(wr*dt,0.5*Mt),mn=Mn*(1-Math.exp(-m/Mt)),mv=Math.min(m-mn,Mv);
+    Mv-=mv;Mn-=mn;Ug-=mv*d.hg+mn*CPN*d.Tg;wrn=mn/dt}
+  // nitrogen supply into the gas space
+  Mn+=wn*dt;Ug+=wn*dt*CPN*TN2;
+  // the gas exchanges heat with the water: steam alone towards the interface (saturation) temperature,
+  // with nitrogen towards the water temperature
+  if(!solid&&Mv+Mn>0){const Tt=Mn>0?d.Tl:d.Ti,Ue=(Mv>0?Mv*vapT(Mv/s.Vg,Tt).u:0)+Mn*CVN*Tt;let E=(Ug-Ue)*(1-Math.exp(-dt/tau.sh));
+    if(!(Mn>0)&&E<0)E=0;Ug-=E;Ul+=E}
+  // interface transfer inputs (applied inside the pressure solve); spray joins the water
+  const ul=Ul/Ml,Ml0=Ml;Ml+=ws*dt;Ul+=ws*dt*hr;
+  const Ti=solid?Tsat(P):d.Ti,yv=solid||!(s.Mn>0)?1:d.pS/P,a=sat(Ti+0.05),pa=a.p,ufa=a.uf,hfa=a.hf,hga=a.hg,
+    b=sat(Ti-0.05),dp=(pa-b.p)/0.1,du=(ufa-b.uf)/0.1,dhf=(hfa-b.hf)/0.1,dhg=(hga-b.hg)/0.1,c=sat(Ti),ufi=c.uf,hfi=c.hf,hgi=c.hg,
+    capE=Mn>0?Math.max(0,sat(d.Tl).rg*s.Vg-Mv):Infinity; // sat() reuses one object: copy fields first
+  const x={P0:P,yv,dpdT:dp,uf:ufi,hf:hfi,hg:hgi,duf:du,dhf,dhg,hv:solid?0:d.hg,hr,wsdt:ws*dt,ul,Ml:Ml0,cap:capE,
+    ffl:1-Math.exp(-dt/tau.fl),fsc:1-Math.exp(-dt/tau.sc)};
+  // insurge layer mixes into the water (all at once when solid)
+  if(Ms>0){const m=solid?Ms:Math.min(Ms,Ms*dt/TAU+0.02*dt);Ml+=m;Ul+=m*s.hs;Ms-=m}
+  const e=neSolve({Ml,Ul,Mv,Mn,Ug,Vs:Ms/s.rs,Vl0:s.Vl,Vg0:s.Vg,P0:P,Tg0:d.Tg,Mr:s.Mr,Tr:s.Tr,Ms,rs:s.rs,rr,hr,hl:d.hl,solid,x});
+  if(!e){s.d={err:'range',P:0};s.t+=dt;s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};return}
+  const dm=e.dm;s.Mr-=dm;
+  if(dm>0&&!solid){s.hs=(Ms*s.hs+dm*hr)/(Ms+dm);s.rs=(Ms+dm)/(Ms/s.rs+dm/rr);Ms+=dm}
+  else if(dm<0){const m=-dm,ml=Math.min(m,Ms),mr=m-ml;Ms-=ml;s.Tr+=(ml*(s.hs-hr)+mr*(d.hl-hr))/(s.Mr*cpL(s.Tr)+CM)}
+  Ml=e.Ml;Ul=e.Ul;Mv=e.Mv;Ug=e.Ug;let Vl=e.Vl,Vg=e.Vg;
+  // wet steam (after expansion or cooling): the condensate rains out into the water
+  if(Mv>0&&e.xv<1){const r=sat(e.Tg),m=Mv*(1-e.xv),uf=r.uf,vf=1/r.rf;Ml+=m;Ul+=m*uf;Mv-=m;Ug-=m*uf;Vl+=m*vf;Vg-=m*vf}
+  // nitrogen down to a negligible share with the supply shut: dropped (its cv·T leaves the gas energy)
+  if(Mn>0&&!wn&&Mv>0){const pN=Mn*RN*e.Tg/Vg;if(pN/e.P<N2MIN){Ug-=Mn*CVN*e.Tg;Mn=0}}
+  // the last traces of steam with no nitrogen condense: water-solid
+  if(!(Mn>0)&&Mv<MVMIN){Ml+=Mv;Ul+=Ug;Mv=0;Ug=0;Vl+=Vg;Vg=0}
+  Object.assign(s,{Ml,Ul,Mv,Mn,Ug,Vl,Vg,Ms});tot(s);s.surge=dm/dt;s.t+=dt;
+  s.d=derive(s,e.P);
   s.Pr=rcsP(s.Mr,s.Tr);
-  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss};
+  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};
 };
 // why the model must stop, or '' while the state is valid:
 // 'dry' pressuriser boiled dry, 'range' state outside the model, 'critical' near the critical point,
@@ -282,5 +224,5 @@ const fault=s=>{
   if(Tsat(s.Pr)-s.Tr<0)return 'boiling';
   return '';
 };
-return {kap,pz,vap,neSolve,TAUNE,VNE,liqRho,rcsP,hLiq,cpL,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
+return {kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
 })();
