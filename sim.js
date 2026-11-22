@@ -9,7 +9,7 @@
 // With no gas space it is water-solid. Below the water sits the insurge layer.
 globalThis.PZSim = (() => {
 'use strict';
-const {sat,Tsat,clamp,LIM,T0,THI}=globalThis.PZCommon;
+const {sat,Tsat,clamp,LIM,QH,T0,THI}=globalThis.PZCommon;
 // isothermal compressibility of liquid water, 1/Pa (approximate, near saturation)
 const KT=[[0,.509],[25,.452],[50,.441],[75,.456],[100,.49],[150,.58],[200,.74],[250,1.03],[300,1.6],[325,2.2],[340,3],[350,3.8],[360,5.5],[374,12]];
 const kap=c=>{if(c<=0)return .509e-9;for(let i=1;i<KT.length;i++)if(c<=KT[i][0]){const[a,x]=KT[i-1],[b,y]=KT[i];return (x+(y-x)*(c-a)/(b-a))*1e-9}return 12e-9};
@@ -139,7 +139,7 @@ const init=o=>{
   else{s.Vl=o.L*VP;s.Vg=VP-s.Vl;s.Ml=rl*s.Vl;s.Ul=s.Ml*uf;s.Mv=rg*s.Vg;s.Ug=s.Mv*ug;
     if(o.n2){s.Mn=Math.max(0,o.P-ps)*s.Vg/(RN*T);s.Ug+=s.Mn*CVN*T}}
   tot(s);s.d=null;s.d=derive(s,o.P);s.Mr=liqRho(s.Tr,s.d.P)*VR;s.Pr=s.d.P;s.surge=0;
-  s.f={Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0,loss:0};
+  s.f={nh:0,Q:0,ws:0,ch:0,ld:0,wr:0,wrn:0,wn:0,n2:0,trip:false,Qr:0,loss:0};
   return s;
 };
 // Relief valve flow, kg/s, into the relief tank at atmospheric pressure PB (all pressures are absolute).
@@ -155,13 +155,13 @@ const gasF=d=>{if(!(d.Mn>0))return 1;const Rm=(d.Mn*RN+d.Mg*RS)/(d.Mn+d.Mg);retu
 // nitrogen supply, kg/s, valve fully open: from the N2P header through a check valve, ∝ √ΔP (N2W at 1 MPa);
 // the flow scales with the valve opening
 const n2W=P=>N2W*Math.sqrt(Math.max(0,N2P-P)/1e6);
-// One step. u is the final command, SI: {ch, ld, sp kg/s; q W heaters; rel 0–1 relief opening;
+// One step. u is the final command, SI: {ch, ld, sp kg/s; nh heaters on (count, rounded); rel 0–1 relief opening;
 // n2 0–1 nitrogen supply valve opening; heat W net heat to coolant}. Each actuator is clamped to LIM; the plant's
 // own protection (heater trip below 12 % level, spring safety valve) acts on top, whoever commands.
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,solid=d.mode==='solid',tau=s.tau;
-  let Q=clamp(u.q,0,LIM.q);const ws=clamp(u.sp,0,LIM.sp),ch=clamp(u.ch,0,LIM.ch),ld=clamp(u.ld,0,LIM.ld);
-  const trip=!solid&&d.level<0.12;if(trip)Q=0;
+  let nh=Math.round(clamp(u.nh||0,0,LIM.nh));const ws=clamp(u.sp,0,LIM.sp),ch=clamp(u.ch,0,LIM.ch),ld=clamp(u.ld,0,LIM.ld);
+  const trip=!solid&&d.level<0.12;if(trip)nh=0;const Q=nh*QH;
   // relief valve (as commanded) plus a fixed spring safety valve, always armed
   if(P>17.2e6)s.sv=true;else if(P<16.9e6)s.sv=false;
   s.rel=clamp(u.rel||0,0,LIM.rel); // opening fraction 0–1
@@ -197,7 +197,7 @@ const step=(s,u,dt)=>{
   // insurge layer mixes into the water (all at once when solid)
   if(Ms>0){const m=solid?Ms:Math.min(Ms,Ms*dt/TAU+0.02*dt);Ml+=m;Ul+=m*s.hs;Ms-=m}
   const e=neSolve({Ml,Ul,Mv,Mn,Ug,Vs:Ms/s.rs,Vl0:s.Vl,Vg0:s.Vg,P0:P,Tg0:d.Tg,Mr:s.Mr,Tr:s.Tr,Ms,rs:s.rs,rr,hr,hl:d.hl,solid,x});
-  if(!e){s.d={err:'range',P:0};s.t+=dt;s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};return}
+  if(!e){s.d={err:'range',P:0};s.t+=dt;s.f={nh,Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};return}
   const dm=e.dm;s.Mr-=dm;
   if(dm>0&&!solid){s.hs=(Ms*s.hs+dm*hr)/(Ms+dm);s.rs=(Ms+dm)/(Ms/s.rs+dm/rr);Ms+=dm}
   else if(dm<0){const m=-dm,ml=Math.min(m,Ms),mr=m-ml;Ms-=ml;s.Tr+=(ml*(s.hs-hr)+mr*(d.hl-hr))/(s.Mr*cpL(s.Tr)+CM)}
@@ -211,7 +211,7 @@ const step=(s,u,dt)=>{
   Object.assign(s,{Ml,Ul,Mv,Mn,Ug,Vl,Vg,Ms});tot(s);s.surge=dm/dt;s.t+=dt;
   s.d=derive(s,e.P);
   s.Pr=rcsP(s.Mr,s.Tr);
-  s.f={Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};
+  s.f={nh,Q,ws,ch,ld,wr,wrn,wn,n2,trip,Qr,loss:lossG+lossL};
 };
 // why the model must stop, or '' while the state is valid:
 // 'dry' pressuriser boiled dry, 'range' state outside the model, 'critical' near the critical point,
@@ -226,5 +226,5 @@ const fault=s=>{
 };
 // API: bump when the plant state or s.d fields the page reads change; index.html checks it, so a
 // cached older sim.js beside a newer page (raw.githack caches files separately) is reported, not shown as NaN
-return {API:2,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
+return {API:3,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
 })();
