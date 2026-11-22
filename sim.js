@@ -224,5 +224,7 @@ const fault=s=>{
   if(Tsat(s.Pr)-s.Tr<0)return 'boiling';
   return '';
 };
-return {kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
+// API: bump when the plant state or s.d fields the page reads change; index.html checks it, so a
+// cached older sim.js beside a newer page (raw.githack caches files separately) is reported, not shown as NaN
+return {API:2,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
 })();

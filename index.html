@@ -256,6 +256,8 @@ code{font-size:14px;overflow-wrap:anywhere}
 const {satX,Tsat,clamp,THI}=PZCommon;
 const {hLiq,cpL,init,step,fault,VP}=PZSim;
 const Ctl=PZCtl;
+// sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
+const SIM_API=2,simStale=PZSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
 const ids=['set','dT','lset','heat','ch','ld','q','sp','relSet','relMan','n2'];
@@ -301,7 +303,7 @@ for(const r of pzR)r.addEventListener('change',()=>{readCtl();if(s)syncAuto()});
 
 // s: plant state (sim.js); cs: controller memory (control.js)
 let s,cs,hist=[],running=true,halted='',lastS=0;
-const setAlert=m=>{$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
+const setAlert=m=>{m=m||(simStale?'sim.js is an older version than this page, probably a cached copy. Reload in a few minutes, or open the page by commit.':'');$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
 // speed buttons: Pause plus 1×…1000×. Picking a speed resumes (unless the model has halted);
 // while paused the chosen speed stays outlined.
 let speed=1;const SPEEDS=[1,2,5,10,20,50,100,200,500,1000];

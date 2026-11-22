@@ -74,6 +74,8 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
   `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
+- `API` version number: bump it (and `SIM_API` in index.html) when the state or `s.d` fields the page
+  reads change; the page warns when a cached older sim.js is loaded beside it.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
 
