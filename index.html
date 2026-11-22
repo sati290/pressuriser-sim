@@ -47,6 +47,8 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .g span{display:block;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g b{display:block;font-size:clamp(22px,2.4vw,36px);font-weight:600;letter-spacing:-.02em;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
 .g.p b{color:var(--acc)}
+.gv{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px}
+.gv small{color:var(--mute);font-size:clamp(13px,1vw,16px);font-variant-numeric:tabular-nums;white-space:nowrap}
 .g.r b{color:var(--water)}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(14.5em,1fr));gap:4px 20px;font-size:14px}
 .stats div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--rule);padding:4px 0}
@@ -126,7 +128,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 
 <main class="band main wrap" style="padding-top:0">
   <div class="gauges">
-    <div class="g p"><span>Pressure, MPa abs</span><b id="gP">–</b></div>
+    <div class="g p"><span>Pressure, MPa abs</span><div class="gv"><b id="gP">–</b><small id="gS" title="Saturation temperature at this pressure"></small></div></div>
     <div class="g"><span>Pressuriser, °C</span><b id="gT">–</b></div>
     <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
     <div class="g"><span>Level, %</span><b id="gL">–</b></div>
@@ -375,7 +377,7 @@ const syncAuto=()=>{
 const updText=()=>{
   const d=s.d;if(d.err)return;
   const solid=d.mode==='solid',n2=s.Mn>0,sub=Tsat(d.P)-s.Tr,dT=d.T-s.Tr,f=s.f;
-  $('gP').textContent=(d.P/1e6).toFixed(3);$('gT').textContent=(d.T-273.15).toFixed(1);$('gR').textContent=(s.Tr-273.15).toFixed(1);
+  $('gP').textContent=(d.P/1e6).toFixed(3);$('gS').textContent=`sat. ${(Tsat(d.P)-273.15).toFixed(1)} °C`;$('gT').textContent=(d.T-273.15).toFixed(1);$('gR').textContent=(s.Tr-273.15).toFixed(1);
   $('gL').textContent=solid?'Solid':(d.level*100).toFixed(1);
   const h=Math.floor(s.t/3600),m=Math.floor(s.t%3600/60);
   // gas and water against the interface temperature: saturation at the steam partial pressure (+ above, − below)
