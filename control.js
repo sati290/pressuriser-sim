@@ -3,24 +3,27 @@
 // that PZSim.step() takes. Loaded after common.js (it does not need sim.js), as a classic <script>
 // (index.html) or a module (tests); it only defines globalThis.PZCtl. See docs/physics.md.
 //
-// Settings c are in panel units: ch, ld, sp kg/s; nh heaters on (count); relMan %; heat MW; set, relSet Pa;
-// lset %; dT K; inv 'pres'|'lev'; pzMode 'pres'|'dT'; auto {ch,ld,nh,sp,rel} booleans; n2 %
+// Settings c are in panel units: ch, ld, sp kg/s; hp proportional heaters %;
+// hb backup heater groups on; relMan %; heat MW; set, relSet Pa;
+// lset %; dT K; inv 'pres'|'lev'; pzMode 'pres'|'dT'; auto {ch,ld,hp,hb,sp,rel} booleans; n2 %
 // (nitrogen supply valve opening; always manual, no automatic logic).
-// The command is SI: {ch, ld, sp kg/s; nh heaters on; rel 0–1; n2 0–1; heat W}.
+// The command is SI: {ch, ld, sp kg/s; hp 0–1; hb groups; rel 0–1; n2 0–1; heat W}.
 globalThis.PZCtl = (() => {
 'use strict';
-const {sat,clamp,LIM,NH,THI}=globalThis.PZCommon;
+const {sat,clamp,LIM,NB,THI}=globalThis.PZCommon;
 // controller memory, kept apart from the plant state:
 // iL, iC net-inflow integrators of the 'pres' and 'lev' inventory logic (kg/s);
 // hold the charging/letdown flows a held flow keeps when both are in A; porv the auto-relief latch;
-// nh the heater count the hysteresis holds; dem the latest demand for every actuator (SI) plus pset,
-// the heater/spray pressure target, and hx, the heater demand before it is made a count.
-const init=()=>({iL:0,iC:0,hold:null,porv:false,nh:0,dem:{nh:0,hx:0,sp:0,ch:0,ld:0,rel:0,pset:0}});
-// heaters are on/off elements: the proportional demand x (in heaters, 0–NH) becomes a count with
-// hysteresis: the count only moves once x is more than HYS heaters away from it, and then only as far
-// as to come within HYS of x; all off at zero demand, all on at full demand.
-const HYS=2;
-const heaters=(n,x)=>x<=0?0:x>=NH?NH:x-n>HYS?Math.ceil(x-HYS):n-x>HYS?Math.floor(x+HYS):n;
+// hb the backup heater groups the on/off logic has on; dem the latest demand for every actuator (SI)
+// plus pset, the heater/spray pressure target.
+const init=()=>({iL:0,iC:0,hold:null,porv:false,hb:0,dem:{hp:0,hb:0,sp:0,ch:0,ld:0,rel:0,pset:0}});
+// heater logic on the pressure error ep = P − target (Pa). Proportional group: 15 % at the target
+// (about the hot-standby heat loss), full 0.085 MPa below, off 0.015 MPa above. Backup group i
+// (1…NB) on/off with hysteresis: on below −BON(i), off again above −BOFF(i), so the groups come in one
+// after another as pressure falls and none cycles while the proportional group holds pressure.
+const BON=i=>0.10e6+0.04e6*i,BOFF=i=>BON(i)-0.07e6;
+const propH=ep=>clamp(0.15-ep/0.1e6,0,1);
+const backH=(n,ep)=>{let m=0;for(let i=1;i<=NB;i++)if(ep<-BON(i)||(i<=n&&ep<-BOFF(i)))m=i;return m};
 const relHys=set=>Math.max(0.2e6,0.02*set);
 // bumpless engage: preload the inventory integrators from the current charging/letdown, so a
 // change of inventory mode starts from the present net flow
@@ -30,13 +33,15 @@ const engage=(k,c)=>{k.iL=k.iC=clamp(c.ch-c.ld,-15,15)};
 // Nothing switches between auto and manual, or between inventory modes, by itself.
 const demands=(k,s,c,dt)=>{
   const d=s.d,P=d.P,A=c.auto||{},e=P-c.set;
-  // heaters and spray (proportional): 'pres' holds the pressure setpoint; 'dT' holds the pressuriser
-  // temperature c.dT (K) above the coolant. With a bubble that is a pressure target Psat(Tr + c.dT)
-  // that follows the coolant; water-solid it acts on the liquid temperature. Bands are in kelvin.
-  let x,sp,pset;
+  // heaters and spray: 'pres' holds the pressure setpoint; 'dT' holds the pressuriser temperature c.dT (K)
+  // above the coolant. With a bubble that is a pressure target Psat(Tr + c.dT) that follows the
+  // coolant; water-solid it acts on the liquid temperature. The heater logic sees a pressure error ep;
+  // in 'dT' the temperature error counts 0.12 MPa per kelvin. Spray bands are in kelvin there.
+  let ep,sp,pset;
   if(c.pzMode==='dT'){pset=sat(Math.min(s.Tr+c.dT,THI)).p;const eT=d.T-s.Tr-c.dT;
-    x=NH*clamp(0.2-eT/1.25,0,1);sp=LIM.sp*clamp((eT-0.5)/2.5,0,1)}
-  else{pset=c.set;x=NH*clamp((c.set-P)/0.15e6+0.2,0,1);sp=LIM.sp*clamp((e-0.1e6)/0.4e6,0,1)}
+    ep=eT*0.12e6;sp=LIM.sp*clamp((eT-0.5)/2.5,0,1)}
+  else{pset=c.set;ep=e;sp=LIM.sp*clamp((e-0.1e6)/0.4e6,0,1)}
+  const hp=propH(ep);k.hb=backH(k.hb,ep);
   // charging and letdown: a PI controller asks for a net inflow N = charging − letdown.
   // 'pres' holds the pressure setpoint (water-solid), 'lev' the level setpoint (steam bubble).
   // Who controls: the one flow in auto; with both in auto, the mode's preferred flow ('pres' letdown,
@@ -62,18 +67,17 @@ const demands=(k,s,c,dt)=>{
   for(const f of ['ch','ld'])if(!held(f))H[f]=A[f]?r[f]:c[f];
   // relief valve: on/off with hysteresis at c.relSet
   if(P>c.relSet)k.porv=true;else if(P<c.relSet-relHys(c.relSet))k.porv=false;
-  k.nh=heaters(k.nh,x);
-  k.dem={nh:k.nh,hx:x,sp,ch:r.ch,ld:r.ld,rel:k.porv?1:0,pset};
+  k.dem={hp,hb:k.hb,sp,ch:r.ch,ld:r.ld,rel:k.porv?1:0,pset};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI;
 // the nitrogen valve is always the operator's
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  return {ch:A.ch?D.ch:c.ch,ld:A.ld?D.ld:c.ld,nh:A.nh?D.nh:c.nh,sp:A.sp?D.sp:c.sp,
+  return {ch:A.ch?D.ch:c.ch,ld:A.ld?D.ld:c.ld,hp:A.hp?D.hp:c.hp/100,hb:A.hb?D.hb:c.hb,sp:A.sp?D.sp:c.sp,
     rel:A.rel?D.rel:(c.relMan||0)/100,n2:(c.n2||0)/100,heat:c.heat*1e6};
 };
 // one control step: update the demands from the plant state, return the command for PZSim.step.
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-return {init,engage,demands,command,update,relHys,heaters,HYS};
+return {init,engage,demands,command,update,relHys,propH,backH,BON,BOFF};
 })();

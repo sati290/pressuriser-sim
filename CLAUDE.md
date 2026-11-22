@@ -52,7 +52,8 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 - `sat(T)` fast linear interpolation in a 0.02 K table built from `satX`; returns a **shared,
   reused object `Q`** — copy fields out before calling `sat` again.
 - `Tsat(p)` saturation temperature by bisection; `clamp`; `LIM` actuator ranges in SI
-  (`ch`, `ld` 20 kg/s, `q` 1.8 MW, `sp` 40 kg/s, `rel`, `n2` 1). The plant clamps commands to `LIM`, and the
+  (`ch`, `ld` 20 kg/s, `hp` 1, `hb` 3, `sp` 40 kg/s, `rel`, `n2` 1). Heaters: 78 elements of `QE` 23.1 kW
+  as one proportional group (`QP` 415 kW, `hp` fraction) and `NB` = 3 on/off backup groups (`QB` 462 kW). The plant clamps commands to `LIM`, and the
   controller's anti-windup uses the same limits.
 
 ### sim.js — the plant
@@ -71,7 +72,7 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 - `relW`, `gasF(d)` relief flow and its gas-mixture factor; `n2W(P)` nitrogen supply flow.
 - `rcsP(Mr,Tr)` RCS pressure from mass and temperature (compressed liquid).
 - `init(o)` builds a plant state; `step(s,u,dt)` advances one step from the final command
-  `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
+  `u = {ch, ld, sp kg/s, hp 0–1, hb groups, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
 - `API` version number: bump it (and `SIM_API` in index.html) when the state or `s.d` fields the page
@@ -81,7 +82,9 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 
 ### control.js — automatic control
 
-- `init()` controller memory `cs = {iL, iC, hold, porv, dem}`, kept apart from the plant state.
+- `init()` controller memory `cs = {iL, iC, hold, porv, hb, dem}`, kept apart from the plant state.
+- Heaters: `propH(ep)` proportional group from the pressure error; `backH(n, ep)` backup groups staged
+  on/off with hysteresis (`BON`/`BOFF`), so they don't cycle.
 - `demands(cs,s,c,dt)` runs the automatic logic every step (in M too, for the notches) and stores
   `cs.dem`; `command(cs,c)` picks demand (A) or operator value (M) per actuator and converts the
   panel units of `c` to SI; `update(cs,s,c,dt)` does both and returns `u`. Call it before every
@@ -96,14 +99,14 @@ leak) that destructures what it needs from `PZSim`. Order:
 
 1. Imports from `PZCommon`, `PZSim`, and `PZCtl` (as `Ctl`). The page keeps `s` (plant) and `cs` (controller).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
-   `q` kW; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
-   `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve opening % (always manual, no M/A); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,q,sp,rel}` booleans, one per actuator). Manual controls sit
+   `hp` proportional heaters %; `hb` backup heater groups on; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
+   `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve opening % (always manual, no M/A); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,hp,hb,sp,rel}` booleans, one per actuator). Manual controls sit
    in the card right of the mimic; each actuator slider has a compact M/A switch (`<k>Am`), a demand
    readout (`<k>d`) and a demand notch on its track (`<k>m`). The logic selectors and setpoints sit in
    the "Automatic control" section below the main panel.
    Every slider gets − / + buttons from JS (wrapped in `.ctl`; ids `<k>Dn`/`<k>Up`). Step sizes live in
    `bump`: fine where precision matters (charging/letdown 0.1 kg/s, pressures 0.1 MPa, net heat 0.5 MW),
-   otherwise ~10 round steps over the range (heaters 200 kW). Presses snap to multiples of the step;
+   otherwise ~10 round steps over the range (proportional heaters 5 %, backup heaters 1 group). Presses snap to multiples of the step;
    holding repeats. A new slider needs an entry in `ids`, `fmt` and `bump`.
 3. `physTick()` runs `step(s, Ctl.update(cs,s,ctl,dt), dt)` repeatedly, halts when `fault(s)` reports one, records `hist` every 2 sim-s.
    No solid↔two-phase side effects: the operator switches modes.
@@ -145,6 +148,8 @@ leak) that destructures what it needs from `PZSim`. Order:
 - All pressures are absolute. Relief valve flow is a rough scaling (steam ∝ P while choked, subsonic
   nozzle factor near the 0.1 MPa relief-tank back pressure; liquid ∝ √(P − 0.1 MPa)), not a valve model;
   the relief tank is a fixed 0.1 MPa sink.
+- Heaters: one proportional group and three backup groups switched on pressure only (no level-deviation
+  switching); no element heat-up lag.
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 

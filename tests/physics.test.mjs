@@ -7,21 +7,21 @@ import { common, phys, ctrl, ctlOf, engage, run, runPlant, C, MPa } from './load
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, expected ${b} ± ${tol}`);
 
 // Control settings (panel units, see control.js). run() passes them through PZCtl.update to get the
-// command for PZSim.step. Every actuator (ch, ld, q, sp, rel) is manual unless c.auto[k] is true; then it follows
+// command for PZSim.step. Every actuator (ch, ld, hp, hb, sp, rel) is manual unless c.auto[k] is true; then it follows
 // the demand the automatic logic computes. inv picks the inventory logic: 'pres' (letdown holds
 // pressure) or 'lev' (charging holds level). Nothing switches by itself; tests that cross
 // solid <-> two-phase switch like an operator would.
 const RELIEF_COLD = { relSet: 3.6e6, relMan: 0 };
 const RELIEF_HOT  = { relSet: 16.2e6, relMan: 0 };
-const BUBBLE_AUTO = () => ({ q: true, sp: true, ch: true, ld: true, rel: true });
+const BUBBLE_AUTO = () => ({ hp: true, hb: true, sp: true, ch: true, ld: true, rel: true });
 const SOLID_AUTO  = () => ({ ld: true, rel: true });
-const COLD_CTL = { auto: SOLID_AUTO(), inv: 'pres', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 1800, sp: 0, ...RELIEF_COLD };
-const HOT_CTL  = { auto: BUBBLE_AUTO(), inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 200, sp: 0, ...RELIEF_HOT };
-const HOT_MAN  = { auto: { rel: true }, inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, q: 60, sp: 0, ...RELIEF_HOT };
+const COLD_CTL = { auto: SOLID_AUTO(), inv: 'pres', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, hp: 100, hb: 3, sp: 0, ...RELIEF_COLD };
+const HOT_CTL  = { auto: BUBBLE_AUTO(), inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, hp: 50, hb: 0, sp: 0, ...RELIEF_HOT };
+const HOT_MAN  = { auto: { rel: true }, inv: 'lev', set: 15.5e6, lset: 25, heat: 0, ch: 6, ld: 6, hp: 15, hb: 0, sp: 0, ...RELIEF_HOT };
 // operator hands over from solid to bubble control: everything to auto, charging on level
 // (letdown in auto holds its flow and takes over when charging reaches zero)
 const toBubble = (s, c) => { c.ld = s.f.ld; c.auto = BUBBLE_AUTO(); c.inv = 'lev'; engage(s, c); };
-const toSolid  = (s, c) => { c.ld = s.f.ld; c.ch = s.f.ch; c.auto = SOLID_AUTO(); c.q = 0; c.inv = 'pres'; engage(s, c); };
+const toSolid  = (s, c) => { c.ld = s.f.ld; c.ch = s.f.ch; c.auto = SOLID_AUTO(); c.hp = 0; c.hb = 0; c.inv = 'pres'; engage(s, c); };
 
 test('saturation properties match IAPWS steam tables', () => {
   // [°C, p MPa, rho_f, rho_g, h_f kJ/kg, h_g kJ/kg]
@@ -72,7 +72,7 @@ test('hot standby is a steady state', () => {
 
 test('load step: insurge raises pressure, spray responds', () => {
   // charging and letdown in manual, so the insurge stays in the pressuriser
-  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 }), c = { ...HOT_CTL, auto: { q: true, sp: true, rel: true } };
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 }), c = { ...HOT_CTL, auto: { hp: true, hb: true, sp: true, rel: true } };
   run(s, c, 1800, 0.5);
   const P0 = s.d.P;
   s.extra = { Q: 40e6, end: s.t + 120 };
@@ -123,7 +123,7 @@ test('refill to water-solid at low temperature hands control back to letdown', (
 
 test('mass is conserved across pressuriser + RCS with no boundary flows', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  const c = { ...HOT_CTL, auto: { q: true, sp: true, rel: true }, ch: 0, ld: 0 };
+  const c = { ...HOT_CTL, auto: { hp: true, hb: true, sp: true, rel: true }, ch: 0, ld: 0 };
   const m0 = s.M + s.Ms + s.Mr;
   s.extra = { Q: 40e6, end: 120 };
   run(s, c, 600, 0.5);
@@ -143,7 +143,7 @@ test('automatic control does not hand over by itself: letdown pressure control k
   const c = { ...COLD_CTL };
   run(s, c, 6 * 3600, 1);
   assert.equal(s.d.mode, 'two');
-  assert.equal(s.f.Q, 1.8e6, 'heaters stay where the operator left them');
+  near(s.f.Q, 1.8e6, 1, 'heaters stay where the operator left them');
   // letdown cannot hold pressure with a steam space, winds up to full flow and drains the level
   near(s.f.ld, 20, 0.01, 'letdown');
   assert.ok(s.d.level < 0.6, `level should fall when nobody switches to level control, got ${s.d.level}`);
@@ -170,7 +170,7 @@ test('relief valve opened by hand depressurises and closes again', () => {
 test('automatic relief opens at the configured pressure', () => {
   for (const set of [15.8e6, 16.6e6]) {
     const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-    const c = { ...HOT_MAN, q: 1800, relSet: set };
+    const c = { ...HOT_MAN, hp: 100, hb: 3, relSet: set };
     let Popen = null, Pmax = 0;
     run(s, c, 3600, 0.25, x => { Pmax = Math.max(Pmax, x.d.P); if (Popen === null && x.rel) Popen = x.d.P; });
     assert.ok(Popen, 'relief never opened');
@@ -183,7 +183,7 @@ test('fault() stops the model when the coolant reaches saturation', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   assert.equal(phys.fault(s), '');
   let f = '';
-  run(s, { ...HOT_MAN, q: 0, relMan: 100, auto: {} }, 3600, 0.5, x => (f = phys.fault(x)) === '');
+  run(s, { ...HOT_MAN, hp: 0, relMan: 100, auto: {} }, 3600, 0.5, x => (f = phys.fault(x)) === '');
   assert.equal(f, 'boiling');
 });
 
@@ -192,10 +192,10 @@ test('demands are computed while manual and applied only in auto', () => {
   // all manual, pressure below setpoint: the heater demand rises but the heaters stay where they are
   const c = { ...HOT_MAN, auto: {}, set: 15.8e6 };
   run(s, c, 10, 0.5);
-  near(s.f.Q, 60e3, 1, 'manual heaters unchanged');
-  assert.ok(ctlOf(s).dem.q > 1.5e6, `heater demand ${ctlOf(s).dem.q}`);
-  c.auto = { q: true }; run(s, c, 0.5, 0.5);
-  near(s.f.Q, ctlOf(s).dem.q, 1, 'heaters follow the demand in auto');
+  near(s.f.Q, 0.15 * common.QP, 1, 'manual heaters unchanged');
+  assert.deepEqual([ctlOf(s).dem.hp, ctlOf(s).dem.hb], [1, 3], 'heater demand: everything on');
+  c.auto = { hp: true, hb: true }; run(s, c, 0.5, 0.5);
+  near(s.f.Q, 1.8e6, 1, 'heaters follow the demand in auto');
   // relief demand latches open above relSet even with the valve in manual; the valve stays shut
   const r = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   run(r, { ...HOT_MAN, auto: {}, relSet: 15e6 }, 1, 0.5);
@@ -218,7 +218,7 @@ test('level control, both in A: charging controls, letdown is held and takes ove
 test('manual integrator does not wind past the actuator range', () => {
   const s = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
   // letdown manual far from what the pressure controller wants: the demand saturates and stays bounded
-  run(s, { ...COLD_CTL, auto: { rel: true }, q: 0, ld: 5, ch: 5, set: 3.2e6 }, 600, 1);
+  run(s, { ...COLD_CTL, auto: { rel: true }, hp: 0, hb: 0, ld: 5, ch: 5, set: 3.2e6 }, 600, 1);
   near(ctlOf(s).dem.ld, 0, 1e-9, 'letdown demand at its limit');
   assert.ok(Math.abs(ctlOf(s).iL) < 5.1, `integrator held near the limit, got ${ctlOf(s).iL}`);
 });
@@ -238,7 +238,7 @@ test('ΔT mode: heaters and spray hold pressuriser − coolant ΔT, also while c
 
 test('ΔT mode water-solid: heaters warm the pressuriser to coolant + ΔT and stop there', () => {
   const s = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
-  run(s, { ...COLD_CTL, auto: { ...SOLID_AUTO(), q: true, sp: true }, pzMode: 'dT', dT: 53 }, 6 * 3600, 1);
+  run(s, { ...COLD_CTL, auto: { ...SOLID_AUTO(), hp: true, hb: true, sp: true }, pzMode: 'dT', dT: 53 }, 6 * 3600, 1);
   assert.equal(s.d.mode, 'solid');
   near(C(s.d.T) - C(s.Tr), 53, 1.5, 'pressuriser − coolant');
   near(MPa(s.d.P), 2.8, 0.1, 'letdown still holds the pressure setpoint');
@@ -247,14 +247,14 @@ test('ΔT mode water-solid: heaters warm the pressuriser to coolant + ΔT and st
 test('inventory: a single flow in auto does the controlling, whichever the mode prefers', () => {
   // level mode, only letdown in A: letdown draws the level down to the setpoint, charging stays manual
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.35 });
-  const c = { ...HOT_CTL, auto: { q: true, sp: true, ld: true, rel: true }, ch: 6, ld: 6 };
+  const c = { ...HOT_CTL, auto: { hp: true, hb: true, sp: true, ld: true, rel: true }, ch: 6, ld: 6 };
   engage(s, c);
   run(s, c, 3 * 3600, 0.5);
   near(s.d.level * 100, 25, 0.5, 'level held by letdown');
   near(s.f.ch, 6, 1e-9, 'charging untouched');
   // pressure mode, only charging in A: charging holds the water-solid pressure
   const w = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
-  const cw = { ...COLD_CTL, auto: { ch: true, rel: true }, q: 0, heat: 2, ch: 5, ld: 5 };
+  const cw = { ...COLD_CTL, auto: { ch: true, rel: true }, hp: 0, hb: 0, heat: 2, ch: 5, ld: 5 };
   engage(w, cw);
   run(w, cw, 3600, 1);
   near(MPa(w.d.P), 2.8, 0.05, 'pressure held by charging');
@@ -262,39 +262,69 @@ test('inventory: a single flow in auto does the controlling, whichever the mode 
   near(w.f.ld, 5, 1e-9, 'letdown untouched');
 });
 
+test('heaters: proportional group alone holds hot standby; backup groups stage in and out once each', () => {
+  const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
+  const c = { ...HOT_CTL, auto: { hp: true, hb: true, ch: true, ld: true, rel: true } };
+  let sw = 0, last = 0, hbMax = 0;
+  run(s, c, 3600, 0.5, x => { if (x.f.hb !== last) sw++; last = x.f.hb; });
+  assert.equal(sw, 0, 'no backup group switched at hot standby');
+  near(MPa(s.d.P), 15.5, 0.01, 'P on the proportional group');
+  // spray by hand for 10 min: pressure falls, the backups come in one after another, then go out
+  const on = [];
+  c.sp = 15; run(s, c, 600, 0.5, x => { if (x.f.hb > last) on.push(x.d.P); if (x.f.hb !== last) sw++; last = x.f.hb; hbMax = Math.max(hbMax, x.f.hb); });
+  c.sp = 0; run(s, c, 1800, 0.5, x => { if (x.f.hb !== last) sw++; last = x.f.hb; });
+  assert.equal(hbMax, common.NB, 'all backup groups on');
+  assert.ok(on[0] > on[1] && on[1] > on[2], 'staged: each group at a lower pressure');
+  near(MPa(on[0]), 15.5 - MPa(ctrl.BON(1)), 0.01, 'first group on pressure');
+  assert.equal(sw, 2 * common.NB, `each group on once and off once, got ${sw} switches`);
+  assert.equal(s.f.hb, 0, 'backups off again');
+});
+
+test('backup heater logic: hysteresis between the on and off pressures', () => {
+  const b = ctrl.backH, on1 = -ctrl.BON(1), off1 = -ctrl.BOFF(1);
+  assert.equal(b(0, on1 + 1e3), 0, 'off until the on pressure');
+  assert.equal(b(0, on1 - 1e3), 1, 'on below it');
+  assert.equal(b(1, (on1 + off1) / 2), 1, 'stays on inside the band');
+  assert.equal(b(0, (on1 + off1) / 2), 0, 'stays off inside the band');
+  assert.equal(b(1, off1 + 1e3), 0, 'off above the off pressure');
+  assert.equal(b(3, -ctrl.BOFF(3) + 1e3), 2, 'the last group in goes out first');
+  near(ctrl.propH(0) * common.QP, phys.UA * (common.Tsat(15.5e6) - phys.TAMB), 5e3, 'proportional group at the setpoint ≈ hot-standby loss');
+});
+
 // plant alone, fixed SI commands, no controller
 
-const HOLD = { ch: 0, ld: 0, q: 0, sp: 0, rel: 0, heat: 0 };
+const HOLD = { ch: 0, ld: 0, hp: 0, hb: 0, sp: 0, rel: 0, heat: 0 };
 
 test('plant alone: closed system conserves mass with heaters, spray and a load step', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   const m0 = s.M + s.Ms + s.Mr;
   s.extra = { Q: 40e6, end: 120 };
-  runPlant(s, { ...HOLD, q: 1e6, sp: 10 }, 600, 0.5);
+  runPlant(s, { ...HOLD, hp: 1, hb: 1, sp: 10 }, 600, 0.5);
   near(s.M + s.Ms + s.Mr, m0, 1, 'total mass (kg)');
 });
 
 test('plant clamps commands to the actuator limits and trips the heaters at low level', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  runPlant(s, { ...HOLD, ch: 50, ld: -3, q: 5e6, sp: 99, rel: 2 }, 0.5, 0.5);
-  assert.deepEqual([s.f.ch, s.f.ld, s.f.Q, s.f.ws, s.rel], [common.LIM.ch, 0, common.LIM.q, common.LIM.sp, 1]);
+  runPlant(s, { ...HOLD, ch: 50, ld: -3, hp: 5, hb: 9, sp: 99, rel: 2 }, 0.5, 0.5);
+  assert.deepEqual([s.f.ch, s.f.ld, s.f.hp, s.f.hb, s.f.ws, s.rel], [common.LIM.ch, 0, 1, common.NB, common.LIM.sp, 1]);
+  near(s.f.Q, 1.8e6, 1, 'all heaters');
   const low = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.10 });
-  runPlant(low, { ...HOLD, q: 1e6 }, 0.5, 0.5);
+  runPlant(low, { ...HOLD, hp: 1, hb: 1 }, 0.5, 0.5);
   assert.ok(low.f.trip && low.f.Q === 0, 'heaters tripped below 12 %');
 });
 
 test('controller command: demand in A, operator value in M, converted to SI', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  const k = ctrl.init(), c = { ...HOT_MAN, auto: { sp: true }, q: 600, relMan: 40, heat: 2.5 };
+  const k = ctrl.init(), c = { ...HOT_MAN, auto: { sp: true }, hp: 40, hb: 1, relMan: 40, heat: 2.5 };
   const u = ctrl.update(k, s, c, 0.5);
-  assert.deepEqual(u, { ch: 6, ld: 6, q: 600e3, sp: k.dem.sp, rel: 0.4, n2: 0, heat: 2.5e6 });
+  assert.deepEqual(u, { ch: 6, ld: 6, hp: 0.4, hb: 1, sp: k.dem.sp, rel: 0.4, n2: 0, heat: 2.5e6 });
   assert.equal(ctrl.update(k, s, { ...c, n2: 40 }, 0.5).n2, 0.4, 'nitrogen valve is always the operator\'s');
 });
 
 // nitrogen cushion: the gas space holds nitrogen and water vapour (Dalton) at the gas temperature
 
 const N2_COLD = { n2: true, Tpz: 60, Tr: 60, P: 2.8e6, L: 0.25 };
-const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, q: 0, sp: 0, relSet: 3.6e6, relMan: 0, n2: 0 };
+const N2_CTL = { auto: { ch: true, ld: true, rel: true }, inv: 'lev', set: 2.8e6, lset: 25, heat: 0, ch: 5, ld: 5, hp: 0, hb: 0, sp: 0, relSet: 3.6e6, relMan: 0, n2: 0 };
 
 test('nitrogen cushion round-trips through init', () => {
   const s = phys.init(N2_COLD);
@@ -317,7 +347,7 @@ test('the gas space tends to steam alone as nitrogen goes to zero', () => {
 
 test('nitrogen cushion, cold, everything balanced: steady for an hour', () => {
   const s = phys.init(N2_COLD);
-  run(s, { ...N2_CTL, auto: { rel: true }, q: phys.UA * 20 / 1e3 }, 3600, 1); // heaters match the loss to 40 °C air
+  run(s, { ...N2_CTL, auto: { rel: true }, hp: 100 * phys.UA * 20 / common.QP }, 3600, 1); // heaters match the loss to 40 °C air
   near(MPa(s.d.P), 2.8, 0.01, 'P');
   near(s.d.level * 100, 25, 0.1, 'level');
 });
@@ -325,7 +355,7 @@ test('nitrogen cushion, cold, everything balanced: steady for an hour', () => {
 test('closed system with nitrogen conserves water and nitrogen; relief vents both in proportion', () => {
   const s = phys.init({ ...N2_COLD, Tpz: 150, Tr: 150 });
   const w0 = s.M + s.Ms + s.Mr, n0 = s.Mn;
-  runPlant(s, { ...HOLD, q: 1e6, sp: 5, heat: 2e6 }, 1800, 0.5);
+  runPlant(s, { ...HOLD, hp: 1, hb: 1, sp: 5, heat: 2e6 }, 1800, 0.5);
   near(s.M + s.Ms + s.Mr, w0, 1, 'water (kg)');
   near(s.Mn, n0, 1e-6, 'nitrogen (kg)');
   // open the relief: what leaves is the gas mixture, nitrogen by its mass share
@@ -356,7 +386,7 @@ test('nitrogen supply: flows below the header pressure through a check valve', (
 
 test('nitrogen into a water-solid pressuriser opens a gas space; letdown holds the pressure', () => {
   const s = phys.init({ solid: true, Tpz: 60, Tr: 60, P: 2.8e6 });
-  const c = { ...COLD_CTL, q: 0, n2: 100 };
+  const c = { ...COLD_CTL, hp: 0, hb: 0, n2: 100 };
   engage(s, c);
   let Pmax = 0;
   // the operator shuts the supply once the level is down to 40 %
@@ -373,7 +403,7 @@ test('nitrogen into a water-solid pressuriser opens a gas space; letdown holds t
 
 test('nitrogen startup: heaters plus venting replace nitrogen with steam; the gas becomes steam alone near Tsat', () => {
   const s = phys.init(N2_COLD);
-  const c = { ...N2_CTL, q: 1800, relSet: 3.0e6 };
+  const c = { ...N2_CTL, hp: 100, hb: 3, relSet: 3.0e6 };
   engage(s, c);
   let at = null, jump = 0, prev = s.d.P, Pmax = 0;
   run(s, c, 4 * 3600, 1, x => {
@@ -412,14 +442,14 @@ test('relief flow stops at the relief-tank back pressure (pressures are absolute
   assert.ok(f > 0.5 && f < 1, `subsonic between, factor ${f}`);
   // a hot bubble vented with the valve wide open ends at atmospheric, not at zero
   const s = phys.init({ solid: false, Tr: 90, P: 0.3e6, L: 0.5 });
-  runPlant(s, { ch: 0, ld: 0, q: 0, sp: 0, rel: 1, heat: 0 }, 3600, 0.5);
+  runPlant(s, { ch: 0, ld: 0, hp: 0, hb: 0, sp: 0, rel: 1, heat: 0 }, 3600, 0.5);
   assert.ok(s.d.P > phys.PB - 2e3, `vented down to ${MPa(s.d.P)} MPa`);
 });
 
 test('pressuriser heat loss is UA·(T − 40 °C)', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
   const T = s.d.T;
-  phys.step(s, { ch: 0, ld: 0, q: 0, sp: 0, rel: 0, heat: 0 }, 0.5);
+  phys.step(s, { ch: 0, ld: 0, hp: 0, hb: 0, sp: 0, rel: 0, heat: 0 }, 0.5);
   near(s.f.loss, phys.UA * (T - phys.TAMB), 1, 'loss at hot standby, 40 °C air');
   assert.ok(s.f.loss > 50e3 && s.f.loss < 70e3, `hot standby loss ${s.f.loss / 1e3} kW`);
 });
@@ -430,7 +460,7 @@ test('bubble draw: level control brings the level down from 100 % without oversh
   engage(s, c);
   let t0 = null, Lmin = 2;
   run(s, c, 8 * 3600, 1, x => {
-    if (t0 === null && x.d.mode === 'two') { t0 = x.t; c.q = 1000; toBubble(x, c); }
+    if (t0 === null && x.d.mode === 'two') { t0 = x.t; c.hp = 100; c.hb = 1; toBubble(x, c); }
     if (t0 !== null) Lmin = Math.min(Lmin, x.d.level);
     return t0 === null || x.t - t0 < 2 * 3600;
   });
@@ -441,7 +471,7 @@ test('bubble draw: level control brings the level down from 100 % without oversh
 
 test('load step at hot standby: level control holds the level within 1 % and settles without undershoot', () => {
   const s = phys.init({ solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 });
-  const c = { ...HOT_CTL, q: 60 };
+  const c = { ...HOT_CTL, hp: 15 };
   run(s, c, 600, 0.5);
   s.extra = { Q: 40e6, end: s.t + 120 };
   let mx = 0, mn = 2;
@@ -453,7 +483,7 @@ test('load step at hot standby: level control holds the level within 1 % and set
 
 // ---------- water and steam off saturation ----------
 const HOT = { solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 };
-const BASE = { ch: 6, ld: 6, sp: 0, q: 61e3, rel: 0, n2: 0, heat: 0 };
+const BASE = { ch: 6, ld: 6, sp: 0, hp: 61e3 / common.QP, hb: 0, rel: 0, n2: 0, heat: 0 };
 // near-equilibrium reference: every transfer much faster than the step
 const FAST = { tau: { fl: 0.25, sc: 1, sh: 1 } };
 // run the plant from hot standby (settled 10 min) through a disturbance f(t) → partial command; returns
@@ -545,9 +575,9 @@ test('nitrogen into a steam bubble: no pressure step, cold nitrogen cools the ga
 test('compressing a nitrogen cushion heats the gas, which then gives the heat to the water', () => {
   const s = phys.init(N2_COLD);
   let dTmax = 0;
-  runPlant(s, { ...BASE, ch: 20, ld: 0, q: phys.UA * 20 }, 120, 0.5); // fast insurge
+  runPlant(s, { ...BASE, ch: 20, ld: 0, hp: phys.UA * 20 / common.QP }, 120, 0.5); // fast insurge
   dTmax = s.d.Tg - s.d.Tl;
   assert.ok(dTmax > 1, `gas ${dTmax.toFixed(1)} K above the water after the insurge`);
-  runPlant(s, { ...BASE, ch: 0, ld: 0, q: phys.UA * 20 }, 600, 0.5);
+  runPlant(s, { ...BASE, ch: 0, ld: 0, hp: phys.UA * 20 / common.QP }, 600, 0.5);
   assert.ok(s.d.Tg - s.d.Tl < 0.2 * dTmax, `relaxed to ${(s.d.Tg - s.d.Tl).toFixed(2)} K`);
 });
