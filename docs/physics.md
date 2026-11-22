@@ -14,7 +14,7 @@
 | Heater max | 1.8 MW | Pressuriser heaters (interlock: trip below 12 % level, always on) |
 | Spray max | 40 kg/s | Main spray at RCS temperature |
 | Relief valve | 15 kg/s steam at 16.2 MPa (∝ P while choked, × subsonic nozzle factor ψ(PB/P)/ψ* above the critical ratio 0.546, κ = 1.3, zero at PB); 30 kg/s liquid at 3.6 MPa (∝ √(P − PB)) | `relW(P, steam)`, `subF(P)`. Discharge to a relief tank at PB = 0.1 MPa abs (fixed: the tank does not fill or pressurise). All pressures in the model are absolute |
-| Pressuriser heat loss | UA·(T − T_amb), UA = 200 W/K (61 kW at hot standby in 40 °C air) | T_amb = 40 °C fixed (`TAMB`); T is the saturated-region (or solid liquid) temperature; recorded as `s.f.loss` |
+| Pressuriser heat loss | UA·(T − T_amb), UA = 200 W/K (61 kW at hot standby in 40 °C air) | T_amb = 40 °C fixed (`TAMB`); shared between water and gas by volume fraction, each at its own temperature; recorded as `s.f.loss` |
 | Safety valve | 4 × relief valve flow | Fixed 17.2 MPa open / 16.9 MPa reclose |
 | Gas with nitrogen | relief flow × √(R_s·T_sat(P) / (R_mix·T)) | `gasF(d)`: ideal-gas choked-flow ratio (∝ P/√(RT)) of the mixture vs saturated steam at the same P; exactly 1 for steam alone |
 | Nitrogen supply | 4.0 MPa header (`N2P`), 0.5 kg/s·√(ΔP / 1 MPa) (`N2W`), 20 °C, check valve | `n2W(P)`; flow × valve opening 0–1 (`u.n2`), operator only (no M/A) |
