@@ -19,6 +19,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `tests/load-physics.mjs` | Imports the three scripts in Node; exposes `PZCommon` as `common`, `PZSim` as `phys`, `PZCtl` as `ctrl`, plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/vapour-table.mjs` | Regenerates the superheated-steam table `VT` in sim.js from IAPWS-IF97 region 2. |
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
@@ -69,6 +70,11 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
   `u = {ch, ld, sp kg/s, q W, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
+- Steam bubble without nitrogen: split into water and steam regions (`s.ne`, `s.Mg`, `s.Ug`, `s.Vl`, `s.Vg`;
+  `s.M`, `s.U` stay totals) with finite-rate flashing, surface condensation, superheat decay and rain-out
+  (`stepNE`, `neSolve`, `vap`); back to one equilibrium region (`pz`) below 0.05 m³ of steam or when
+  nitrogen flows in. `d.T` is then T_sat(P); `d.Tl`, `d.Tg` the region temperatures. `init({neq:false})`
+  keeps the bubble in equilibrium, `init({tau})` overrides the time constants.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
 
@@ -126,9 +132,11 @@ leak) that destructures what it needs from `PZSim`. Order:
 
 - Nitrogen: ideal gas in equilibrium with the water (no adiabatic heating on compression), no
   solubility, supply from a fixed 4.0 MPa header, throttled valve, manual only (no M/A).
-- Thermal equilibrium in the saturated region; only insurge stratification is modelled (a
-  cold layer mixing with τ = 300 s). No outsurge flashing delay, no steam superheat on
-  fast compression, no wall heat capacity in the pressuriser.
+- Steam bubble: water and steam regions relax towards saturation with illustrative time constants
+  (flashing 5 s, surface condensation 300 s, steam superheat 30 s), not fitted to data; the water is one
+  well-mixed region (no hot surface layer); spray reaches saturation. Superheated steam is a quadratic fit
+  to IF97 region 2 (~1 % to 10 K superheat; extrapolated above ~350 °C). Insurge layer mixes with τ = 300 s.
+  Nitrogen cushions and bubbles under 0.05 m³ stay in equilibrium. No wall heat capacity in the pressuriser.
 - RCS is one well-mixed liquid node; no loops, no hot/cold leg split, no SG secondary side.
 - Charging enters at RCS temperature (no cooling effect). Spray water is at RCS temperature.
 - Level is liquid volume fraction; the mimic draws it by volume in a cylinder with hemispherical heads (0 % = bottom, 100 % = top).

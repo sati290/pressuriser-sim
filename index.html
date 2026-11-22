@@ -228,11 +228,12 @@ code{font-size:14px;overflow-wrap:anywhere}
         <li>Opening the supply on a water-solid pressuriser makes a gas space at the top. Nitrogen comes in faster, by volume, than letdown at 20 kg/s can make room, so pressure rises until you shut the valve.</li>
       </ol></div>
     <div><h2>What the model solves</h2>
-      <p>The pressuriser (51 m³) tracks its own water mass and energy, and the nitrogen mass in its gas space. When the liquid fills the vessel it is treated as compressed liquid; otherwise it is a saturated mixture. With nitrogen, liquid and gas share one temperature: the water vapour is at its saturation pressure for that temperature, the nitrogen is an ideal gas in the same space, and the pressure is the sum. The same equations hold as the nitrogen goes to zero, so the cushion, the steam bubble and water-solid are one model. The coolant system (280 m³) is one block of liquid at one temperature. A single net-heat control stands for pump work and core or decay heat minus RHR or steam dump; the pumps are assumed to run, keeping the coolant mixed and the spray supplied. Its heat capacity includes 0.6 GJ/K of steel.</p>
+      <p>The pressuriser (51 m³) tracks its own water mass and energy, and the nitrogen mass in its gas space. When the liquid fills the vessel it is treated as compressed liquid. With a steam bubble it splits into two regions at one pressure: water (compressed liquid, which may be a little below or above saturation) and steam (saturated or superheated). Mass and heat move between them at finite rates: flashing, condensation at the water surface, spray, and steam raining out as it expands or cools. With nitrogen, liquid and gas share one temperature: the water vapour is at its saturation pressure for that temperature, the nitrogen is an ideal gas in the same space, and the pressure is the sum. As the nitrogen goes to zero these equations tend to the equilibrium steam bubble and to water-solid, so the cushion hands over smoothly to the two-region steam model. The coolant system (280 m³) is one block of liquid at one temperature. A single net-heat control stands for pump work and core or decay heat minus RHR or steam dump; the pumps are assumed to run, keeping the coolant mixed and the spray supplied. Its heat capacity includes 0.6 GJ/K of steel.</p>
       <p>Each step the surge flow is solved so the pressuriser and the coolant system are at the same pressure. Charging and letdown change the coolant mass, and spray takes cold-leg water into the steam space.</p></div>
     <div><h2>Assumptions and limits</h2>
       <ul>
-        <li>Insurge water collects as a cooler layer at the bottom and mixes into the saturated water over about 5 minutes. The layer compresses the steam, which is why pressure rises on an insurge. Otherwise liquid and steam are in equilibrium, so the brief pressure dip before flashing on an outsurge is not shown.</li>
+        <li>With a steam bubble, the water and the steam each have their own temperature and only move towards saturation at a finite rate. Water hotter than saturation flashes to steam with a 5 s time constant. Water colder than saturation condenses steam at its surface with a 300 s time constant. Steam above saturation passes its superheat to the water with a 30 s time constant. Spray drops reach saturation before they land. These time constants are round illustrative figures, not taken from plant data. The water is one well-mixed block: there is no hot surface layer. Superheated-steam properties are a two-term fit to IAPWS-IF97 region 2, within about 1 % up to 10 K of superheat; above about 350 °C the fit is extrapolated. Below 0.05 m³ of steam, and whenever there is nitrogen, steam and water are treated as one mixture in equilibrium. Opening the nitrogen supply on a steam bubble therefore brings water and steam to equilibrium at once, which can step the pressure.</li>
+        <li>Insurge water collects as a cooler layer at the bottom and mixes into the water above it over about 5 minutes. On an insurge the steam is compressed faster than it can condense, so pressure overshoots the equilibrium value and falls back over several minutes. On a fast outsurge or relief the water lags behind the falling pressure, so pressure dips and then partly recovers as the water flashes.</li>
         <li>Charging enters at coolant temperature, so its cooling effect is ignored.</li>
         <li>Nitrogen comes from a 4.0 MPa header through a check valve: about 0.5 kg/s at 1 MPa difference with the valve fully open, in proportion to the opening.</li>
         <li>Nitrogen does not dissolve in the water: no Henry's-law solubility, so no degassing as the water heats, and none carried to the coolant by outsurge. Nitrogen stays in equilibrium with the water, so compressing it heats the whole pressuriser a little rather than the gas a lot; fast pressure swings on a cushion are softer than real. Nitrogen relief flow uses the ideal-gas choked-flow ratio to the steam figure.</li>
@@ -375,7 +376,10 @@ const updText=()=>{
   $('gP').textContent=(d.P/1e6).toFixed(3);$('gT').textContent=(d.T-273.15).toFixed(1);$('gR').textContent=(s.Tr-273.15).toFixed(1);
   $('gL').textContent=solid?'Solid':(d.level*100).toFixed(1);
   const h=Math.floor(s.t/3600),m=Math.floor(s.t%3600/60);
-  const rows=[['State',solid?'water-solid':n2?'nitrogen cushion':'steam bubble'],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
+  // steam and water against the saturation temperature for the pressure (+ above, − below)
+  const kv=x=>(x>=0.005?'+':x<=-0.005?'−':'')+Math.abs(x).toFixed(2)+' K';
+  const offSat=solid?'—':d.ne?`steam ${kv(d.Tg-d.T)}, water ${kv(d.Tl-d.T)}`:n2?'equilibrium (nitrogen)':'equilibrium (small bubble)';
+  const rows=[['State',solid?'water-solid':n2?'nitrogen cushion':'steam bubble'],['Off saturation',offSat],['Subcooling margin',sub.toFixed(1)+' K',sub<15],['ΔT pressuriser − coolant',dT.toFixed(0)+' K',dT>180],
     ['Net heat to coolant',(f.Qr/1e6).toFixed(1)+' MW'],
     ['Surge flow',(s.surge>0?'+':'')+s.surge.toFixed(1)+' kg/s'],['Charging / letdown',f.ch.toFixed(1)+' / '+f.ld.toFixed(1)+' kg/s'],['Heaters',f.trip?'tripped':(f.Q/1e3).toFixed(0)+' kW'],
     ['Spray',f.ws.toFixed(1)+' kg/s'],['Heat loss',(f.loss/1e3).toFixed(0)+' kW'],['Relief',(s.sv?'safety valve open':s.rel?(ctl.auto.rel?'relief valve open (A)':'open '+Math.round(s.rel*100)+' % by hand'):'closed')+(s.rel||s.sv?', '+f.wr.toFixed(1)+' kg/s':''),s.rel||s.sv],
@@ -550,16 +554,17 @@ const drawVessel=dtReal=>{
   const tx=x0+12,heatTop=hT; // labels sit left of the heater bundle's top where possible
   if(solid){lbl('Water-solid',tx,y0+rad+10,'rgba(255,255,255,.92)');tempL(d.T,rT,tx,y0+rad+30,'#fff')}
   else{
-    // steam and water share the saturation temperature (thermal equilibrium)
-    // with nitrogen the gas is a mixture: name it and give the nitrogen share (by partial pressure)
-    if(ly-y0>60){const n2=s.Mn>0,yy=Math.max(y0+rad*0.6,(y0+ly)/2-(n2?10:0));lbl(n2?'N₂ + steam':'Steam',tx,yy,col.mute);const hh=tempL(d.T,rT,tx,yy+20,col.ink);
+    // steam and water each at their own temperature (d.Tg, d.Tl); with nitrogen or a very small bubble
+    // they share one (equilibrium). With nitrogen the gas is a mixture: name it and give the nitrogen share
+    const Tst=d.ne?d.Tg:d.T,Twa=d.ne?d.Tl:d.T;
+    if(ly-y0>60){const n2=s.Mn>0,yy=Math.max(y0+rad*0.6,(y0+ly)/2-(n2?10:0));lbl(n2?'N₂ + steam':'Steam',tx,yy,col.mute);const hh=tempL(Tst,rT,tx,yy+20,col.ink);
       if(n2&&ly-y0>100)lbl(`N₂ ${(d.yN*100).toFixed(d.yN>0.995||d.yN<0.01?1:0)} %`,tx,yy+38+hh,col.ink,true)}
     // water (and insurge layer) labels go inside when there is room, else beside the vessel under the level marker
     const lay=lf>0&&y1-yl>3&&s.Ms>1,wb=Math.min(lay?yl:y1,heatTop),ox=x0+vw+10;
     let oy=Math.max(ly+30,inTop+30);
     const wy=Math.max(ly+22,y0+rad*0.7); // below the curved top head, where the label would be clipped
-    if(wb-wy>44){lbl('Water',tx,wy,'rgba(255,255,255,.9)');tempL(d.T,rT,tx,wy+20,'#fff')}
-    else{oy=Math.min(oy,y1-68);lbl('Water',ox,oy,col.mute);oy+=48+tempL(d.T,rT,ox,oy+20,col.ink)}
+    if(wb-wy>44){lbl('Water',tx,wy,'rgba(255,255,255,.9)');tempL(Twa,rT,tx,wy+20,'#fff')}
+    else{oy=Math.min(oy,y1-68);lbl('Water',ox,oy,col.mute);oy+=48+tempL(Twa,rT,ox,oy+20,col.ink)}
     if(lay){
       let Ts=s.Tr;for(let i=0;i<3;i++)Ts+=(s.hs-hLiq(Ts,d.P))/cpL(Ts);
       lbl('Insurge layer',ox,oy,col.mute);lbl(degC(Ts),ox,oy+20,col.ink,true);

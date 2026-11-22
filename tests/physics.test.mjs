@@ -450,3 +450,86 @@ test('load step at hot standby: level control holds the level within 1 % and set
   assert.ok(mn > 0.248, `level undershot to ${(mn * 100).toFixed(1)} %`);
   near(s.d.level * 100, 25, 0.1, 'level back at the setpoint');
 });
+
+// ---------- non-equilibrium steam bubble ----------
+const HOT = { solid: false, Tr: 291.7, P: 15.5e6, L: 0.25 };
+const BASE = { ch: 6, ld: 6, sp: 0, q: 61e3, rel: 0, n2: 0, heat: 0 };
+// run the plant from hot standby (settled 10 min) through a disturbance f(t) → partial command; returns
+// the pressure change from the settled value at every step
+const trace = (o, f, seconds, dt, onStep) => {
+  const s = phys.init({ ...HOT, ...o });
+  runPlant(s, BASE, 600, dt);
+  const P0 = s.d.P, out = [];
+  for (let t = 0; t < seconds; t += dt) { phys.step(s, { ...BASE, ...f(t) }, dt); out.push(s.d.P - P0); if (onStep) onStep(s, t); }
+  return { s, dP: out };
+};
+const insurge = t => ({ heat: t < 120 ? 40e6 : 0 });
+
+test('steam properties off saturation follow IF97 region 2', () => {
+  // [°C saturation at this density, density, θ K, P − p_sat and u − u″ from IF97 region 2]
+  for (const [c, rho, th, dP, du] of [[345, 102.333, 10, 904686, 34667], [345, 102.333, 30, 2623882, 97540], [250, 19.9659, 15, 196036, 34946]]) {
+    const q = common.sat(c + 273.15), ps = q.p, ug = q.ug, v = phys.vap(rho, ug + du);
+    near(v.P - ps, dP, dP * (th > 20 ? 0.03 : 0.01), `P − p_sat at ${c} °C + ${th} K`);
+    near(v.T - 273.15, c + th, 0.02 * th, `T at ${c} °C + ${th} K`);
+    assert.equal(v.x, 1);
+  }
+  // below u″ at that density the steam is wet, at saturation
+  const q = common.sat(618), rg = q.rg, ug = q.ug, w = phys.vap(rg, ug - 20e3);
+  assert.ok(w.x < 1 && w.x > 0.95, `wet steam quality ${w.x}`);
+  near(w.P, common.sat(w.T).p, 1, 'wet steam is at saturation');
+});
+
+test('a steam bubble starts split and in equilibrium; hot standby stays near saturation', () => {
+  const s = phys.init(HOT);
+  assert.ok(s.ne && s.d.ne, 'split into water and steam');
+  const e = phys.pz(s.M, s.U, phys.VP);
+  near(s.d.P, e.P, 200, 'same pressure as the equilibrium solve');
+  runPlant(s, BASE, 3600, 1);
+  near(s.d.Tl - s.d.T, 0, 0.05, 'water − saturation (K)');
+  near(s.d.Tg - s.d.T, 0, 0.05, 'steam − saturation (K)');
+  near(MPa(s.d.P), 15.5, 0.02, 'P');
+});
+
+test('insurge: the steam compresses ahead of condensation, so pressure overshoots the equilibrium model', () => {
+  let sh = 0, sub = 0;
+  const ne = trace({}, insurge, 900, 0.25, s => { sh = Math.max(sh, s.d.Tg - s.d.T); sub = Math.max(sub, s.d.T - s.d.Tl); });
+  const eq = trace({ neq: false }, insurge, 900, 0.25);
+  const pk = a => Math.max(...a), ne0 = pk(ne.dP), eq0 = pk(eq.dP);
+  assert.ok(ne0 > 1.4 * eq0, `peak +${(ne0 / 1e3).toFixed(0)} kPa vs equilibrium +${(eq0 / 1e3).toFixed(0)} kPa`);
+  assert.ok(sh > 0.1, `steam superheats: ${sh.toFixed(2)} K`);
+  assert.ok(sub > 0.3, `water left subcooled: ${sub.toFixed(2)} K`);
+  // the overshoot decays as subcooled water condenses steam
+  assert.ok(ne.dP.at(-1) < 0.5 * ne0, `decays: +${(ne.dP.at(-1) / 1e3).toFixed(0)} kPa after 15 min`);
+});
+
+test('fast transfer rates reproduce the equilibrium model', () => {
+  const fast = trace({ tau: { fl: 0.25, sc: 1, sh: 1 } }, insurge, 600, 0.25), eq = trace({ neq: false }, insurge, 600, 0.25);
+  for (let i = 0; i < eq.dP.length; i += 40) near(fast.dP[i], eq.dP[i], 15e3, `ΔP at ${i / 4} s`);
+});
+
+test('outsurge: superheated water flashes with a delay, so pressure dips and then recovers', () => {
+  // relief fully open for 60 s at hot standby, then shut
+  const relief = t => ({ rel: t < 60 ? 1 : 0 });
+  let sup = 0;
+  const ne = trace({}, relief, 180, 0.25, s => { sup = Math.max(sup, s.d.Tl - s.d.T); });
+  const eq = trace({ neq: false }, relief, 180, 0.25);
+  assert.ok(sup > 0.3, `water superheats: ${sup.toFixed(2)} K`);
+  const at = (a, t) => a[Math.round(t / 0.25) - 1];
+  const rec = at(ne.dP, 120) - at(ne.dP, 60), recEq = at(eq.dP, 120) - at(eq.dP, 60);
+  assert.ok(rec > 20e3, `recovers ${(rec / 1e3).toFixed(0)} kPa after the valve shuts`);
+  assert.ok(recEq < 0, 'the equilibrium model has no recovery');
+});
+
+test('non-equilibrium results do not depend much on the time step', () => {
+  const pk = dt => Math.max(...trace({}, insurge, 400, dt).dP);
+  near(pk(2), pk(0.25), 0.02 * pk(0.25), 'insurge peak, dt 2 s vs 0.25 s');
+});
+
+test('nitrogen into a steam bubble: the gas space goes back to one equilibrium region', () => {
+  const s = phys.init({ solid: false, Tr: 200, P: 2.5e6, L: 0.4 });
+  assert.ok(s.ne);
+  const m0 = s.M + s.Ms + s.Mr;
+  runPlant(s, { ...BASE, n2: 1 }, 60, 1);
+  assert.ok(!s.ne && s.Mn > 0, 'equilibrium nitrogen branch');
+  near(s.M + s.Ms + s.Mr, m0, 1, 'water mass');
+});
