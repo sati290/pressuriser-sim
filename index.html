@@ -129,7 +129,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 <main class="band main wrap" style="padding-top:0">
   <div class="gauges">
     <div class="g p"><span>Pressure, MPa abs</span><div class="gv"><b id="gP">–</b><small id="gS" title="Saturation temperature at this pressure"></small></div></div>
-    <div class="g"><span>Pressuriser, °C</span><div class="gv"><b id="gT">–</b><small id="gD" title="Saturation temperature at the total pressure minus the pressuriser temperature. Zero with a pure steam bubble; positive with nitrogen in the gas (the steam is only part of the pressure) or with subcooled water-solid."></small></div></div>
+    <div class="g"><span>Pressuriser, °C</span><div class="gv"><b id="gT">–</b><small id="gD" title="Pressuriser temperature minus the saturation temperature at the total pressure. Zero with a pure steam bubble; negative with nitrogen in the gas (the steam is only part of the pressure) or with subcooled water-solid; positive when water-solid water is superheated."></small></div></div>
     <div class="g r"><span>Coolant, °C</span><b id="gR">–</b></div>
     <div class="g"><span>Level, %</span><b id="gL">–</b></div>
   </div>
@@ -377,7 +377,7 @@ const syncAuto=()=>{
 const updText=()=>{
   const d=s.d;if(d.err)return;
   const solid=d.mode==='solid',n2=s.Mn>0,sub=Tsat(d.P)-s.Tr,dT=d.T-s.Tr,f=s.f;
-  $('gP').textContent=(d.P/1e6).toFixed(3);$('gS').textContent=`sat. ${(Tsat(d.P)-273.15).toFixed(1)} °C`;$('gT').textContent=(d.T-273.15).toFixed(1);{const x=Tsat(d.P)-d.T,v=Math.abs(x)<0.05?'0.0':(x<0?'−':'')+Math.abs(x).toFixed(1);$('gD').textContent=`Tsat − T ${v} K`}$('gR').textContent=(s.Tr-273.15).toFixed(1);
+  $('gP').textContent=(d.P/1e6).toFixed(3);$('gS').textContent=`sat. ${(Tsat(d.P)-273.15).toFixed(1)} °C`;$('gT').textContent=(d.T-273.15).toFixed(1);{const x=d.T-Tsat(d.P),v=Math.abs(x)<0.05?'0.0':(x<0?'−':'+')+Math.abs(x).toFixed(1);$('gD').textContent=`sat. diff ${v} K`}$('gR').textContent=(s.Tr-273.15).toFixed(1);
   $('gL').textContent=solid?'Solid':(d.level*100).toFixed(1);
   const h=Math.floor(s.t/3600),m=Math.floor(s.t%3600/60);
   // gas and water against the interface temperature: saturation at the steam partial pressure (+ above, − below)
