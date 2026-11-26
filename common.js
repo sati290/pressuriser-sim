@@ -1,8 +1,5 @@
 // Shared by sim.js (plant) and control.js (automatic control): steam tables, actuator limits, clamp.
-// Loaded first, as a classic <script> (index.html) or a module (tests); it only defines
-// globalThis.PZCommon. Neither plant nor controller depends on the other, only on this file.
-globalThis.PZCommon = (() => {
-'use strict';
+// An ES module with no imports. Neither plant nor controller depends on the other, only on this file.
 // IAPWS 1992 supplementary release (Wagner & Pruss) saturation equations
 const Tc=647.096,pc=22.064e6,rc=322;
 const A=[-7.85951783,1.84408259,-11.7866497,22.6807411,-15.9618719,1.80122502];
@@ -36,5 +33,4 @@ const QE=1.8e6/78,QP=18*QE,QB=20*QE,NB=3;
 // on; relief and nitrogen valve opening fractions. The plant clamps every command to these; the
 // controller's anti-windup needs the same limits.
 const LIM=Object.freeze({ch:20,ld:20,hp:1,hb:NB,sp:40,rel:1,n2:1});
-return {satX,sat,Tsat,clamp,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};
-})();
+export {satX,sat,Tsat,clamp,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};

@@ -251,15 +251,20 @@ code{font-size:14px;overflow-wrap:anywhere}
   </div>
 </section>
 
-<script src="common.js"></script>
-<script src="sim.js"></script>
-<script src="control.js"></script>
 <script>
-{
+// The model is ES modules, so a failed import (opened from file://, a missing or stale file) stops the
+// whole page script without a word. The module sets PZready as its last act; say so if it didn't.
+addEventListener('load',()=>{if(window.PZready)return;const a=document.getElementById('alert');
+  a.textContent=location.protocol==='file:'?'This page needs a web server: run npm run serve and open http://localhost:8000/, or open it through raw.githack.':'The simulator scripts failed to load (see the browser console). Reload in a few minutes, or open the page by commit.';
+  a.classList.add('on')});
+</script>
+<script type="module">
 // steam tables and limits in common.js; plant in sim.js (pure physics); automatic control in control.js
-const {satX,Tsat,clamp,THI,NB}=PZCommon;
+import {satX,Tsat,clamp,THI,NB} from './common.js';
+// namespace import: a cached older sim.js without a newer export gives undefined, not a link error
+import * as PZSim from './sim.js';
+import * as Ctl from './control.js';
 const {hLiq,cpL,init,step,fault,VP}=PZSim;
-const Ctl=PZCtl;
 // sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
 const SIM_API=3,simStale=PZSim.API!==SIM_API;
 
@@ -615,7 +620,7 @@ readCtl();COLD();
 const ro=new ResizeObserver(()=>{drawRec();drawSat()});ro.observe(rec);ro.observe(satsvg);
 $('win').addEventListener('change',()=>{drawRec();drawSat()});
 requestAnimationFrame(frame);
-}
+window.PZready=true;
 </script>
 </body>
 </html>
