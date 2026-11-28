@@ -4,9 +4,10 @@
 //
 // Settings c are in panel units: heat MW; n % feed pump speed; fv % feed valve; ext % heater
 // extraction; mk kg/s hotwell makeup (negative: reject); mv % main steam valve; srv array, true for each
-// SRV opened by hand; pset Pa; lset m; dpset Pa; auto {n,fv,mv,mk} booleans. Net heat, heater extraction
-// and the SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array}.
+// SRV opened by hand; pset Pa; lset m; dpset Pa; auto {n,fv,mv,mk} booleans; cwp, sj, vp, vb booleans,
+// cwv % and tcw °C for the circulating water and condenser air removal. Net heat, heater extraction, the
+// SRVs, the circulating water and the air removal are always manual (the SRV springs are in the plant). The command is SI:
+// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -76,7 +77,13 @@ const demands=(k,s,c,dt)=>{
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  return {heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
+  const u={heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
+  // circulating water and condenser air removal: manual only, passed through (absent: the plant's normal
+  // line-up). cwp CW pump, sj SJAE motive steam, vp vacuum pump, vb vacuum breaker (booleans); cwv % CW
+  // valve; tcw °C CW inlet temperature (an operator input standing for the river or tower).
+  for(const k of ['cwp','sj','vp','vb'])if(c[k]!=null)u[k]=!!c[k];
+  if(c.cwv!=null)u.cwv=c.cwv/100;if(c.tcw!=null)u.tcw=c.tcw+273.15;
+  return u;
 };
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.

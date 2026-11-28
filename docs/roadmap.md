@@ -78,7 +78,7 @@ cooling raises Pc; vacuum degrades with load. Hotwell level and temperature now 
 **Open:** source for a generic BWR/4-class condenser UA, circulating flow (~30–50 m³/s) and design back pressure;
 whether to model hotwell subcooling or keep saturated condensate.
 
-### 2. Circulating water
+### 2. Circulating water — done
 **Models:** the circulating water as an in/out pipe through the condenser (decided: no river, cooling
 tower or pump model for now), with a circulating water valve (or pump on/off) and the inlet temperature as
 operator inputs, so loss of
@@ -89,7 +89,12 @@ temperature an input; condenser outlet temperature from the step 1 heat balance.
 enough to ship together with step 1. A pump curve and a heat sink (river or cooling tower) can come later
 if scenarios need them.
 
-### 3. Condenser air removal
+**Done:** pump on/off against a fixed head (flat, no curve) and system resistance, butterfly valve
+w = √(H/(Ksys + Kv/x²)) sized for 38 t/s open, 12 s flow lag, inlet temperature an operator slider 0–35 °C.
+The valve has no M/A: there is no controller for it (a CW valve is set open and left), so it is manual
+like the pump. No tube transit delay.
+
+### 3. Condenser air removal — done
 **Models:** air in-leakage into the shell, removed by the steam jet air ejector (motive steam from the
 main steam header) at power and by the mechanical vacuum pump at startup; off-gas as a sink.
 Makes "pulling vacuum" a startup step and air binding a failure mode.
@@ -103,6 +108,16 @@ blanketing factor). A condenser open to atmosphere starts at 0.1 MPa full of air
 **Decided:** the startup scenario includes pulling vacuum: it starts with the condenser at atmospheric
 pressure full of air, the mechanical vacuum pump draws it down, then the SJAE takes over once main steam is
 available.
+
+**Done:** air mass state, Dalton with the steam; 0.009 kg/s leakage plus 0.02 kg/s radiolytic at rated
+(both illustrative); SJAE as an effective 10 m³/s of shell gas (giving 260 Pa of air at rated), motive
+steam 2.5 kg/s; vacuum pump 2.2 m³/s fading to 0 at 7 kPa (19 kPa after 1 h); blanketing
+UA0/(1 + (ya/0.1)²) with UA0 recalibrated so the rated shell temperature is unchanged (Pc 7.05 → 7.32 kPa,
+the air adds its partial pressure); vacuum breaker (manual). Guess: the SJAE motive steam is taken off the
+main steam flow ahead of the turbine, because the one `mv` includes the MSIVs (so a shut `mv` leaves the
+SJAE without steam); step 4 should tap it from the steam-line node between the MSIVs and the turbine
+valves (`motiveP(s)` in bwr-sim.js is the one place to change the pressure). No low-vacuum trip
+(step 11) and no bypass vacuum interlock (step 4/11).
 
 ### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass
 **Models:** the one `mv` becomes four valves in series and parallel, as drawn: inboard and outboard
