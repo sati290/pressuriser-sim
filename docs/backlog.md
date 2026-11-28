@@ -1,6 +1,7 @@
 # Backlog
 
 Roughly in order of value for understanding the physics. None of these are committed; pick with the owner.
+PWR pressuriser page first, then the BWR page (its own numbering, B1…).
 
 ## Physics fidelity
 Done: water and gas never forced into equilibrium — steam superheat, outsurge flashing delay, adiabatic
@@ -24,17 +25,50 @@ nitrogen compression (see docs/physics.md). Follow-ups:
 7. **Level programme** — level setpoint as a function of Tavg (25 % → 60 %), with power operation.
 8. **Power operation** — core power with simple SG heat sink and Tavg programme; load-following transients.
 9. **Event log** — timestamped list (bubble formed, relief opened, heaters tripped, solid…).
-10. **Save/restore state** — copy a JSON snapshot; paste to restore (artifact sandbox blocks downloads).
+10. **Save/restore state** — download a JSON snapshot (or copy it to the clipboard) and load or paste it to restore.
 
 ## Plant variants
 11. **Parameter presets** — e.g. VVER-440 / VVER-1000 vs Westinghouse 4-loop (volumes, setpoints,
     heater power). Needs sourced numbers; don't invent them.
-12. **BWR condenser** (next) — close the loop: turbine exhaust and bypass steam into a condenser with
-    its own pressure (cooling water, air), condensate to the hotwell at the condenser temperature. Replaces
-    `condensate()` in bwr-sim.js, which today returns the main steam flow at once at 45.8 °C; the steam
-    valve's back pressure `PC` would then follow the condenser. On the mimic the condenser goes at the turbine
-    end of the steam line, above the hotwell, where the dashed condensate line is now.
 
 ## UX
 12. Units toggle (SI / psi-°F).
 13. Annotated recorder (mark mode changes on the time axis).
+
+## BWR page (bwr.html)
+
+Roadmap order: the feedwater system (done), then a simple condenser to close the loop.
+The rest is roughly in order of value. See docs/bwr.md, "Not modelled", for what each one replaces.
+
+### Steam–feedwater loop
+B1. **Feedwater system** (done, 0.1.6) — condenser hotwell as the suction source, feedwater pump,
+    feedwater heater, feed valve, so feed flow and temperature follow from the train instead of being set.
+B2. **Simple condenser** — closes the loop: main steam (and later bypass) condenses into the hotwell
+    that feeds B1; cooling-water heat sink, condenser pressure from the steam load, hotwell level.
+    Replaces `condensate()` in bwr-sim.js (today: the main steam flow back at once at 45.8 °C); the steam
+    valve's back pressure `PC` would then follow the condenser. On the mimic it goes at the turbine end of
+    the steam line, above the hotwell, where the dashed condensate line is now.
+B3. **Turbine and bypass valves** — turbine control valves and a steam bypass to the condenser, so a
+    load rejection has somewhere to send steam besides the SRVs.
+
+### Core
+B4. **Void and pressure reactivity feedback** — point kinetics (one or six delayed groups) with void,
+    Doppler and moderator-temperature coefficients, so power responds to pressure, voids and feedwater
+    temperature: the pressurisation power spike on valve closure, the power rise with colder feed.
+    Needs sourced coefficients for a BWR/4-like core; don't invent them.
+B5. **Recirculation flow** — recirculation pumps and jet pumps, core flow as a state; power follows flow
+    through the void feedback of B4 (flow control of power along a rod line). Lets void clearance depend on
+    flow instead of one time constant.
+B6. **Automatic scram** — trips on high pressure, low level, main steam valve closure (position switch),
+    high power once B4 exists; scram stays available as the operator button.
+
+### Vessel and containment
+B7. **Downcomer and subcooling** — a separate downcomer node mixing feedwater with separator return, so
+    core inlet subcooling responds to feed temperature with a delay.
+B8. **Suppression pool** — pool temperature and mass rising with SRV discharge, pool cooling; heat-up
+    limits during an isolation.
+B9. **Isolation condenser / RCIC** — decay-heat removal and makeup with the main steam valve shut.
+B10. **Vessel and internals heat capacity** — steel stores heat on heat-up and returns it on cooldown
+    (same idea as PWR item 1).
+B11. **Level by real geometry** — level span on the instrument taps instead of a uniform-area vessel;
+    swell from bulk flashing rising more slowly during depressurisation.
