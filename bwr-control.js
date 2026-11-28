@@ -11,9 +11,11 @@ const NV=11,FWMAX=2500;
 // pressure regulator (main steam valve), PI on P − pset: 0.1 MPa over opens the valve 30 % more,
 // integral time 30 s
 const KP=3e-6,TIP=30;
-// feedwater, three-element: main steam flow (feedforward) + PI on the level error, 150 kg/s per m,
-// integral time 120 s
-const KL=150,TIL=120;
+// feedwater, three-element: main steam flow (feedforward) + PI on the level error, 800 kg/s per m,
+// integral time 60 s. The gain is high enough that about 3 m low asks for full flow even with no
+// steam-flow signal: after a main steam valve closure the steam leaves through the SRVs, which the
+// steam-flow signal does not see, and the level term alone has to call for the feedwater.
+const KL=800,TIL=60;
 // SRV relief mode: three groups (valves) opening at relSet, +0.07 and +0.14 MPa; each recloses RESEAT below its opening pressure
 const GROUPS=[4,4,3],GSTEP=0.07e6,RESEAT=0.35e6;
 // controller memory: iP, iF integrators (valve fraction, kg/s); g open state of each SRV group;

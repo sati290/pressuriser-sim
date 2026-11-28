@@ -75,6 +75,20 @@ test('closing the steam valve at rated heat: voids collapse (shrink), pressure r
   assert.equal(B.fault(s2), '');
 });
 
+test('valve closure at rated heat with feedwater in A: feed rises to replace the SRV steam, core stays covered', () => {
+  for (const dt of [0.25, 2]) {
+    const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fw: true, mv: false, srv: true } };
+    run(s, k, c, 10, dt); c.mv = 0;
+    let Lmin = 99, fwMax = 0;
+    run(s, k, c, 1500, dt, x => { Lmin = Math.min(Lmin, x.d.level); fwMax = Math.max(fwMax, x.f.fw); return true; });
+    assert.equal(B.fault(s), '', `no fault dt=${dt}`);
+    assert.ok(Lmin > 12.5, `level stays well above the fuel: min ${Lmin} dt=${dt}`);
+    assert.ok(fwMax > 1900, `feed runs up to the SRV flow: max ${fwMax} dt=${dt}`);
+    near(s.d.level, 14.3, 0.05, `level back to setpoint dt=${dt}`);
+    near(s.f.fw, s.f.wsrv, 10, `feed matches the relief flow dt=${dt}`);
+  }
+});
+
 test('opening the steam valve depressurises: the water flashes and the level swells above the collapsed level', () => {
   const s = B.init({ P: 7e6, L: 14.0 }), L0 = s.d.level;
   runPlant(s, { heat: 20e6, fw: 0, tfw: 400, mv: 0.3, srv: 0 }, 2, 0.25);

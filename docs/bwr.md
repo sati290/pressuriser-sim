@@ -43,8 +43,9 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 
 - Pressure regulator: steam valve demand = KP·(P − pset) + I, KP = 3×10⁻⁶ /Pa (0.1 MPa → 30 %), integral
   time 30 s, anti-windup at 0 and 1.
-- Feedwater, three-element: demand = main steam flow + KL·(lset − level) + I, KL = 150 kg/s per m, integral
-  time 120 s, 0 … 2500 kg/s. SRV flow is not in the steam signal.
+- Feedwater, three-element: demand = main steam flow + KL·(lset − level) + I, KL = 800 kg/s per m, integral
+  time 60 s, 0 … 2500 kg/s. SRV flow is not in the steam signal, so after a valve closure the level term
+  alone has to call for feedwater: about 3 m low asks for full flow.
 - SRV relief mode: groups of 4, 4, 3 valves opening at relSet, +0.07, +0.14 MPa, each reclosing 0.35 MPa
   below its opening pressure.
 - In M an actuator's integral holds the operator's value (for feedwater, net of the steam-flow
