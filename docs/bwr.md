@@ -106,6 +106,34 @@ return), mk, Mh, hw (hotwell fraction).
 - Startup 30 MW from 100 °C, valve shut: 60–110 K/h, level up > 0.8 m in an hour from expansion.
 - Load step 3293 → 2000 MW with both controllers in A: pressure and level back to setpoint within 20 min.
 
+## Plant layout (draft)
+
+The mimic draws the whole plant, one of each component (no redundant trains). It spans the page width with
+the controls below it; the canvas is at least 1180 px wide and scrolls sideways on smaller screens (phones:
+use landscape). There is no separate phone layout. Solid parts are modelled; dashed grey parts are layout only, to be made functional step by step.
+
+- Inside the primary containment (dotted outline): vessel, SRVs and suppression pool, one recirculation
+  loop (suction from the downcomer, pump below the core, back to one jet pump in the downcomer), the
+  inboard MSIV. Feed check valve where the feed line leaves containment.
+- Main steam: inboard and outboard MSIV, then a tee for the bypass line (down into the condenser upper
+  shell) and the reheat steam (up to the MSR), then the turbine stop valve and the control valve. The
+  model's one main steam valve (`mv`) is drawn as the control valve.
+- Turbine hall: HP turbine → crossover up into the moisture separator reheater (drains to the heaters) →
+  LP turbine (double flow, exhausts down into the condenser) → generator on the same shaft.
+- Condenser: shell, tube bundle with circulating water in/out, air removal to the steam jet air ejector
+  (off-gas; its motive steam comes from the main steam header over the turbine hall) and the mechanical
+  vacuum pump (startup), hotwell at the bottom (the model's hotwell).
+- Condensate and feed: hotwell → condensate pump → polisher → LP heater → feed pump → HP heater (the
+  model's one heater, its extraction now drawn from the HP turbine casing) → feed valve → containment.
+
+Not on the layout yet, for the steam/feed circuit: feed heater and MSR drain lines (drain tank, drain
+pumps or cascade to the condenser), extraction lines to the LP heater and the MSR/heater non-return
+valves, the off-gas train (recombiner, delay beds, stack), turbine gland
+seal steam and its condenser, circulating water pumps and the cooling tower or river, the condensate
+storage tank (shown only as the makeup label), reactor water cleanup (RWCU), control rod drive
+hydraulics, main steam drains to the condenser, generator output and grid breaker. Emergency cooling
+(RCIC, HPCI, core spray, RHR) is deliberately left for later.
+
 ## Not modelled
 
 Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
