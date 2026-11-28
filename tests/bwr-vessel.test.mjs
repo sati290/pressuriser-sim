@@ -25,9 +25,9 @@ test('level instruments: inches above instrument zero, BWR/4 setpoints in order'
 
 test('bulk flashing on a depressurisation swells the level more slowly than core boiling clears', () => {
   const s = B.init({ P: 7e6, L: 13.5 });
-  let peak = 0; runPlant(s, { heat: 0, ...NOFEED, cv: 0.5, bp: 1, srv: [] }, 20, 0.25, x => { peak = Math.max(peak, x.Mbf); return true; });
+  let peak = 0; runPlant(s, { heat: 0, ...NOFEED, cv: 0.5, bp: 1, srv: [] }, 20, 0.25, x => { peak = Math.max(peak, x.Mfl); return true; });
   assert.ok(peak > 500, `flash voids ${peak} kg`);
-  assert.ok(s.d.Vb * s.d.rg > s.Mb, 'flash voids are in the level');
+  assert.ok(s.Mb >= s.Mfl - 1e-9 && s.d.Vb * s.d.rg >= s.Mfl - 1e-6, 'flash voids are in the level');
 });
 
 test('suppression pool: SRV steam condenses in it; cooling removes heat; energy balance', () => {

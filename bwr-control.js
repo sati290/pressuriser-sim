@@ -2,14 +2,18 @@
 // It reads the plant state (s.d, s.f) and the operator's settings, and produces the final command
 // that bwr-sim.js step() takes. An ES module; imports only common.js (not bwr-sim.js). See docs/bwr.md.
 //
-// Settings c are in panel units: heat MW; n % feed pump speed; fv % feed valve; ext % heater
-// extraction; mk kg/s hotwell makeup (negative: reject); cv % turbine control valve; bp % bypass valve;
-// ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop valve switches, true open); ll % load
-// limit (of rated steam flow); srv array, true for each SRV opened by hand; pset Pa; lset m; dpset Pa;
-// rw % reactor water cleanup reject; auto {n,fv,cv,bp,mk,rw} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
-// condenser air removal (manual only). Net heat, heater extraction, the MSIV and stop valve switches and the
+// Settings c are in panel units: rod % control rod lever withdrawn (manual only: BWRs have no automatic
+// rod control); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed
+// pump speed; fv % feed valve; ext % heater extraction; mk kg/s hotwell makeup (negative: reject); cv %
+// turbine control valve; bp % bypass valve; ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop
+// valve switches, true open); ll % load limit (of rated steam flow); srv array, true for each SRV opened by
+// hand; pset Pa; lset m; dpset Pa; rw % reactor water cleanup reject; rp recirculation pump breaker (true
+// closed; a plain switch, no M/A); mg % MG set speed; wset % rated core flow setpoint; auto
+// {n,fv,cv,bp,mk,rw,mg} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
+// condenser air removal (manual only). The rods, heater extraction, the MSIV and stop valve switches and the
 // SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
+// {rod 0–1, heat W (undefined unless c.heat is set), rp, mg 0–1 (undefined unless c.mg is set), n 0–1, fv 0–1,
+// ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -48,12 +52,17 @@ const KN=1.5e-8,TIN=10;
 // RBAND higher. Its band sits above the feedwater controller's setpoint, so the two do not fight: the feed
 // valve closes as the level rises and the reject takes the swell of a heat-up.
 const RDB=0.1,RBAND=0.3;
-// controller memory: iP, iF, iX, iH integrators (steam flow demand, fraction of rated, feed flow kg/s, feed valve
+// core flow (recirculation MG set speed): PI on the core flow against the setpoint wset (% of the rated
+// WCR, which must match bwr-core.js): 10 % of rated flow low raises the speed demand 3 %, integral time
+// 5 s; anti-windup at 0 and 1. The MG set's speed limiter (2 %/s, minimum 20 %) is in the plant, so a
+// big setpoint change ramps.
+const WCR=12900,KW=2.3e-5,TIW=5;
+// controller memory: iP, iF, iX, iH, iN, iW integrators (steam flow demand as a fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0}});
+const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0,mg:1}});
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -98,13 +107,19 @@ const demands=(k,s,c,dt)=>{
   if(!A.n)k.iN=c.n/100;
   else{const I=k.iN+KN/TIN*eN*dt,v=KN*eN+I;if(!((v>1&&eN>0)||(v<0&&eN<0)))k.iN=I}
   k.iN=clamp(k.iN,0,1);const n=clamp(KN*eN+k.iN,0,1);
+  // core flow on the MG set speed (only when the page gives a flow setpoint)
+  let mg=k.dem.mg;
+  if(c.wset!=null){const eW=c.wset/100*WCR-(f.Wc||0);
+    if(!A.mg)k.iW=c.mg/100;
+    else{const I=k.iW+KW/TIW*eW*dt,v=KW*eW+I;if(!((v>1&&eW>0)||(v<0&&eW<0)))k.iW=I}
+    k.iW=clamp(k.iW,0,1);mg=clamp(KW*eW+k.iW,0,1)}
   const rw=clamp((d.level-c.lset-RDB)/RBAND,0,1);
-  k.dem={D,cv,bp,fw,fv,mk,n,rw};
+  k.dem={D,cv,bp,fw,fv,mk,n,rw,mg};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  const u={heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,
+  const u={heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,
     ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[]};
   // circulating water and condenser air removal: manual only, passed through (absent: the plant's normal
   // line-up). cwp CW pump, sj SJAE motive steam, vp vacuum pump, vb vacuum breaker (booleans); cwv % CW
@@ -116,4 +131,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND};
+export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND};

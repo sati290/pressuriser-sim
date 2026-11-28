@@ -129,14 +129,17 @@ test('reactor water cleanup reject: mass and energy go to the condenser, and in 
   BS.step(s, { heat: 0, n: 0, fv: 0, ext: 0, mk: 0, cv: 0, bp: 0, rw: 1, srv: [] }, 1);
   near(s.f.wrw, BS.RWMAX, 1e-9, 'full flow');
   near(s.M + s.Mh + s.cd.Ms, m0, 1e-3, 'vessel + hotwell + condenser mass');
-  // protected startup from 100 °C at 30 MW with the feed valve and reject in A: level held, nothing scrams
-  const su = BS.init({ P: 0.1e6, L: 14.3, sv: 0, vac: false, mode: 'startup' });
-  const c = { ...RATED_C(), heat: 30, n: 0, fv: 0, cv: 0, bp: 0, ext: 0, sv: false, sj: false, vp: true, auto: { n: true, fv: true, mk: true, cv: true, bp: true, rw: true } };
+  // protected startup from 100 °C, shut down, MG set at 20 %: the heat rises to 30 MW over half an hour
+  // (standing for the rod pull) with the feed valve and the reject in A and the level setpoint at 14.0 m:
+  // the voids that appear at low pressure swell the level about 0.5 m, then the reject takes the swell
+  const su = BS.init({ P: 0.1e6, L: 14.0, sv: 0, vac: false, mode: 'startup', mg: 0.2 });
+  const c = { ...RATED_C(), heat: 0, lset: 14.0, n: 0, fv: 0, cv: 0, bp: 0, ext: 0, sv: false, sj: false, vp: true, auto: { n: true, fv: true, mk: true, cv: true, bp: true, rw: true } };
   const k = K.init(c);
-  let lmax = 0; for (let i = 0; i < 3 * 3600 / 2; i++) { BS.step(su, K.update(k, su, c, 2), 2); lmax = Math.max(lmax, su.d.level); }
+  let lmax = 0; for (let i = 0; i < 3 * 3600 / 2; i++) { c.heat = Math.min(30, su.t / 60); BS.step(su, K.update(k, su, c, 2), 2); lmax = Math.max(lmax, su.d.level); }
   assert.equal(BS.fault(su), '');
   assert.equal(su.scram, null, 'no scram');
   assert.ok(su.d.P > 2e6, `heated up: ${MPa(su.d.P)} MPa`);
-  assert.ok(lmax < 14.8 && su.f.wrw > 3, `level held by the reject: max ${lmax}, reject ${su.f.wrw}`);
+  assert.ok(lmax < BS.fromIn(BS.LV.L8) - 0.1 && su.f.wrw > 3, `level held by the reject: max ${lmax}, reject ${su.f.wrw}`);
+  assert.ok(!su.rps.lat.L8, 'no L8 trip');
   assert.ok(su.rps.lat.vacT, 'the turbine stays tripped on low vacuum until reset');
 });
