@@ -1,7 +1,7 @@
 // BWR condensate and feedwater train: hotwell, feed pump, feedwater heater, feed valve. Pure functions,
 // no DOM. An ES module; imports common.js, bwr-steam.js, bwr-condenser.js. See docs/bwr.md.
 import {sat,Tsat,clamp,hLiq,inv} from './common.js';
-import {PR,WR,TFR} from './bwr-steam.js';
+import {PR,WR,TFR,PL0} from './bwr-steam.js';
 import {expansion,condSteady} from './bwr-condenser.js';
 // Feedwater train: condenser hotwell → feed pump → feedwater heater → feed control valve → sparger.
 // Hotwell: the water at the bottom of the condenser, capacity HWM kg, normal half full, its own mass and
@@ -29,8 +29,8 @@ const fwValve=(w,n,P,pc=PCD)=>{const D=n*n*H0+pc-P;if(!(w>0))return 0;const r=D/
 // what it takes to heat the feed: ws = fw·(h_out − h_in)/(hx − h′(ps)), hx the extraction steam enthalpy
 // on the turbine stub's expansion line. The shell pressure is where the valve passes what the shell
 // condenses. Design point: rated steam and feed flow WR, feed out at 216 °C, 5 % pressure drop across the
-// open valve. The drains (saturated at the shell pressure) go to the condenser, which flashes them.
-const TTD=3,PSR=sat(TFR+TTD).p,PE=PSR/0.95,HG0=sat(Tsat(PR)).hg,LINE0=expansion(PR,HG0),HX0=LINE0(PE);
+// open valve; the turbine's throttle is the main steam header at its rated pressure PL0. The drains (saturated at the shell pressure) go to the condenser, which flashes them.
+const TTD=3,PSR=sat(TFR+TTD).p,PE=PSR/0.95,HG0=sat(Tsat(PR)).hg,LINE0=expansion(PL0,HG0),HX0=LINE0(PE);
 // design hotwell temperature: the condenser at rated, receiving the stub's exhaust and the heater drains.
 // The extraction valve constant KXT depends on it, so iterate a few times.
 const design=()=>{let Th=311,KXT=0,Pc=6.6e3;

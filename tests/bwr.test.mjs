@@ -27,12 +27,16 @@ const P0 = 7e6, Q0 = 3293e6, TFW = 216 + 273.15;
 const W0 = Q0 / (common.sat(common.Tsat(P0)).hg - common.hLiq(TFW, P0));
 // feed valve opening that passes the rated flow with the pump at full speed
 const FV0 = B.fwValve(W0, 1, P0);
-const rated = () => B.init({ P: P0, L: 14.3, gen: W0, mv: W0 / B.WMS, fv: FV0, n: 1, tfw: 216 });
-const RATED_U = { heat: Q0, n: 1, fv: FV0, ext: 1, mk: 0, mv: W0 / B.WMS, srv: [] };
+// control valve lift that passes the rated steam flow (MSIVs and stop valve open, bypass shut)
+const CV0 = B.cvPos(W0, P0);
+const rated = () => B.init({ P: P0, L: 14.3, gen: W0, cv: CV0, fv: FV0, n: 1, tfw: 216 });
+// main steam valves: MSIVs and stop valve open; ISO: MSIVs shut
+const OPEN = { ms1: true, ms2: true, sv: true }, ISO = { ms1: false, ms2: false };
+const RATED_U = { heat: Q0, n: 1, fv: FV0, ext: 1, mk: 0, ...OPEN, cv: CV0, bp: 0, srv: [] };
 // no feed: pump stopped, valve shut
 const NOFEED = { n: 0, fv: 0, ext: 0, mk: 0 };
-const AUTO = () => ({ n: true, fv: true, mv: true, mk: true });
-const RATED_C = () => ({ heat: 3293, n: 100, fv: FV0 * 100, ext: 100, mk: 0, mv: W0 / B.WMS * 100, srv: [], pset: 7e6, lset: 14.3, dpset: 2.2e6, auto: AUTO() });
+const AUTO = () => ({ n: true, fv: true, cv: true, bp: true, mk: true });
+const RATED_C = () => ({ heat: 3293, n: 100, fv: FV0 * 100, ext: 100, mk: 0, ...OPEN, cv: CV0 * 100, bp: 0, ll: 105, srv: [], pset: 7e6, lset: 14.3, dpset: 2.2e6, auto: AUTO() });
 
 test('init round-trips pressure and level, with the voids inside the level', () => {
   const s = rated();
@@ -115,14 +119,14 @@ test('feed pump speed in A holds the discharge-to-dome differential pressure, at
 
 test('mass and energy are conserved: closed vessel, then with feed and steam', () => {
   const s = B.init({ P: 7e6, L: 14.3, tfw: 177 }), M0 = s.M, U0 = s.U;
-  runPlant(s, { heat: 10e6, ...NOFEED, mv: 0, srv: [] }, 600, 1);
+  runPlant(s, { heat: 10e6, ...NOFEED, cv: 0, srv: [] }, 600, 1);
   assert.equal(s.f.nsrv, 0, 'no SRV lifted');
   near(s.M, M0, 1e-6 * M0, 'mass');
   near(s.U - U0, 10e6 * 600, 1e-6 * U0, 'energy');
   // with flows: integrate what went in and out at the start-of-step enthalpies the plant records
   // vessel plus hotwell change only by makeup in and relief out (the steam returns as condensate)
   let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms;
-  runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mk: 20, mv: 0.03, srv: [true] }, 300, 1, x => {
+  runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mk: 20, cv: 0.02, srv: [true] }, 300, 1, x => {
     const f = x.f; m += f.fw - f.wst - f.wsrv; u += f.Q + f.fw * f.hfw - (f.wst + f.wsrv) * f.hg; tot += f.mk - f.wsrv; return true;
   });
   assert.ok(s.f.fw > 10, `feed flowing: ${s.f.fw}`);
@@ -131,23 +135,23 @@ test('mass and energy are conserved: closed vessel, then with feed and steam', (
   near(s.M + s.Mh + s.cd.Ms, tot, 1e-3, 'vessel + hotwell + condenser steam mass');
 });
 
-test('closing the steam valve at rated heat: voids collapse (shrink), pressure rises, SRVs lift', () => {
+test('closing the MSIVs at rated heat: voids collapse (shrink), pressure rises, SRVs lift', () => {
   const s = rated(), L0 = s.d.level;let Lmin = L0, Pmax = 0, srv = 0;
-  runPlant(s, { ...RATED_U, mv: 0 }, 6, 0.25, x => { Lmin = Math.min(Lmin, x.d.level); return true; });
+  runPlant(s, { ...RATED_U, ...ISO }, 6, 0.25, x => { Lmin = Math.min(Lmin, x.d.level); return true; });
   assert.ok(Lmin < L0 - 0.4, `level shrinks: min ${Lmin} from ${L0}`);
   assert.ok(s.d.P > 7.4e6, `pressure rises: ${MPa(s.d.P)}`);
   // same at 300 MW: the springs lift the lowest bank, which holds pressure just above its set point
-  const s2 = rated(), k = K.init(), c = { ...RATED_C(), heat: 300, auto: { fv: true, mv: false, mk: true }, mv: 0 };
+  const s2 = rated(), k = K.init(), c = { ...RATED_C(), heat: 300, auto: { fv: true, cv: true, bp: true, mk: true }, ...ISO };
   run(s2, k, c, 900, 0.5, x => { Pmax = Math.max(Pmax, x.d.P); srv = Math.max(srv, x.f.nsrv); return true; });
   assert.ok(srv >= 4, `SRVs opened: ${srv}`);
   assert.ok(Pmax < B.SRV[B.NV - 1].p + 0.1e6, `springs hold it near the set pressures: ${MPa(Pmax)}`);
   assert.equal(B.fault(s2), '');
 });
 
-test('valve closure at rated heat, no scram: pressure climbs past the feed pump shutoff head, feed stops, core uncovers', () => {
+test('MSIV closure at rated heat, no scram: pressure climbs past the feed pump shutoff head, feed stops, core uncovers', () => {
   for (const dt of [0.25, 2]) {
-    const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: true, mv: false, mk: true } };
-    run(s, k, c, 10, dt); c.mv = 0;
+    const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: true, cv: true, bp: true, mk: true } };
+    run(s, k, c, 10, dt); Object.assign(c, ISO);
     let fvMax = 0, tStop = 0;
     run(s, k, c, 600, dt, x => { fvMax = Math.max(fvMax, x.fv); if (!tStop && x.d.P > B.H0 + B.PC) tStop = x.t; return true; });
     assert.ok(tStop > 0, `pressure passed the shutoff head dt=${dt}`);
@@ -169,9 +173,9 @@ test('scram: heat follows the decay curve, ignores the slider, reset hands it ba
   near(s.f.Q, 50e6, 1, 'after reset the command applies');
 });
 
-test('valve closure with scram: pressure held by the relief valves, level kept by feedwater, hotwell by makeup', () => {
-  const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: true, mv: false, mk: true } };
-  run(s, k, c, 10, 0.5); c.mv = 0; B.scram(s);
+test('MSIV closure with scram: pressure held by the relief valves, level kept by feedwater, hotwell by makeup', () => {
+  const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: true, cv: true, bp: true, mk: true } };
+  run(s, k, c, 10, 0.5); Object.assign(c, ISO); B.scram(s);
   let Pmax = 0, Lmin = 99, Lmax = 0, Tf = 999;
   run(s, k, c, 1800, 0.5, x => { Pmax = Math.max(Pmax, x.d.P); Lmin = Math.min(Lmin, x.d.level); Lmax = Math.max(Lmax, x.d.level); Tf = Math.min(Tf, x.f.Tfw); return true; });
   assert.equal(B.fault(s), '');
@@ -185,28 +189,28 @@ test('valve closure with scram: pressure held by the relief valves, level kept b
 
 test('hotwell: drains without makeup when steam is lost to the pool; pump loses suction when it is empty; overfills', () => {
   // isolation at 200 MW with makeup in M at zero: the relief steam never returns
-  const hb = B.heatBalance(200e6, P0, 1), s = B.init({ P: P0, L: 14.3, gen: hb.W, mv: 0, fv: B.fwValve(hb.W, 1, P0), tfw: hb.Tfw - 273.15 });
-  const k = K.init(), c = { ...RATED_C(), heat: 200, mv: 0, mk: 0, auto: { fv: true, mv: false, mk: false } };
+  const hb = B.heatBalance(200e6, P0, 1), s = B.init({ P: P0, L: 14.3, gen: hb.W, ms: 0, fv: B.fwValve(hb.W, 1, P0), tfw: hb.Tfw - 273.15 });
+  const k = K.init(), c = { ...RATED_C(), heat: 200, ...ISO, mk: 0, auto: { fv: true, cv: true, bp: true, mk: false } };
   run(s, k, c, 1800, 1);
   assert.equal(B.fault(s), '');
   assert.ok(s.f.hw < 0.45, `hotwell drains: ${s.f.hw}`);
   assert.equal(s.f.ret, 0, 'no condensate return while isolated');
   // nearly empty hotwell: the pump delivers less than its curve
   const e = B.init({ P: P0, L: 14.3, hw: 0.02, n: 1 });
-  B.step(e, { heat: 0, n: 1, fv: 0, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5); e.fv = 1;
-  B.step(e, { heat: 0, n: 1, fv: 1, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5);
+  B.step(e, { heat: 0, n: 1, fv: 0, ext: 0, mk: 0, cv: 0, srv: [] }, 0.5); e.fv = 1;
+  B.step(e, { heat: 0, n: 1, fv: 1, ext: 0, mk: 0, cv: 0, srv: [] }, 0.5);
   near(e.f.fw, 0.4 * B.fwFlow(1, 1, P0), 0.05 * B.fwFlow(1, 1, P0), 'suction-limited feed');
   // open steam valve with no feed: the condensate fills the hotwell until the condenser would flood
   const o = B.init({ P: P0, L: 14.3, hw: 0.95 });
-  runPlant(o, { heat: 0, ...NOFEED, mv: 1, srv: [] }, 300, 0.5);
+  runPlant(o, { heat: 0, ...NOFEED, cv: 1, bp: 1, srv: [] }, 300, 0.5);
   assert.equal(B.fault(o), 'hotwell');
 });
 
 test('opening the steam valve depressurises: the water flashes and the level swells above the collapsed level', () => {
   const s = B.init({ P: 7e6, L: 14.0 }), L0 = s.d.level;
-  runPlant(s, { heat: 20e6, ...NOFEED, mv: 0.3, srv: [] }, 2, 0.25);
+  runPlant(s, { heat: 20e6, ...NOFEED, cv: 0.22, srv: [] }, 2, 0.25);
   assert.ok(s.d.level > L0 + 0.1, `level swells at first: ${s.d.level} from ${L0}`);
-  runPlant(s, { heat: 20e6, ...NOFEED, mv: 0.3, srv: [] }, 18, 0.25);
+  runPlant(s, { heat: 20e6, ...NOFEED, cv: 0.22, srv: [] }, 18, 0.25);
   assert.ok(s.d.P < 6.8e6, `pressure falls: ${MPa(s.d.P)}`);
   assert.ok(s.d.level - s.d.collapsed > 0.2, `swell over collapsed level: ${s.d.level - s.d.collapsed} m`);
   assert.ok(s.d.Vb > 5, `voids from flashing: ${s.d.Vb} m³`);
@@ -214,7 +218,7 @@ test('opening the steam valve depressurises: the water flashes and the level swe
 
 test('cold feedwater condenses steam: pressure falls, voids vanish, water subcooled only slightly', () => {
   const s = B.init({ P: 7e6, L: 14.3, fv: B.fwValve(100, 1, 7e6) });
-  runPlant(s, { heat: 0, n: 1, fv: B.fwValve(100, 1, 7e6), ext: 0, mk: 0, mv: 0, srv: [] }, 60, 0.5);
+  runPlant(s, { heat: 0, n: 1, fv: B.fwValve(100, 1, 7e6), ext: 0, mk: 0, cv: 0, srv: [] }, 60, 0.5);
   assert.ok(s.f.fw > 100, `about 100 kg/s of 46 °C feed (more as the pressure falls): ${s.f.fw}`);
   assert.ok(s.d.P < 6.75e6, `pressure falls: ${MPa(s.d.P)}`);
   assert.ok(s.d.sub > 0 && s.d.sub < 1, `subcooling ${s.d.sub} K`);
@@ -227,7 +231,7 @@ test('SRV springs: each valve opens above its own set pressure and recloses its 
   near(B.SRV[10].w, 815e3 * 1.25998e-4, 0.01, 'highest-bank capacity');
   // the valves act on the start-of-step pressure: record it before each step
   const s = B.init({ P: 7.5e6, L: 14.3 });let first = 0, n = 0, Pb = s.d.P;
-  runPlant(s, { heat: 400e6, ...NOFEED, mv: 0, srv: [] }, 200, 0.25, x => {
+  runPlant(s, { heat: 400e6, ...NOFEED, cv: 0, srv: [] }, 200, 0.25, x => {
     if (!first && x.f.nsrv) first = Pb;
     Pb = x.d.P; n = Math.max(n, x.f.nsrv); return true; });
   assert.ok(first > B.SRV[0].p && first < B.SRV[0].p + 0.02e6, `first lift just above the lowest set pressure: ${MPa(first)}`);
@@ -237,7 +241,7 @@ test('SRV springs: each valve opens above its own set pressure and recloses its 
   // reclose: from just above the lowest set pressure with no heat, the bank lifts, blows down and reseats
   // BD below its set pressure (valves act on the start-of-step pressure, recorded before each step)
   const r = B.init({ P: B.SRV[0].p + 0.005e6, L: 14.3 });let Pshut = 0, was = false;Pb = r.d.P;
-  runPlant(r, { heat: 0, ...NOFEED, mv: 0, srv: [] }, 120, 0.25, x => {
+  runPlant(r, { heat: 0, ...NOFEED, cv: 0, srv: [] }, 120, 0.25, x => {
     const o = x.f.nsrv > 0; if (!Pshut && was && !o) Pshut = Pb; was = o; Pb = x.d.P; return true; });
   assert.ok(Math.abs(Pshut - (B.SRV[0].p - B.BD)) < 0.01e6, `reseat at set − blowdown: ${MPa(Pshut)}`);
   assert.equal(r.f.nsrv, 0, 'stays shut');
@@ -245,7 +249,7 @@ test('SRV springs: each valve opens above its own set pressure and recloses its 
 
 test('SRV opened by hand stays open below its set pressure, and only that valve', () => {
   const s = B.init({ P: 7e6, L: 14.3 }), srv = []; srv[6] = true;
-  runPlant(s, { heat: 20e6, ...NOFEED, mv: 0, srv }, 60, 0.5);
+  runPlant(s, { heat: 20e6, ...NOFEED, cv: 0, srv }, 60, 0.5);
   assert.deepEqual(s.f.open.map((o, i) => o ? i : -1).filter(i => i >= 0), [6]);
   near(s.f.wsrv, B.wSRV(6, s.d.P), 0.5, 'flow of valve 7 (at the start-of-step pressure)');
   assert.ok(s.d.P < 6.9e6, `depressurising: ${MPa(s.d.P)}`);
@@ -267,32 +271,34 @@ test('pressure regulator and three-element feedwater recover from a load step (d
 });
 
 test('in M the demand is the operator value plus the proportional correction; switching to A starts there', () => {
-  const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: false, mv: false, mk: false } };
+  const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fv: false, cv: false, bp: false, mk: false } };
   run(s, k, c, 30, 0.5);
   // balanced: the notch sits on the slider
-  near(k.dem.mv, c.mv / 100, 0.01, 'valve demand at balance');
+  near(k.dem.cv, c.cv / 100, 0.01, 'control valve demand at balance');
+  near(k.dem.bp, 0, 1e-9, 'bypass demand at balance: shut');
   near(k.dem.fv, c.fv / 100, 0.002, 'feed valve demand at balance');
   near(k.dem.mk, 0, 2, 'makeup demand at balance');
   // pressure 0.02 MPa over the setpoint and level 0.2 m low: the demand moves off the slider the right way
   c.pset = 6.98e6; c.lset = 14.5; K.demands(k, s, c, 0.5);
-  near(k.dem.mv, c.mv / 100 + K.KP * (s.d.P - c.pset), 0.005, 'valve demand opens by KP·e');
+  near(k.dem.D, K.cvFlow(c.cv / 100) + K.KP * (s.d.P - c.pset), 1e-9, 'flow demand rises by KP·e');
+  near(k.dem.cv, K.cvLift(Math.min(k.dem.D, c.ll / 100)), 1e-12, 'control valve demand: the lift that passes it, up to the load limit');
   near(k.dem.fw, s.f.fw + K.KL * (c.lset - s.d.level), 1e-6, 'flow demand: present flow + KL·e');
   near(k.dem.fv, c.fv / 100 + K.KX * (k.dem.fw - s.f.fw), 1e-9, 'feed valve demand opens by KX·flow error');
   c.auto = AUTO(); const u = K.update(k, s, c, 0.5);
-  near(u.mv, k.dem.mv, 1e-12, 'A starts from the indicated valve demand');
+  near(u.cv, k.dem.cv, 1e-12, 'A starts from the indicated valve demand');
   near(u.fv, k.dem.fv, 1e-9, 'A starts from the indicated feed valve demand');
   // valve shut by hand with pressure below the setpoint: demand stays shut (was a clamp artefact before)
-  const s2 = B.init({ P: 6.5e6, L: 14.3 }), k2 = K.init(), c2 = { ...RATED_C(), heat: 20, mv: 0, n: 0, fv: 0, auto: { fv: false, mv: false, mk: false } };
+  const s2 = B.init({ P: 6.5e6, L: 14.3 }), k2 = K.init(), c2 = { ...RATED_C(), heat: 20, cv: 0, n: 0, fv: 0, auto: { fv: false, cv: false, bp: false, mk: false } };
   run(s2, k2, c2, 10, 0.5);
-  assert.equal(k2.dem.mv, 0, 'valve demand shut');
+  assert.equal(k2.dem.cv, 0, 'valve demand shut');
   // above the setpoint with the valve shut by hand: the demand opens in proportion, not to an arbitrary limit
   c2.pset = 6.45e6; K.demands(k2, s2, c2, 0.5);
-  near(k2.dem.mv, K.KP * (s2.d.P - c2.pset), 1e-3, 'valve demand from shut');
+  near(k2.dem.cv, K.cvLift(K.KP * (s2.d.P - c2.pset)), 1e-9, 'valve demand from shut');
 });
 
 test('startup heat-up with the valve shut: pressure and level rise at the expected rate', () => {
   const s = B.init({ P: 0.1e6, L: 11.5 }), T0 = s.d.T, L0 = s.d.level;
-  runPlant(s, { heat: 30e6, ...NOFEED, mv: 0, srv: [] }, 3600, 2);
+  runPlant(s, { heat: 30e6, ...NOFEED, cv: 0, srv: [] }, 3600, 2);
   const rate = (s.d.T - T0);
   assert.ok(rate > 60 && rate < 110, `heat-up ${rate} K/h at 30 MW`);
   assert.ok(s.d.level > L0 + 0.8, `thermal expansion raises the level: ${s.d.level}`);
@@ -304,6 +310,6 @@ test('faults: core uncovered without feedwater, steam lines flooded with too muc
   runPlant(s, { ...RATED_U, fv: 0 }, 2000, 1);
   assert.equal(B.fault(s), 'uncovered');
   const s2 = B.init({ P: 7e6, L: 14.3 });
-  runPlant(s2, { heat: 20e6, n: 1, fv: 0.5, ext: 0, mk: 0, mv: 0.01, srv: [] }, 2000, 1);
+  runPlant(s2, { heat: 20e6, n: 1, fv: 0.5, ext: 0, mk: 0, bp: 0.04, srv: [] }, 2000, 1);
   assert.equal(B.fault(s2), 'flooded');
 });
