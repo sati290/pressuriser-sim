@@ -1,6 +1,6 @@
 {
   "name": "pressuriser-sim",
-  "version": "0.3.0",
+  "version": "0.1.7",
   "private": true,
   "description": "Single-file interactive PWR pressuriser + RCS simulator (equilibrium steam-table model)",
   "type": "module",

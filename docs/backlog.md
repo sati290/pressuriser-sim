@@ -32,8 +32,8 @@ nitrogen compression (see docs/physics.md). Follow-ups:
 12. **BWR condenser** (next) — close the loop: turbine exhaust and bypass steam into a condenser with
     its own pressure (cooling water, air), condensate to the hotwell at the condenser temperature. Replaces
     `condensate()` in bwr-sim.js, which today returns the main steam flow at once at 45.8 °C; the steam
-    valve's back pressure `PC` would then follow the condenser. On the mimic the condenser goes at the turbine
-    end of the steam line, above the hotwell, where the dashed condensate line is now.
+    valve's back pressure `PC` would then follow the condenser. The mimic already draws the condenser
+    (layout draft) under the LP turbine, with the hotwell as its bottom; see docs/bwr.md, "Plant layout".
 
 ## UX
 12. Units toggle (SI / psi-°F).
