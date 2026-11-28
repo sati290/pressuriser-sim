@@ -131,14 +131,15 @@ startup low-flow valve? Booster pump as part of the condensate pump?
 
 ### 6. Heater drains
 **Models:** each heater's shell level and its drain path: HP heater drains cascade to the LP heater, LP
-drains to the condenser (or forwarded by a drain pump). Heater level control; high shell level as a
+drains are pumped forward into the condensate line. Heater level control; high shell level as a
 failure (tube leak, drain valve stuck).
 
-**Approach:** shell water inventory per heater, drain valve on level, drains flashing as they cascade
+**Approach:** shell water inventory per heater (and the drain tank), drain valve on level, drains flashing as they cascade
 to lower pressure (energy carried at h_f). Replaces "drains go to the hotwell inside the return".
 
-**Open:** cascade to the condenser or drains pumped forward? Pumped-forward is common on BWRs and
-raises the feed temperature slightly.
+**Decided:** HP drains cascade to the LP heater, LP heater drains are pumped forward into the condensate
+line downstream of the LP heater (drain tank and drain pump), as is common on BWRs; it raises the feed
+temperature slightly and keeps the heat out of the condenser.
 
 ### 7. Condensate storage tank
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the
@@ -172,11 +173,12 @@ clearance and carry-under depend on flow instead of one time constant.
 
 **Approach:** loop momentum equation, L·dW/dt = ΔP_pump(W, n) + ΔP_jet − ΔP_core(W, void) − ΔP_loop,
 with the jet pump as a nozzle/mixing-section model (drive flow, suction flow, M-ratio, N-ratio curve).
-Natural circulation at zero pump speed from the downcomer/core density head. Pump speed through an MG
-set (BWR/4) with a speed limiter; recirculation pump trip as a transient.
+Natural circulation at zero pump speed from the downcomer/core density head. Pump speed through the MG set
+with a speed limiter; recirculation pump trip as a transient.
 
-**Open:** MG set or VFD (BWR/4 vs later plants)? One loop drawn; scale its flow to stand for two loops
-and 20 jet pumps.
+**Decided:** motor-generator set drive (BWR/4): the pump motor is fed from a variable-speed MG set whose
+speed follows the flow controller through a speed limiter. One loop drawn; scale its flow to stand for two
+loops and 20 jet pumps.
 
 ### 10. Downcomer node and core inlet subcooling
 **Models:** a separate downcomer region where feedwater mixes with the separator return, so core inlet
@@ -249,23 +251,20 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 
 ## Cross-cutting
 
-- **Code structure:** bwr-sim.js is 193 lines now and will grow severalfold. Proposal: split by system
-  into modules (`bwr-condenser.js`, `bwr-feed.js`, `bwr-core.js`, …) that bwr-sim.js composes, each with
-  pure functions and its own state slice, so a step touches one module. Decide at step 1.
-- **Coupling and time step:** fast nodes (condenser steam space, steam line) next to slow ones. Keep the
-  present dt range (0.25–2 s) by solving fast nodes implicitly or with substeps, and test every step
-  at dt 0.25 and 2 s as the rated heat balance test does.
-- **Mimic:** each step turns its parts from dashed grey to solid and adds its readouts; no new colours.
-- **Scenarios:** the startup scenario grows with the plant (vacuum, condensate, heatup with RWCU reject,
-  rods); keep a "simple" start that skips what isn't needed.
+- **Code structure (decided):** bwr-sim.js is split by system at step 1, into modules
+  (`bwr-condenser.js`, `bwr-feed.js`, `bwr-core.js`, …) that bwr-sim.js composes, each with pure functions
+  and its own state slice, so a later step touches one module.
 
-## Open questions (summary)
+## Decisions (Attila, 2026-11-28)
 
-Decided (Attila, 2026-11-28): generic BWR/4-class plant; the turbine stub is fine; circulating water is
-an in/out pipe for now; bypass about 25 % of rated steam, as is typical; startup includes pulling condenser vacuum.
+- Generic BWR/4-class plant, not one named plant.
+- Turbine stub until step 15 is fine.
+- Circulating water is an in/out pipe for now.
+- Bypass about 25 % of rated steam, as is typical.
+- Startup includes pulling condenser vacuum.
+- Heater drains pumped forward (LP), HP cascading to LP.
+- Recirculation pump on an MG set.
+- bwr-sim.js split into per-system modules at step 1.
 
-Still open:
-
-1. Heater drains: cascade to condenser or pumped forward?
-2. Recirculation drive: MG set (BWR/4) or VFD?
-3. Module split of bwr-sim.js: now, or when it hurts?
+Still open: only the sourced numbers named under each step (condenser UA, kinetics coefficients, trip
+setpoints).
