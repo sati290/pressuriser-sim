@@ -44,7 +44,7 @@ The existing backlog items B1–B11 (docs/backlog.md) map onto the steps below; 
 | 12 | Vessel heat capacity, real level geometry, suppression pool heat-up | — | steel heat capacity, level span, pool temperature | B8, B10, B11 |
 | 13 | Control rods and CRD hydraulics (low priority) | 8, 11 | rods as an all-in/all-out scram | — |
 | 14 | Reactor water cleanup (low priority) | 5, 10 | cleanup inside net heat | — |
-| 15 | Turbine, MSR, generator and grid (low priority) | 1, 4, 5 | the turbine stub | — |
+| 15 | Turbine, MSR, generator and grid (low priority; basic version done) | 1, 4, 5 | the turbine stub | — |
 | 16 | Remaining auxiliaries: gland seal, main steam drains, off-gas train (low priority) | 3, 15 | — | — |
 | — | Emergency cooling (RCIC, HPCI, core spray, RHR, ADS, isolation condenser) | 11, 12 | deferred | B9 |
 
@@ -314,7 +314,18 @@ modelled), regen exchanger effectiveness; reject flow a manual valve. Replaces t
 net-heat input.
 
 
-### 15. Turbine, MSR, generator and grid
+### 15. Turbine, MSR, generator and grid (basic version done)
+**Done (basic, bwr-turbine.js):** HP and LP turbines with Stodola stage pressures for the four stage groups
+(first stage, HP extraction, HP exhaust, LP inlet, LP extraction, condenser), so the extraction pressures come
+from the turbine and fall with its flow; the MSR as a pass-through pressure drop; one shaft with an inertia
+constant of 5 s, the LP power lagged 5 s behind intercept valves; generator on an infinite 60 Hz grid with a
+breaker (sync check, reverse power and turbine-trip trips); the EHC's speed/load channel (load set in MWe on
+the grid, a droop speed governor off it) as a third limit on the control valves; power–load unbalance fast
+closure, the control valve fast closure scram and the 110 % overspeed trip. Load changes, load rejection,
+turbine trip and the turbine roll at startup work. **Still to do:** moisture separation and reheat (the MSR
+drains to the heaters, live-steam reheat), more LP casings and heater stages, choked/subsonic control valves
+against the first-stage pressure, a grid with frequency.
+
 **Models:** HP turbine, MSR (moisture removal and reheat), LP turbine, generator on one shaft; grid
 breaker; turbine speed during a load rejection; extraction pressures from the turbine rather than ∝
 steam flow.
