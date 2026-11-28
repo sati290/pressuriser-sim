@@ -139,7 +139,7 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
 .srvs button{min-height:34px;padding:0;border-radius:6px;font-size:13px;font-variant-numeric:tabular-nums}
 .srvs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .srvs button.spr{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--acc)}
-.lower{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}
+.lower{grid-template-columns:minmax(260px,1fr) minmax(0,2.4fr)}
 /* state table on the left over both rows; recorder above the automatic-control card on the right */
 /* info icon: the full description shows on hover or keyboard focus */
 .info{display:inline-grid;place-items:center;width:17px;height:17px;margin-left:4px;border:1px solid var(--mute);border-radius:50%;font:italic 600 11px/1 Georgia,serif;color:var(--mute);cursor:help;vertical-align:2px}
@@ -148,9 +148,7 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
 .tipbox{display:none;position:absolute;left:0;right:0;top:calc(1.6em + 4px);z-index:5;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);box-shadow:0 6px 24px rgba(0,0,0,.18);font:400 13px/1.5 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;white-space:normal}
 .info:hover>.tipbox,.info:focus>.tipbox{display:block}
 .assists .chead h2 .tipbox{right:auto;width:min(640px,80vw)}
-.lower{grid-template-rows:auto 1fr}
-/* two columns of readings beside the recorder: long values wrap, right-aligned */
-.lower .stats dt{flex:1 1 40%}.lower .stats dd{white-space:normal;text-align:right;flex:0 1 auto;max-width:62%}.lower>.stats{grid-row:1/3}.lower>.assists{grid-column:2}
+.lower{grid-template-rows:auto 1fr}.lower>.stats{grid-row:1/3}.lower>.assists{grid-column:2}
 /* main steam valve switches (MSIVs, stop valve): pressed = commanded open; the text gives the position */
 .sws{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}
 .sws button{font-size:13px;padding:4px 6px;line-height:1.25;min-height:44px}
