@@ -17,11 +17,12 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `sim.js` | The plant: pure physics, no DOM, no automatic control. ES module; imports `common.js`. |
 | `control.js` | Automatic control: demands and the final command for the plant. ES module; imports `common.js`, not `sim.js`. |
 | `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater train (hotwell, feed pump, heater, feed valve). The mimic draws the whole plant: modelled parts solid, layout-only parts dashed grey (docs/bwr.md, "Plant layout"). Its layout differs from index.html: the mimic spans the full width with the controls in three columns under it, and the canvas is at least 1180 px wide, scrolling sideways on small screens (no phone layout; phones use landscape). Module page script importing `./common.js`, `./bwr-sim.js`, `./bwr-control.js`; needs http(s) like `index.html`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
-| `bwr-sim.js` | BWR plant: pure physics. ES module; imports `common.js`. See docs/bwr.md. |
+| `bwr-sim.js` | BWR plant: pure physics. ES module; composes the per-system modules below and re-exports what the page and tests use. See docs/bwr.md, "Code layout". |
+| `bwr-vessel.js`, `bwr-steam.js`, `bwr-condenser.js`, `bwr-feed.js` | BWR systems (vessel solve; rated conditions, steam valves, SRVs; turbine stub and condenser; hotwell, pumps, heaters). ES modules importing `common.js` and each other (no cycles); one system per module so a roadmap step touches one. |
 | `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater cascaded onto the feed valve, hotwell makeup; SRVs are manual, their springs are in the plant). ES module; imports `common.js`, not `bwr-sim.js`. |
 | `tests/load-physics.mjs` | Imports the three modules in Node as namespaces `common`, `phys` (sim.js), `ctrl` (control.js), plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tests/bwr.test.mjs` | BWR regression tests (imports the BWR-side modules directly). |
+| `tests/bwr*.test.mjs` | BWR regression tests, one file per system (`bwr-helpers.mjs` holds the shared runners and rated state). `npm test` runs every `tests/*.test.mjs`. |
 | `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
 | `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. Serves the repo itself over http. |
 | `version.js` | `VERSION` ('0.1.x'), shown in the footer of both pages so the owner can tell whether the browser has the latest. ES module, no imports. |

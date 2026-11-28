@@ -17,6 +17,10 @@ const satX=T=>{
   const al=1000*(-1135.905627715+D[0]*th**-19+D[1]*th+D[2]*th**4.5+D[3]*th**5+D[4]*th**54.5);
   return [p,dpdT,rf,rg,al+T/rf*dpdT,al+T/rg*dpdT];
 };
+// saturation entropies [s′, s″] (J/kg/K), exact, from the same release's auxiliary quantity φ
+const satS=T=>{const th=T/Tc,[,dpdT,rf,rg]=satX(T);
+  const phi=1000/Tc*(2319.5246+19/20*D[0]*th**-20+D[1]*Math.log(th)+9/7*D[2]*th**3.5+5/4*D[3]*th**4+109/107*D[4]*th**53.5);
+  return [phi+dpdT/rf,phi+dpdT/rg]};
 // tabulate for speed
 const T0=273.16,THI=Tc-0.3,DT=0.02,N=Math.floor((THI-T0)/DT)+2,TB=new Float64Array(N*6);
 for(let i=0;i<N;i++)TB.set(satX(Math.min(T0+i*DT,THI)),i*6);
@@ -47,4 +51,4 @@ const QE=1.8e6/78,QP=18*QE,QB=20*QE,NB=3;
 // on; relief and nitrogen valve opening fractions. The plant clamps every command to these; the
 // controller's anti-windup needs the same limits.
 const LIM=Object.freeze({ch:20,ld:20,hp:1,hb:NB,sp:40,rel:1,n2:1});
-export {satX,sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};
+export {satX,satS,sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};

@@ -77,10 +77,11 @@ test('feedwater heater: the extraction valve sets the shell pressure, the shell 
   const r = B.heater(B.WR, 1, B.WR);
   near(r.T - 273.15, 216, 1e-6, 'rated outlet');
   near(r.ps, r.pe * 0.95, 1e3, '5 % drop across the open valve at rated');
-  near(r.ws, B.WR * (common.hLiq(TFW, 7e6) - common.hLiq(B.THW, 7e6)) / (common.sat(r.T + B.TTD).hg - common.sat(r.T + B.TTD).hf), 1e-3, 'shell condenses what heats the feed');
+  near(r.ws, B.WR * (common.hLiq(TFW, 7e6) - common.hLiq(B.THW, 7e6)) / (r.hx - common.sat(r.T + B.TTD).hf), 1e-3, 'shell condenses what heats the feed (wet extraction steam)');
+  assert.ok(r.hx < common.sat(r.T + B.TTD).hg, 'extraction steam is wet, on the expansion line');
   near(B.heaterT(0, 1), B.THW, 1e-9, 'no steam flow, no extraction: hotwell temperature');
   near(B.heaterT(B.WR, 0), B.THW, 1e-9, 'extraction valve shut');
-  near(B.THW - 273.15, 45.8, 0.1, 'hotwell at condenser saturation, 0.01 MPa');
+  near(B.THW - 273.15, 39.1, 0.3, 'design hotwell temperature: condenser at rated');
   // throttling: the outlet falls monotonically as the valve closes; less feed flow, hotter outlet
   let last = 1e9;
   for (const e of [1, 0.6, 0.3, 0.1, 0.02]) { const T = B.heaterT(B.WR, e); assert.ok(T < last, `outlet falls as the valve closes: ${e} → ${T}`); last = T; }
@@ -120,14 +121,14 @@ test('mass and energy are conserved: closed vessel, then with feed and steam', (
   near(s.U - U0, 10e6 * 600, 1e-6 * U0, 'energy');
   // with flows: integrate what went in and out at the start-of-step enthalpies the plant records
   // vessel plus hotwell change only by makeup in and relief out (the steam returns as condensate)
-  let m = s.M, u = s.U, tot = s.M + s.Mh;
+  let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms;
   runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mk: 20, mv: 0.03, srv: [true] }, 300, 1, x => {
     const f = x.f; m += f.fw - f.wst - f.wsrv; u += f.Q + f.fw * f.hfw - (f.wst + f.wsrv) * f.hg; tot += f.mk - f.wsrv; return true;
   });
   assert.ok(s.f.fw > 10, `feed flowing: ${s.f.fw}`);
   near(s.M, m, 1e-3, 'mass with flows');
   near(s.U, u, 1e-9 * Math.abs(u), 'energy with flows');
-  near(s.M + s.Mh, tot, 1e-3, 'vessel + hotwell mass');
+  near(s.M + s.Mh + s.cd.Ms, tot, 1e-3, 'vessel + hotwell + condenser steam mass');
 });
 
 test('closing the steam valve at rated heat: voids collapse (shrink), pressure rises, SRVs lift', () => {
@@ -178,7 +179,7 @@ test('valve closure with scram: pressure held by the relief valves, level kept b
   assert.ok(Pmax < B.SRV[4].p, `only the lowest bank is needed: ${MPa(Pmax)}`);
   assert.ok(Lmin > 12, `level min ${Lmin}`);
   assert.ok(Lmax < B.Z.MSL - 0.3, `level max ${Lmax}`);
-  near(Tf, B.THW, 0.5, 'no steam to the turbine, no extraction: feed cools to the hotwell temperature');
+  near(Tf, s.Thw, 0.5, 'no steam to the turbine, no extraction: feed cools to the hotwell temperature');
   near(s.f.hw, 0.5, 0.03, 'makeup keeps the hotwell');
 });
 
