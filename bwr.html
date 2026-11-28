@@ -163,6 +163,20 @@ button#rp[aria-pressed=true],button#crd[aria-pressed=true]{background:var(--ink)
 /* one group per plant system, flowing into as many columns as fit (each system adds its own group) */
 .controls{display:block;column-width:290px;column-gap:40px}.controls .grp{border:0;padding:0;break-inside:avoid;margin-bottom:22px}.controls h2{margin-bottom:2px}
 .vessel{min-height:0;overflow-x:auto;overflow-y:hidden}
+/* automatic control: one box per controller, like a unit in a control rack: name, the actuators it drives
+   (chips, filled while in A), the 3-5 signals it works on, and its setpoints */
+.racks{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:10px}
+.ru{display:grid;gap:8px;align-content:start;padding:8px 12px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--bg)}
+.ruh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+.ru h3{font-size:14px;margin:0;font-weight:600;position:relative}
+.ruo{display:flex;flex-wrap:wrap;justify-content:end;gap:4px}
+.ruo span{padding:1px 6px;border:1px solid var(--rule);border-radius:4px;font-size:11px;line-height:1.5;color:var(--mute);white-space:nowrap}
+.ruo span.a{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.rd{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px 12px;margin:0}
+.rd div{min-width:0}
+.rd dt{font-size:11px;line-height:1.3;color:var(--mute)}
+.rd dd{margin:0;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ru .row label{font-size:13px}
 /* condenser: on/off switches, filled while on */
 .ann{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:10px 0 8px;font-size:11.5px;line-height:1.25}
 .ann span{border:1px solid var(--rule);border-radius:4px;padding:4px 6px;color:var(--mute)}
@@ -282,9 +296,7 @@ button#rp[aria-pressed=true],button#crd[aria-pressed=true]{background:var(--ink)
     <div class="grp">
       <h2 class="srvh">Turbine and generator <output id="tgsum"></output></h2>
       <div class="rx"><button id="brk" type="button" aria-pressed="false" title="Generator breaker. Press to open it (at power, a load rejection) or to close it onto the grid: it closes only within 0.5 % of 1800 rpm (sync check). A turbine trip, or 10 s of the generator motoring the turbine, trips it open; then press it once to open it before closing again.">Generator breaker</button></div>
-      <div class="row"><label for="mw">Load set <output id="mwo"></output></label><input id="mw" type="range" min="0" max="1200" step="5" value="1200"></div>
-      <div class="row"><label for="nset">Speed set <output id="nseto"></output></label><input id="nset" type="range" min="0" max="1890" step="1" value="1800"></div>
-      <p class="hint">Control valve in A: on the grid the load set caps the output (the bypass takes the rest); off it the governor holds the speed set.</p>
+      <p class="hint">Load set and speed set: on the pressure regulator, under the recorder.</p>
     </div>
     <div class="grp">
       <h2 class="srvh">Condenser <output id="cdsum"></output></h2>
@@ -317,46 +329,48 @@ button#rp[aria-pressed=true],button#crd[aria-pressed=true]{background:var(--ink)
       <div class="fig"><svg id="rec"></svg></div>
     </div>
     <div class="card assists">
-      <div class="chead"><h2>Automatic control <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">The MG set speed, the feed pump speed, the feed valve, the startup feed valve, the feed pump's minimum-flow valve, the two heater drain valves, the storage tank's makeup and reject valves, the cleanup reject, the turbine control valve and the bypass valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. The control rods, the recirculation pump breaker, the two extraction valves, the pump run switches, the isolation and stop valves, the safety/relief valves and the condenser (circulating water pump, valve and inlet temperature, air ejector, vacuum pump, vacuum breaker) are always manual: BWRs have no automatic rod control (power is changed with the rods and with the core flow), and the rest are set once for the operating state. The safety/relief valves' springs open them on pressure, and the reactor protection scrams, isolates and trips whatever you do. Nothing switches between M and A by itself.</span></span></h2></div>
-      <div class="agrid">
-        <div class="grp">
-          <h3>Core flow (MG set speed) <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Proportional-integral on the core flow (100 % = 12,900 kg/s): 10 % of rated flow low raises the MG set speed demand 3 %, integral 5 s. The MG set's speed limiter lets the speed change at most 2 % per second and holds it at 20 % or more while the pump runs. Power follows the flow along the rod line through the void feedback: at 40 % flow it settles near 65 %.</span></span></h3>
-          <div class="row"><label for="wset">Core flow setpoint <output id="wseto"></output></label><input id="wset" type="range" min="20" max="110" step="1" value="100"></div>
-          <p>Proportional-integral on core flow, acting on the MG set speed.</p>
-        </div>
-        <div class="grp">
-          <h3>Pressure regulator (control and bypass valves) <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">As on the GE electro-hydraulic control, simplified: a proportional-integral term on dome pressure gives a steam flow demand (0.1 MPa above the setpoint asks for 34 % of rated steam more, integral 30 s). The turbine control valve gets the demand up to the lower of the load limit and the speed/load channel (the load set on the grid, the speed governor off it: see the turbine group); the bypass valve gets what the turbine is not taking: the excess, or everything once the stop valve shuts. Each demand becomes a valve position through the valve's characteristic at the rated throttle pressure. Below the setpoint both valves close, so with little heat the pressure rises to the setpoint and then holds there. A real regulator senses the throttle pressure at the turbine; this one senses the dome.</span></span></h3>
+      <div class="chead"><h2>Automatic control <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">The MG set speed, the feed pump speed, the feed valve, the startup feed valve, the feed pump's minimum-flow valve, the two heater drain valves, the storage tank's makeup and reject valves, the cleanup reject, the turbine control valve and the bypass valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. The control rods, the recirculation pump breaker, the two extraction valves, the pump run switches, the isolation and stop valves, the safety/relief valves and the condenser (circulating water pump, valve and inlet temperature, air ejector, vacuum pump, vacuum breaker) are always manual: BWRs have no automatic rod control (power is changed with the rods and with the core flow), and the rest are set once for the operating state. The safety/relief valves' springs open them on pressure, and the reactor protection scrams, isolates and trips whatever you do. Nothing switches between M and A by itself. Each box below is one controller, like a unit in a control rack: the chips at its top right are the actuators it drives (filled while in A), the readouts are the signals it works on, and the sliders are its setpoints.</span></span></h2></div>
+      <div class="racks">
+        <section class="ru" id="ru-pr" data-outs="cv bp">
+          <div class="ruh"><h3>Pressure regulator <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">As on the GE electro-hydraulic control, simplified: a proportional-integral term on dome pressure gives a steam flow demand (0.1 MPa above the setpoint asks for 34 % of rated steam more, integral 30 s). The turbine control valve gets the demand up to the lower of the load limit and the speed/load channel: the load set on the grid, the speed governor off it; the bypass valve gets what the turbine is not taking: the excess, or everything once the stop valve shuts. Each demand becomes a valve position through the valve's characteristic at the rated throttle pressure. Below the setpoint both valves close, so with little heat the pressure rises to the setpoint and then holds there. A real regulator senses the throttle pressure at the turbine; this one senses the dome. Load set: with the generator breaker closed the load reference ramps towards it at 5 MWe/s and caps the control valve, with a slow trim on the measured output; the bypass takes the rest of the demand. Speed set: with the breaker open a proportional governor (5 % droop) holds the turbine speed at it; the speed reference ramps at 9 rpm/s. "Turbine held by" names the lowest of the three limits on the control valve.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
           <div class="row"><label for="pset">Pressure setpoint <output id="pseto"></output></label><input id="pset" type="range" min="0.2" max="7.5" step="0.01" value="7"></div>
           <div class="row"><label for="ll">Load limit <output id="llo"></output></label><input id="ll" type="range" min="0" max="110" step="1" value="105"></div>
-          <p>Proportional-integral on dome pressure: the control valve takes steam up to the load limit, the bypass the rest.</p>
-        </div>
-        <div class="grp">
-          <h3>Feedwater level control (feed valve) <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Three-element: the feed flow demand follows the main steam flow, plus a proportional-integral term on the level error (800 kg/s per metre, integral 60 s). Single-element drops the steam flow: the level term alone sets the demand. Plants run single-element at low power, where the steam flow signal is small and unreliable, and select three-element above about 20 to 25 % of rated; changing the selector does not bump the demand. Nothing changes it by itself here. A flow controller then moves the feed valve until the measured feed flow matches the demand (proportional-integral, integral 4 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it. The valve can only pass what the pump delivers: if the vessel pressure rises past the pump's shutoff head, no valve opening helps.</span></span></h3>
+          <div class="row"><label for="mw">Load set <output id="mwo"></output></label><input id="mw" type="range" min="0" max="1200" step="5" value="1200"></div>
+          <div class="row"><label for="nset">Speed set <output id="nseto"></output></label><input id="nset" type="range" min="0" max="1890" step="1" value="1800"></div>
+        </section>
+        <section class="ru" id="ru-fw" data-outs="fv sfv">
+          <div class="ruh"><h3>Feedwater level control <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Three-element: the feed flow demand follows the main steam flow, plus a proportional-integral term on the level error (800 kg/s per metre, integral 60 s). Single-element drops the steam flow: the level term alone sets the demand. Plants run single-element at low power, where the steam flow signal is small and unreliable, and select three-element above about 20 to 25 % of rated; changing the selector does not bump the demand. Nothing changes it by itself here. A flow controller then moves the feed valve until the measured feed flow matches the demand (proportional-integral, integral 4 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it. The valve can only pass what the pump delivers: if the vessel pressure rises past the pump's shutoff head, no valve opening helps. The startup level controller: single-element, on the startup feed valve, a small valve beside the main one (about 290 kg/s, 16 % of rated, wide open). A proportional-integral term on the level error (200 kg/s per metre, integral 120 s) gives a flow demand for the startup line, and a flow loop moves the valve. It uses the same level setpoint. Its gain is a quarter of the main controller's: at low power the cold feed collapses core voids, so more feed first drops the level before it raises it, and the main controller, tuned for rated, swings the feed between nothing and a few hundred kilograms a second. Transfer up: put the main feed valve in A (single-element), then the startup valve in M and close it in steps; the main valve's flow loop picks up the flow. Then select three-element. Gains illustrative. After a scram the level setpoint in use drops 0.45 m for 10 minutes and ramps back over 20.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
           <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="12" max="16" step="0.05" value="14.3"></div>
           <div class="sws two" role="group" aria-label="Main level controller elements"><button id="fwe1" type="button" aria-pressed="false" title="Single-element: the level error alone sets the feed flow demand.">Single-element</button><button id="fwe3" type="button" aria-pressed="true" title="Three-element: main steam flow plus the level correction sets the feed flow demand; a flow loop moves the valve.">Three-element</button></div>
-          <p>Steam flow (three-element only) plus a level correction sets the feed demand; a flow loop moves the valve.</p>
-        </div>
-        <div class="grp">
-          <h3>Startup level control (startup feed valve) <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Single-element, on the startup feed valve, a small valve beside the main one (about 290 kg/s, 16 % of rated, wide open). A proportional-integral term on the level error (200 kg/s per metre, integral 120 s) gives a flow demand for the startup line, and a flow loop moves the valve. It uses the same level setpoint. Its gain is a quarter of the main controller's: at low power the cold feed collapses core voids, so more feed first drops the level before it raises it, and the main controller, tuned for rated, swings the feed between nothing and a few hundred kilograms a second. Transfer up: put the main feed valve in A (single-element), then the startup valve in M and close it in steps; the main valve's flow loop picks up the flow. Then select three-element. Gains illustrative.</span></span></h3>
-          <p>Single-element on the small startup valve, for startup and low power.</p>
-        </div>
-        <div class="grp">
-          <h3>Feed pump speed <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Proportional-integral on the pump discharge pressure minus dome pressure, as turbine-driven feed pumps are run: the speed follows the vessel pressure, so the feed valve always has about the same pressure drop to work with (2.2 MPa at rated, 0.3 MPa of it in the heater and piping). 0.1 MPa of error moves the speed 0.15 %, integral 10 s. The speed changes at most 10 % per second.</span></span></h3>
+        </section>
+        <section class="ru" id="ru-cf" data-outs="mg">
+          <div class="ruh"><h3>Recirculation flow control <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Proportional-integral on the core flow (100 % = 12,900 kg/s): 10 % of rated flow low raises the MG set speed demand 3 %, integral 5 s. The MG set's speed limiter lets the speed change at most 2 % per second and holds it at 20 % or more while the pump runs. Power follows the flow along the rod line through the void feedback: at 40 % flow it settles near 65 %.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
+          <div class="row"><label for="wset">Core flow setpoint <output id="wseto"></output></label><input id="wset" type="range" min="20" max="110" step="1" value="100"></div>
+        </section>
+        <section class="ru" id="ru-fp" data-outs="n">
+          <div class="ruh"><h3>Feed pump speed <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Proportional-integral on the pump discharge pressure minus dome pressure, as turbine-driven feed pumps are run: the speed follows the vessel pressure, so the feed valve always has about the same pressure drop to work with (2.2 MPa at rated, 0.3 MPa of it in the heater and piping). 0.1 MPa of error moves the speed 0.15 %, integral 10 s. The speed changes at most 10 % per second.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
           <div class="row"><label for="dpset">Pump discharge above dome <output id="dpseto"></output></label><input id="dpset" type="range" min="0.5" max="4" step="0.05" value="2.2"></div>
-          <p>Holds the pump discharge a set margin above dome pressure.</p>
-        </div>
-        <div class="grp">
-          <h3>Feed pump minimum flow <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">The recirculation valve from the feed pump discharge back to the condenser opens in proportion as the flow to the vessel falls below 25 % of rated (447 kg/s), fully at no forward flow, so the pump never runs dead-headed. Proportional only.</span></span></h3>
-          <p>Opens the recirculation valve below 25 % of rated feed flow.</p>
-        </div>
-        <div class="grp">
-          <h3>Heater drain levels <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Each heater shell's level is held half full by its own proportional-integral controller: the HP heater on its drain valve (the drains cascade to the LP heater), the LP heater and its drain tank on the drain pump's discharge valve. A quarter of the shell above the setpoint strokes the valve fully open; integral 30 s.</span></span></h3>
-          <p>Each heater shell is held half full by its drain valve.</p>
-        </div>
-        <div class="grp">
-          <h3>Hotwell level (makeup and reject) <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">One controller holds the hotwell half full, split range over two valves: its output, a net makeup in kg/s, opens the makeup valve (storage tank to condenser) when positive and the reject valve (condensate pump discharge back to the tank) when negative, 1 % of stroke per kg/s, so the two are never both asked open. The output is what the condensate pump sends on (feed plus minimum-flow recirculation, less the drains pumped forward) minus the condensate return, plus a proportional-integral term on the hotwell level (10 % off asks for the full stroke, integral 300 s). Each valve has its own M/A switch; with one in M the other still follows the controller.</span></span></h3>
-          <p>Holds the hotwell half full: makeup when low, reject when high.</p>
-        </div>
+        </section>
+        <section class="ru" id="ru-mf" data-outs="rv">
+          <div class="ruh"><h3>Feed pump minimum flow <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">The recirculation valve from the feed pump discharge back to the condenser opens in proportion as the flow to the vessel falls below 25 % of rated (447 kg/s), fully at no forward flow, so the pump never runs dead-headed. Proportional only.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
+        </section>
+        <section class="ru" id="ru-rw" data-outs="rw">
+          <div class="ruh"><h3>Cleanup reject <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Proportional only, on the vessel level: the cleanup reject valve starts to open 0.10 m above the level setpoint and is fully open 0.30 m higher, sending reactor water to the condenser. Its band sits above the feedwater setpoint, so the two do not fight: the feed valve closes as the level rises and the reject takes the swell of a heat-up. It stands in for the reactor water cleanup system's reject line.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
+        </section>
+        <section class="ru" id="ru-hd" data-outs="hdv ldv">
+          <div class="ruh"><h3>Heater drain levels <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">Each heater shell's level is held half full by its own proportional-integral controller: the HP heater on its drain valve (the drains cascade to the LP heater), the LP heater and its drain tank on the drain pump's discharge valve. A quarter of the shell above the setpoint strokes the valve fully open; integral 30 s.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
+        </section>
+        <section class="ru" id="ru-hw" data-outs="mu rj">
+          <div class="ruh"><h3>Hotwell level <span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">One controller holds the hotwell half full, split range over two valves: its output, a net makeup in kg/s, opens the makeup valve (storage tank to condenser) when positive and the reject valve (condensate pump discharge back to the tank) when negative, 1 % of stroke per kg/s, so the two are never both asked open. The output is what the condensate pump sends on (feed plus minimum-flow recirculation, less the drains pumped forward) minus the condensate return, plus a proportional-integral term on the hotwell level (10 % off asks for the full stroke, integral 300 s). Each valve has its own M/A switch; with one in M the other still follows the controller.</span></span></h3><span class="ruo"></span></div>
+          <dl class="rd"></dl>
+        </section>
       </div>
       <p class="astat" id="astat" role="status"></p>
     </div>
@@ -444,6 +458,13 @@ const RG=['r1','r2','r3','r4'],ids=[...RG,'mg','n','fv','sfv','ext','exl','rv','
 ids.push('cwv','tcw'); // condenser: circulating water valve %, inlet °C (manual only)
 // sliders with an M/A switch → key in ctl.auto
 const AK={mg:'mg',n:'n',fv:'fv',sfv:'sfv',rv:'rv',hdv:'hdv',ldv:'ldv',mu:'mu',rj:'rj',rw:'rw',cv:'cv',bp:'bp'},auto={mg:false,n:false,fv:false,sfv:false,rv:false,hdv:false,ldv:false,mu:false,rj:false,rw:false,cv:false,bp:false};
+// second line of each M/A switch's tooltip: what drives the automatic demand
+const AKT={mg:'Auto: core flow against the core flow setpoint.',n:'Auto: pump discharge pressure above the dome, against its setpoint.',
+  fv:'Auto: vessel level against its setpoint, plus steam flow in three-element.',sfv:'Auto: vessel level against its setpoint, single-element.',
+  rv:'Auto: forward feed flow; opens below 25 % of rated.',hdv:'Auto: HP heater shell level, held half full.',ldv:'Auto: LP heater and drain tank level, held half full.',
+  mu:'Auto: hotwell level, held half full; opens when it is low.',rj:'Auto: hotwell level, held half full; opens when it is high.',
+  rw:'Auto: vessel level; opens from 0.1 m above the level setpoint.',cv:'Auto: dome pressure against its setpoint, capped by the load limit and the load or speed set.',
+  bp:'Auto: dome pressure against its setpoint; takes the steam the turbine does not.'};
 const pct=v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut',pct0=v=>+v?Math.round(v)+' %':'shut';
 const posT=v=>{const r=Math.round(v*10)/10;return (Number.isInteger(r)?String(r):r.toFixed(1)).padStart(2,'0')};
 const fmt={r1:posT,r2:posT,r3:posT,r4:posT,mg:v=>(+v).toFixed(1)+' %',wset:v=>Math.round(v)+' %',n:v=>+v?(+v).toFixed(1)+' %':'stopped',fv:pct,sfv:pct,ext:pct0,exl:pct0,rv:pct0,hdv:pct0,ldv:pct0,mu:pct0,rj:pct0,
@@ -482,7 +503,7 @@ for(const k of ids){
   if(!(k in AK))continue;
   const head=document.createElement('div');head.className='rhead';lab.replaceWith(head);
   const sw=document.createElement('button');sw.type='button';sw.className='am';sw.id=k+'Am';sw.setAttribute('role','switch');
-  sw.setAttribute('aria-label',name+' automatic');sw.title='M manual / A automatic';sw.innerHTML='<span>M</span><span>A</span>';
+  sw.setAttribute('aria-label',name+' automatic');sw.title='M manual / A automatic\n'+AKT[k];sw.innerHTML='<span>M</span><span>A</span>';
   sw.onclick=()=>{auto[AK[k]]=!auto[AK[k]];readCtl();if(s)syncAuto()};head.append(lab,sw);
   const dem=document.createElement('span');dem.className='dem';dem.id=k+'d';lab.insertBefore(dem,lab.querySelector('output'));
   const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);
@@ -593,6 +614,28 @@ const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color
 const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
 const fmtClk=t=>{t=Math.round(t);const h=Math.floor(t/3600),m=Math.floor(t/60)%60,x=t%60;return `${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`};
 const fmtT=t=>t<120?`${t.toFixed(0)} s`:t<7200?`${(t/60).toFixed(0)} min`:`${(t/3600).toFixed(1)} h`;
+// automatic-control boxes: output chips (filled while in A) and the readouts each controller works on
+const OUTN={mg:'MG set',n:'Pump speed',fv:'Feed valve',sfv:'Startup valve',rv:'Min-flow valve',hdv:'HP drain',ldv:'LP drain',mu:'Makeup',rj:'Reject',rw:'Reject valve',cv:'Control valve',bp:'Bypass'};
+const sg=(v,n)=>(v<0?'−':'+')+Math.abs(v).toFixed(n),p1=v=>(v*100).toFixed(1)+' %',p0=v=>(v*100).toFixed(0)+' %',kgs=v=>v.toFixed(0)+' kg/s';
+const RU={
+  pr:[['Dome pressure',d=>(d.P/1e6).toFixed(3)+' MPa'],['Error',d=>sg((d.P-ctl.pset)/1e3,0)+' kPa'],['Steam demand',(d,f,D)=>p0(D.D)+' rated'],
+    ['Turbine held by',(d,f,D)=>s.sv<0.99?'stop valve':D.D<=Math.min(ctl.ll/100,D.SL??Infinity)?'pressure':(D.SL??Infinity)<ctl.ll/100?(f.brk?'load set':'speed set'):'load limit'],
+    ['Load · speed ref',(d,f,D)=>f.brk?((D.Lr??f.Pgen)/1e6).toFixed(0)+' MWe':((D.nr??f.spd)*BWRSim.NR).toFixed(0)+' rpm']],
+  fw:[['Level',d=>d.level.toFixed(2)+' m'],['Setpoint in use',(d,f,D)=>(D.ls??ctl.lset).toFixed(2)+' m'],['Steam flow',(d,f)=>ctl.fwe===1?'not used':kgs(f.wst)],
+    ['Feed flow',(d,f)=>kgs(f.fw)],['Demand, main · startup',(d,f,D)=>`${D.fw.toFixed(0)} · ${D.fws.toFixed(0)} kg/s`]],
+  cf:[['Core flow',(d,f)=>p1(f.Wc/WCR)],['Speed demand',(d,f,D)=>p1(D.mg)],['MG set speed',(d,f)=>p1(f.ng??0)]],
+  fp:[['Discharge − dome',(d,f)=>((f.Pd-d.P)/1e6).toFixed(2)+' MPa'],['Speed demand',(d,f,D)=>p1(D.n)],['Pump speed',()=>p1(s.n)]],
+  mf:[['Forward feed',(d,f)=>kgs(f.fw)],['Opens below',()=>kgs(WMIN)],['Valve demand',(d,f,D)=>p0(D.rv)],['Recirculation',(d,f)=>kgs(f.wr)]],
+  rw:[['Level',d=>d.level.toFixed(2)+' m'],['Opens above',()=>(ctl.lset+Ctl.RDB).toFixed(2)+' m'],['Valve demand',(d,f,D)=>p0(D.rw||0)],['Reject flow',(d,f)=>(f.wrw||0).toFixed(1)+' kg/s']],
+  hd:[['HP shell',(d,f)=>p0(f.LH)],['LP shell',(d,f)=>p0(f.LL)],['Setpoint',()=>p0(Ctl.LSH)],['HP valve demand',(d,f,D)=>p0(D.hdv)],['LP valve demand',(d,f,D)=>p0(D.ldv)]],
+  hw:[['Hotwell',(d,f)=>p1(f.hw)],['Setpoint',()=>p0(Ctl.HSET)],['Net makeup',(d,f,D)=>sg(D.mk,0)+' kg/s'],['Makeup · reject',(d,f,D)=>`${p0(D.mu)} · ${p0(D.rj)}`]]};
+const ruEl={};
+for(const id in RU){const box=$('ru-'+id),dl=box.querySelector('.rd'),ch=box.querySelector('.ruo');
+  ruEl[id]={dd:RU[id].map(([l])=>{const w=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=l;dd.textContent='–';w.append(dt,dd);dl.append(w);return dd}),
+    ch:box.dataset.outs.split(' ').map(k=>{const c=document.createElement('span');c.textContent=OUTN[k];c.title=OUTN[k]+(k in AK?': M/A switch beside its slider':'');ch.append(c);return [k,c]})}}
+const syncRU=()=>{const d=s.d,f=s.f,D=cs.dem;
+  for(const id in RU){const e=ruEl[id];RU[id].forEach(([,fn],i)=>{e.dd[i].textContent=fn(d,f,D)});
+    for(const [k,c] of e.ch){const on=!!ctl.auto[AK[k]];c.classList.toggle('a',on);c.textContent=OUTN[k]+' '+(on?'A':'M')}}};
 const syncAuto=()=>{
   const d=s.d,A=ctl.auto,D=cs.dem;
   const dv={mg:D.mg*100,n:D.n*100,fv:D.fv*100,sfv:D.sfv*100,rv:D.rv*100,hdv:D.hdv*100,ldv:D.ldv*100,mu:D.mu*100,rj:D.rj*100,rw:(D.rw||0)*100,cv:D.cv*100,bp:D.bp*100},dtx={mg:v=>v.toFixed(1),n:v=>v.toFixed(1),fv:v=>v.toFixed(1),sfv:v=>v.toFixed(1),rv:v=>v.toFixed(0),hdv:v=>v.toFixed(0),ldv:v=>v.toFixed(0),mu:v=>v.toFixed(0),rj:v=>v.toFixed(0),rw:v=>v.toFixed(0),cv:v=>v.toFixed(1),bp:v=>v.toFixed(1)};
@@ -669,6 +712,7 @@ const syncAuto=()=>{
   else if(!ctl.rp)m=`The recirculation pump is tripped: ${(s.f.Wc/WCR*100).toFixed(0)} % core flow by natural circulation.`;
   else m=(A.n||A.fv||A.cv||A.bp||A.mu||A.rj||A.rv||A.hdv||A.ldv||A.rw||A.mg?'':'Every control is in M; the notches show the automatic demand. ')+(d.sub>0.05?`Core water subcooled by ${d.sub.toFixed(1)} K: steam is condensing.`:'Core water saturated.')+(d.subdc>0.5?` Downcomer ${d.subdc.toFixed(1)} K subcooled.`:'');
   $('astat').textContent=m;$('astat').classList.toggle('bad',bad);
+  syncRU();
 };
 const updText=()=>{
   const d=s.d;if(d.err)return;const f=s.f,P=d.P;
