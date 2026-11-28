@@ -13,6 +13,11 @@
 // Heater drains (step 6): hdv % HP heater drain valve, ldv % LP drain pump discharge valve, both with M/A
 // (a key absent from c.auto runs in A, for callers older than step 6; absent values are 50 %); hdp drain
 // pump run switch (absent: on).
+// Condensate storage tank (step 7): mu % makeup valve (CST → condenser), rj % reject valve (condensate pump
+// discharge → CST), each with M/A; they replace mk. The hotwell level loop is split range: its one output,
+// in kg/s of net makeup, opens the makeup valve above 0 and the reject valve below (1 % of stroke per kg/s,
+// about the valves' flow at a 70 % full CST). Keys absent from c.auto follow auto.mk, absent values follow
+// mk (positive: makeup, negative: reject), for callers older than step 7.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -47,9 +52,13 @@ const KD=4,TID=30,LSH=0.5;
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,dem:{mv:0,fw:0,fv:0,mk:0,n:0,rv:0,hdv:0.5,ldv:0.5}});
+const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,dem:{mv:0,fw:0,fv:0,mk:0,n:0,rv:0,hdv:0.5,ldv:0.5,mu:0,rj:0}});
 // the drain level loops are in A unless c.auto says otherwise
 const autoD=(A,k)=>A[k]??true;
+// the makeup and reject valves follow the old makeup switch when their own keys are absent; the operator's
+// openings (%, read as kg/s of net makeup) likewise follow mk
+const autoM=(A,k)=>!!(A[k]??A.mk);
+const manMu=c=>c.mu??Math.max(0,c.mk||0),manRj=c=>c.rj??Math.max(0,-(c.mk||0));
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -76,9 +85,12 @@ const demands=(k,s,c,dt)=>{
   if(!fvA)k.iX=c.fv/100;
   else{const I=k.iX+KX/TIX*eF*dt,v=KX*eF+I;if(!((v>1&&eF>0)||(v<0&&eF<0)))k.iX=I}
   k.iX=clamp(k.iX,0,1);const fv=clamp(KX*eF+k.iX,0,1);
-  // hotwell makeup
-  const eH=HSET-f.hw,fh=(f.wcp??f.fw)-f.ret; // what the condensate pump draws (feed + min-flow) less the condensate
-  if(!A.mk)k.iH=c.mk-fh;
+  // hotwell level, split range onto the makeup and reject valves
+  // feedforward: what the condensate pump sends on through the LP heater (feed + min-flow less the pumped
+  // drains; not the reject, which is this loop's own output) less the condensate
+  const eH=HSET-f.hw,fh=(f.wcp??f.fw)-(f.wrj||0)-f.ret;
+  const aMu=autoM(A,'mu'),aRj=autoM(A,'rj');
+  if(!aMu&&!aRj)k.iH=manMu(c)-manRj(c)-fh;
   else{const I=k.iH+KH/TIH*eH*dt,v=fh+KH*eH+I;if(!((v>MKMAX&&eH>0)||(v<-MKMAX&&eH<0)))k.iH=I}
   k.iH=clamp(k.iH,-2*MKMAX,2*MKMAX);const mk=clamp(fh+KH*eH+k.iH,-MKMAX,MKMAX);
   // feed pump speed on the discharge-to-dome differential pressure
@@ -93,14 +105,16 @@ const demands=(k,s,c,dt)=>{
     if(!autoD(A,key))k[iK]=man;else{const I=k[iK]+KD/TID*e*dt,v=KD*e+I;if(!((v>1&&e>0)||(v<0&&e<0)))k[iK]=I}
     k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
   const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
-  k.dem={mv,fw,fv,mk,n,rv,hdv,ldv};
+  const mu=clamp(mk/MKMAX,0,1),rj=clamp(-mk/MKMAX,0,1);
+  k.dem={mv,fw,fv,mk,n,rv,hdv,ldv,mu,rj};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  return {heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[],
+  return {heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[],
     exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100,
-    hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false};
+    hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false,
+    mu:autoM(A,'mu')?D.mu:manMu(c)/100,rj:autoM(A,'rj')?D.rj:manRj(c)/100};
 };
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.

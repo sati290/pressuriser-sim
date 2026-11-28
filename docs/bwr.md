@@ -31,7 +31,8 @@ stub, condenser, hotwell, then the vessel mass and energy and the pressure solve
 | SRVs | `SRV` = 11 valves `{p, w}`: 4 × 1090 psig (7.617 MPa abs) rated 800,000 lb/h (100.8 kg/s), 4 × 1100 psig (7.686 MPa) 808,000 lb/h (101.8 kg/s), 3 × 1110 psig (7.755 MPa) 815,000 lb/h (102.7 kg/s); flow w·P/p × subsonic factor to the pool at 0.1 MPa | From a GE BWR/4 training lesson plan (NRC-hosted; group counts partly illegible in the OCR, read so that capacity ∝ set pressure, which it is for one valve model). Each valve: spring opens it fully above p, recloses below p − `BD` (0.25 MPa, illustrative; not in the source), latch `s.spr[i]`; or opened by hand, `u.srv[i]` true. Open = spring or hand. No automatic relief logic, low-low set or ADS |
 | Turbine stub | `ETA` 0.85 isentropic along one expansion line from the throttle (dome, saturated) to the condenser pressure; generator `ETAG` 0.985 | `expansion(p0, h0)` → h(p): h0 − η·(h0 − h_s(p)), h_s from the throttle entropy (`satS` in common.js, IAPWS supplementary release). Extraction leaves at h(pe); the rest exhausts wet at h(Pc). `turbinePower(wt, h0, ext, hx)`. Rated: exhaust h 1950 kJ/kg (x ≈ 0.76), about 920 MWe gross with one 2.4 MPa heater stage, 1046 MWe with the LP stage of step 5 and drains to the condenser, 1130 MWe with the drains pumped forward (step 6; a real BWR/4 with five or six stages, moisture losses and reheat makes about 1100 MWe) |
 | Condenser | Steam space `VC` 4000 m³; circulating water `WCW` 38,000 kg/s at `TCW` 20 °C (fixed until the circulating water step); `UA` 2.4×10⁸ W/K; `PCMAX` 0.135 MPa | Saturated at Tc. Inflows `[w, h]` split into vapour w·(h − h′)/h_fg at Tc and liquid. Bundle: Q = m·c_p·(Tc − T_in)·(1 − e^(−UA/(m c_p))), w_c = Q/h_fg. Implicit each step: bisection on Tc for ρ″(Tc)·VC = Ms + (vapour − w_c)·dt. Liquid to the hotwell = inflow − storage change, at h′(Tc). Rated (two heater stages, drains pumped forward, step 6): 6.43 kPa, 37.4 °C, 2158 MW (drains to the condenser, step 5: 6.68 kPa, 38.1 °C, 2244 MW; one stage: 7.05 kPa, 39.1 °C, 2370 MW). Illustrative numbers (38 m³/s and ~7 kPa are typical of an 1100 MWe unit; UA chosen to give them). `condSteady(ins, cw)` the steady Tc. Fault `'condenser'` above PCMAX (LP exhaust rupture diaphragms) |
-| Hotwell | `HWM` 600 t capacity, normal half full, `HWD` 4 m deep at full (illustrative); its own mass `Mh` and temperature `Thw` | Mixes the condensate (at Tc), makeup at `TMK` 30 °C, and the condensate pump's draw. Design temperature `THW` 37.4 °C (the condenser at rated; the extraction constants are computed with it). Makeup from / reject to the condensate storage tank `u.mk`, ±100 kg/s (`MKMAX`) |
+| Hotwell | `HWM` 600 t capacity, normal half full, `HWD` 4 m deep at full (illustrative); its own mass `Mh` and temperature `Thw` | Mixes the condensate (at Tc), makeup at `TMK` 30 °C, and the condensate pump's draw. Design temperature `THW` 37.4 °C (the condenser at rated; the extraction constants are computed with it). Makeup from the condensate storage tank through the makeup valve, reject to it through the reject valve (step 7; the ±100 kg/s `u.mk` input is gone, `MKMAX` is kept as the controller's range) |
+| Condensate storage tank (step 7) | `CSTM` 1900 t (about 500,000 US gal), `HCST` 12 m tall, level ∝ mass, open to the air (`PATM`); starts 70 % full (`init({cst})`) at `TMK` 30 °C; its own mass `Mcst` and temperature `Tcst` | Makeup valve (CST → condenser): `KMU`·x·√(PATM + ρg·(h − `ZMU`) − Pc), ZMU 3 m, about 100 kg/s fully open from a 70 % full tank under vacuum (`muFlow`), falling to 0 as the tank goes from 2 % to empty (outlet uncovering); enters the hotwell at h′(Tcst). Reject valve (condensate pump discharge → CST): `KRJ`·x·√(Pcd − PATM − ρgh), about 100 kg/s from 2.4 MPa (`rjBack` the back pressure); a branch of `network` at the condensate pump discharge, so the condensate pump carries it (`wcp` = LP line + reject). The CST mixes the reject at h′(Thw); no heat loss to the air. Both valves stroke ≤ 10 %/s (`CRATE`); `u.mu`, `u.rj` demands, `s.xmu`, `s.xrj` positions. Fault `'cst'` when it overfills. Sizes and elevations illustrative; no fill from demineralised water, no other users (RCIC, HPCI, CRD) yet |
 | Train | Hotwell → condensate pump → polisher → LP heater → feed pump → HP heater → feed valve → check valve; min-flow line from the feed pump discharge to the condenser | Pipes hold no water. `network(o)` solves each step for the condensate pump discharge Pcd, feed pump suction Ps and discharge Pd: bisection on Ps outside (supply from the condensate side falls, the feed pump's draw rises with Ps), on Pd and Pcd inside; each branch flow is monotonic in its node pressures. Every pump passes exactly what the lines downstream take (mass). Overall numbers kept from the lumped pump of step 1: total shutoff `H0` 10 MPa over the hotwell, rated discharge PCD + H0 − `KPU`·W² (KPU 0.24), so the feed valve is still 74.5 % open at rated |
 | Condensate pump | ΔP = φ·`HC0` − `KCP`·w², HC0 2.6 MPa, KCP 0.08 Pa/(kg/s)² (0.26 MPa at rated); constant speed, run switch `u.cp` | Suction at the impeller Pin = Pc + ρg·(`ZS` + `HWD`·fraction full), ZS 1 m pit. NPSHa = (Pin − p_sat(Thw))/ρg (3 m at half full, saturated); NPSHr = `NPR`·(w/WR)², NPR 2 m. φ = 1 while NPSHa ≥ NPSHr, falling linearly to 0 at NPSHa = NPSHr/2 (closed form: a quadratic in w², `cpFlow`); times hw/0.02 below 2 % (suction uncovering, vortexing). Stopped: a resistance KCP·w² (check valve: no reverse flow). All illustrative |
 | Heater drains (step 6) | HP shell `VHS` 30 m³, LP shell with drain tank `VLS` 60 m³ (fraction full `Mhs`/`MHS`, `Mls`/`MLS`), saturated at the shell pressure; HP drain valve `KDVH`·x·√(psH − psL) (linear); drain pump f·`HDP0` − `KDPP`·w², HDP0 3.5 MPa, 0.5 MPa lost at rated drains, suction psL + ρg·`ZDT` (5 m), f = level/0.1 below 10 %, discharge valve conductance `KDVL`·x, check valve; both valves half open (`XD0`) at rated; travel 10 %/s (`DRATE`) | HP drains cascade to the LP shell (they flash there: `stage(…, ins)` takes them as heat w·(h − h′(ps))); LP + cascaded drains are pumped into the condensate line after the LP heater (a branch into the feed pump suction node of `network`). Rated: drains 579 kg/s (`WDD`), LP extraction only 163 kg/s, HP heater inlet `THPI` 127.4 °C (LP outlet 126.5 °C mixed with the drains), condensate pump 1209 kg/s; `KFP` re-chosen (0.181) so the feed valve stays 74.5 % open. Tube flooding: above `LFL` 60 % the heated fraction a = (1 − level)/0.4 and the outlet is Tin + a·(T_sat(ps) − TTD − Tin). High-level dump (plant overflow): above `LDU` 80 % a valve opens (fully at 90 %) to the condenser, `KDDH`/`KDDL`·x·√(ps − Pc), sized for 1.4 × the shell's rated drains. With extraction steam the shell is at most at the extraction pressure (non-return valve); flash steam the tubes can't condense vents to the condenser (`f.wv`). `fail(s, 'hdv', on)`: the HP drain valve fails shut (event). All volumes, levels and pump numbers illustrative |
@@ -83,13 +84,14 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 Command `u` = {heat W, n 0–1 pump speed, fv 0–1 feed valve demand, ext 0–1 HP heater extraction, exl 0–1
 LP heater extraction (absent: = ext), cp, fp pump run switches (absent: running), rv 0–1 min-flow valve
 demand, hdv, ldv 0–1 HP drain valve and drain pump valve demands (absent: 0.5), hdp drain pump run switch
-(absent: running), mk kg/s makeup (negative: reject), mv 0–1 steam valve demand, srv[]}. `s.f` records what was
+(absent: running), mu, rj 0–1 CST makeup and reject valve demands (step 7; replace mk), mv 0–1 steam valve demand, srv[]}. `s.f` records what was
 applied, with the feed train's fw, Tfw, Pd (feed pump discharge), Ps (its suction), Pcd (condensate pump
 discharge), wp, wcp, wr (feed pump, condensate pump, min-flow), npsh, phi, cav, fpt, pe/ps/ws (HP
 extraction pressure, shell, steam), pel/psl/wsl and Tlp (LP), Tt (HP target), ret (condensate return),
 mk, Mh, hw (hotwell fraction); drains: LH, LL (shell fractions full), aH, aL (heated tube fractions), wdh
 (HP drains to LP), wd (pumped forward), wduh, wdul (dumps to the condenser), wv (LP vent), Tm (HP heater
-inlet), xdh, xdl, hdp, hdvf. Reactor protection (step 11) can trip the feed pump by sending `fp` false
+inlet), xdh, xdl, hdp, hdvf; CST: wmu, wrj (makeup, reject kg/s), xmu, xrj, Mcst, cst (fraction full), Tcst;
+mk is now the net makeup wmu − wrj. Reactor protection (step 11) can trip the feed pump by sending `fp` false
 (and the condensate or drain pump with `cp`, `hdp`).
 
 ## Control (bwr-control.js)
@@ -102,8 +104,13 @@ inlet), xdh, xdl, hdp, hdvf. Reactor protection (step 11) can trip the feed pump
   valve is saturated). SRV flow is not in the steam signal, so after a valve closure the level term alone
   has to call for feedwater. The pump speed is manual: no valve opening helps once vessel pressure is above
   the shutoff head.
-- Hotwell makeup: mk = (condensate pump flow − return) + KH·(0.5 − hotwell fraction) + I, KH = 1000 kg/s per unit fraction,
-  integral 300 s, ±100 kg/s. Setpoint fixed at half full.
+- Hotwell level, split range (step 7): mk = (condensate pump flow − reject − return) + KH·(0.5 − hotwell fraction) + I,
+  KH = 1000 kg/s per unit fraction, integral 300 s, ±100 kg/s, setpoint fixed at half full. The makeup valve
+  demand is mk/100 above 0, the reject valve's −mk/100 below 0 (1 % per kg/s, about each valve's flow at a 70 %
+  full CST), so they are never both asked open. Each valve has M/A (`auto.mu`, `auto.rj`; absent keys follow
+  `auto.mk`); with both in M the integral holds the operators' net (mu − rj, % read as kg/s). The reject is
+  left out of the feedforward because it is the loop's own output. A PI on an integrating level overshoots
+  from an initial offset: from 60 % full it undershoots to about 46.6 % and settles in about 40 min.
 - Feed pump speed: n = KN·(dpset − (Pd − P)) + I, KN = 1.5×10⁻⁸ /Pa, integral 10 s, 0 … 1: holds the pump
   discharge 2.2 MPa (default) above the dome, as turbine-driven feed pumps are run, so the feed valve keeps a
   steady drop at any vessel pressure.
@@ -137,7 +144,11 @@ inlet), xdh, xdl, hdp, hdvf. Reactor protection (step 11) can trip the feed pump
 - Pump speed in A through a depressurisation to 1 MPa: discharge held 2.2 MPa above the dome, speed down to
   about 55 %.
 - Hotwell: without makeup it drains during an isolation (relief steam does not return); with makeup in A it
-  stays half full. A full hotwell with the steam valve open is the `'hotwell'` fault.
+  stays half full.
+- CST (tests/bwr-cst.test.mjs): makeup fully open 100 kg/s at 70 % full under vacuum, less with the vacuum lost;
+  reject fully open at rated 80–120 kg/s; whole-plant water (vessel + hotwell + condenser steam + heater shells +
+  CST) changes only by SRV discharge, to 1 kg, at dt 0.25 and 2 s; an empty CST gives no makeup and the hotwell
+  drains under an open SRV. A full hotwell with the steam valve open is the `'hotwell'` fault.
 - Cold feedwater (about 100 kg/s at the hotwell temperature, no heat): pressure falls ~0.35 MPa/min, subcooling < 1 K.
 - Condensate and feed train (tests/bwr-feed.test.mjs): rated suction 2.16 MPa, condensate pump discharge 2.38 MPa,
   feed pump discharge 9.24 MPa as with the lumped pump, LP heater 126.5 °C out, extractions 421 kg/s (HP) and
@@ -177,12 +188,13 @@ use landscape). There is no separate phone layout. Solid parts are modelled; das
   flows are labelled at the heaters).
 - Condensate and feed (step 5, solid): hotwell → condensate pump → polisher → LP heater (extraction from the
   LP turbine) → feed pump (min-flow line back into the condenser shell) → HP heater (extraction from the HP
-  turbine casing) → feed valve → containment. The makeup stub enters the hotwell from the right.
+  turbine casing) → feed valve → containment. The condensate storage tank (step 7, solid) stands right of the hotwell: makeup line from its foot
+  into the hotwell through its valve, reject line from the condensate pump discharge under the hotwell into the
+  tank's bottom, each valve labelled with its flow.
 
 Not on the layout yet, for the steam/feed circuit: MSR drain lines, the MSR/heater non-return
 valves, the off-gas train (recombiner, delay beds, stack), turbine gland
-seal steam and its condenser, circulating water pumps and the cooling tower or river, the condensate
-storage tank (shown only as the makeup label), reactor water cleanup (RWCU), control rod drive
+seal steam and its condenser, circulating water pumps and the cooling tower or river, reactor water cleanup (RWCU), control rod drive
 hydraulics, main steam drains to the condenser, generator output and grid breaker. Emergency cooling
 (RCIC, HPCI, core spray, RHR) is deliberately left for later.
 

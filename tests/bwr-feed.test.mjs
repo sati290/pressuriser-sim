@@ -53,7 +53,7 @@ test('minimum-flow valve in A: opens as the forward flow falls, keeps the feed p
     c.auto.fv = false; c.fv = 0; run(s, k, c, 30, dt);
     near(s.xr, 1, 1e-9, `open at no forward flow dt=${dt}`);
     assert.ok(s.f.wp > 0.9 * B.WMIN, `pump flow kept up: ${s.f.wp} dt=${dt}`);
-    near(s.f.wcp + s.f.wd, s.f.wp, 1e-6, `the condensate and drain pumps supply the recirculation dt=${dt}`);
+    near(s.f.wcp - s.f.wrj + s.f.wd, s.f.wp, 1e-6, `the condensate and drain pumps supply the recirculation (less the reject to the CST) dt=${dt}`);
     assert.equal(s.f.fw, 0, `no forward flow dt=${dt}`);
   }
 });
@@ -95,7 +95,7 @@ test('mass is conserved through the train with the min-flow line open (vessel + 
   for (const dt of [0.25, 2]) {
     const s = rated();
     let tot = s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls;
-    runPlant(s, { ...RATED_U, rv: 1, mk: 10, srv: [true] }, 300, dt, x => { tot += (x.f.mk - x.f.wsrv) * dt; return true; });
+    runPlant(s, { ...RATED_U, rv: 1, mu: 0.1, srv: [true] }, 300, dt, x => { tot += (x.f.mk - x.f.wsrv) * dt; return true; });
     assert.equal(B.fault(s), '');
     assert.ok(s.f.wr > 100, `recirculating: ${s.f.wr}`);
     near(s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls, tot, 1e-3, `mass dt=${dt}`);

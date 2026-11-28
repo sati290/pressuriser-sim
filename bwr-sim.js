@@ -12,7 +12,8 @@ import {QR,PR,TFR,WR,WMS,RATE,SRV,NV,PB,BD,subF,wMS,wSRV,srvStep} from './bwr-st
 import {ETA,ETAG,expansion,turbinePower,VC,WCW,TCW,CPW,UA,PCMAX,condense,condSteady} from './bwr-condenser.js';
 import {H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValve,heater,heaterT,heatBalance,hotwellMix,
   PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
-  THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,VHS,VLS,LFL,LDU,XD0,MHS,MLS,DPD,mixT,dpFlow,tubes,dumpX,Thf} from './bwr-feed.js';
+  THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,VHS,VLS,LFL,LDU,XD0,MHS,MLS,DPD,mixT,dpFlow,tubes,dumpX,Thf,
+  CSTM,HCST,CRATE,KMU,KRJ,muFlow,rjBack} from './bwr-feed.js';
 // heater drain valves (HP drain valve, LP drain pump discharge valve) travel at most DRATE per second
 const DRATE=0.1;
 // Scram: the rods go in and core heat falls to the fission tail plus decay heat, a fraction of the
@@ -28,9 +29,10 @@ const HMK=sat(TMK).hf;
 // outlet (default the hotwell temperature), hw hotwell fraction full (default 0.5), ext, exl 0–1 HP and LP extraction
 // valves the condenser starts steady with (default 1; exl defaults to ext), xr min-flow valve 0–1, xdh, xdl
 // heater drain valves 0–1 (default the design 0.5), hs, ls HP and LP heater shell fraction full (default 0.5),
+// cst condensate storage tank fraction full (default 0.7; its water at TMK), xmu, xrj makeup and reject valves,
 // tau overrides}
 const init=o=>{
-  const s={t:0,mv:o.mv||0,fv:o.fv||0,n:o.n||0,xr:o.xr||0,fpt:false,tlo:0,xdh:o.xdh??XD0,xdl:o.xdl??XD0,Mhs:(o.hs??0.5)*MHS,Mls:(o.ls??0.5)*MLS,fail:{},Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
+  const s={t:0,mv:o.mv||0,fv:o.fv||0,n:o.n||0,xr:o.xr||0,fpt:false,tlo:0,xdh:o.xdh??XD0,xdl:o.xdl??XD0,Mhs:(o.hs??0.5)*MHS,Mls:(o.ls??0.5)*MLS,fail:{},Mcst:(o.cst??0.7)*CSTM,Tcst:TMK,xmu:o.xmu||0,xrj:o.xrj||0,Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
   vesselInit(s,o);
   // condenser and hotwell start steady for the initial steam flow (turbine exhaust; the heater drains are
   // pumped forward)
@@ -46,7 +48,8 @@ const init=o=>{
     n:s.n,fv:s.fv,ext:0,Tt:s.Th,pe:0,ps:0,ws:0,Pd:Pc,ret:0,Tret:Tc,mk:0,Mh:s.Mh,hw:s.Mh/HWM,Thw:Tc,
     Pc,Tc,wc:0,Qc:0,Tcw:TCW,wcw:WCW,Pgen:0,wx:0,hx:0,
     exl:0,pel:0,psl:0,wsl:0,Tlp:Tc,Ps:Pc,Pcd:Pc,wp:0,wr:0,wcp:0,xr:s.xr,cp:false,fp:false,fpt:false,npsh:0,phi:1,cav:false,
-    Tm:s.Tsu,wdh:0,wd:0,wduh:0,wdul:0,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH:1,aL:1,xdh:s.xdh,xdl:s.xdl,hdp:false,hdvf:false};
+    Tm:s.Tsu,wdh:0,wd:0,wduh:0,wdul:0,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH:1,aL:1,xdh:s.xdh,xdl:s.xdl,hdp:false,hdvf:false,
+    wmu:0,wrj:0,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst};
   return s;
 };
 // One step. u is the final command, SI: {heat W net heat into the water; n 0–1 feed pump speed;
@@ -54,7 +57,8 @@ const init=o=>{
 // (absent: the same as ext); cp, fp condensate and feed pump run switches (absent: running); rv 0–1
 // min-flow valve demand; hdv 0–1 HP heater drain valve demand, ldv 0–1 LP drain pump discharge valve demand
 // (absent: the design opening 0.5), hdp heater drain pump run switch (absent: running);
-// mk kg/s hotwell makeup (negative: reject);
+// mu, rj 0–1 makeup valve (CST → condenser) and reject valve (condensate pump discharge → CST) demands
+// (step 7; the old mk flow input is gone: f.mk is now the net makeup, makeup − reject);
 // mv 0–1 main steam valve demand; srv array, true for each SRV opened by hand}.
 // Hook for reactor protection (step 11): a trip of the feed pump is a false fp.
 // After scram(s) the core heat is the decay curve and u.heat is ignored until reset(s).
@@ -70,7 +74,11 @@ const step=(s,u,dt)=>{
   const {open,wsrv,nsrv}=srvStep(s.spr,u.srv||[],P);
   const Q=s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat||0,wst=wMS(s.mv,P,pc0);
   // feedwater train: valve travel, pump and valve flow against the vessel pressure, hotwell, heater
-  const ext=clamp(u.ext||0,0,1),exl=clamp(u.exl??u.ext??0,0,1),mk=clamp(u.mk||0,-MKMAX,MKMAX);
+  const ext=clamp(u.ext||0,0,1),exl=clamp(u.exl??u.ext??0,0,1);
+  // condensate storage tank (step 7): makeup by the tank's head and the condenser vacuum; the reject valve
+  // is a branch of the train solve at the condensate pump discharge
+  s.xmu+=clamp(clamp(u.mu||0,0,1)-s.xmu,-CRATE*dt,CRATE*dt);s.xrj+=clamp(clamp(u.rj||0,0,1)-s.xrj,-CRATE*dt,CRATE*dt);
+  const wmu=Math.min(muFlow(s.xmu,s.Mcst,pc0),s.Mcst/dt);
   // pump switches; the feed pump's low-suction trip holds it stopped until its switch is cycled
   const cp=u.cp!==false,fp=u.fp!==false;if(!fp){s.fpt=false;s.tlo=0}
   s.n+=clamp((fp&&!s.fpt?clamp(u.n||0,0,1):0)-s.n,-NRATE*dt,NRATE*dt);const n=s.n;
@@ -90,7 +98,7 @@ const step=(s,u,dt)=>{
   // the whole train at once: condensate pump, polisher, LP heater, drain pump, feed pump, min-flow line,
   // HP heater, feed valve
   const dp={on:hdp,x:s.xdl,Pin:s.psl+992*9.81*ZDT,f:clamp(LL/0.1,0,1)};
-  const pv=sat(s.Tsu).p,nw=network({cp,n,x:s.fv,xr:s.xr,P,pc:pc0,Mh:s.Mh,Thw:s.Thw,pv,dp}),fw=nw.fw,Pd=nw.Pd;
+  const pv=sat(s.Tsu).p,nw=network({cp,n,x:s.fv,xr:s.xr,P,pc:pc0,Mh:s.Mh,Thw:s.Thw,pv,dp,rj:{x:s.xrj,Pb:rjBack(s.Mcst)}}),fw=nw.fw,Pd=nw.Pd;
   if(fp&&!s.fpt){s.tlo=nw.Ps<PLO?s.tlo+dt:0;if(s.tlo>=TLO)s.fpt=true}
   // turbine stub: extractions to the LP heater (condensate flow; the cascaded HP drains flash in its shell)
   // and the HP heater (feed flow, entering at the condensate and pumped drains mixed), the rest to the
@@ -108,7 +116,9 @@ const step=(s,u,dt)=>{
   // condenser: exhaust steam, the heaters' high-level dumps and the min-flow recirculation in, condensate
   // down to the hotwell
   const hr=sat(Tm).hf,cd=condense(s.cd,[[wx,hx],[wduh,hdH],[wdul,hdL],[wv,sat(Thf(hdL)).hg],[nw.wr,hr]],dt);
-  const hw=hotwellMix({M:s.Mh,T:s.Thw},[[cd.wl,sat(cd.Tc).hf],[mk,HMK],[-nw.wcp,0]],dt);
+  const hcst=sat(s.Tcst).hf,hw=hotwellMix({M:s.Mh,T:s.Thw},[[cd.wl,sat(cd.Tc).hf],[wmu,hcst],[-nw.wcp,0]],dt);
+  {const c=hotwellMix({M:s.Mcst,T:s.Tcst},[[nw.wrj,sat(s.Thw).hf],[-wmu,0]],dt);s.Mcst=c.M;s.Tcst=c.T}
+  const mk=wmu-nw.wrj;
   s.Mh=hw.M;s.Thw=hw.T;
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
   const mo=Math.min((wst+wsrv)*dt,0.5*s.M);
@@ -127,7 +137,8 @@ const step=(s,u,dt)=>{
     n,fv:s.fv,ext,Tt,pe:ht.pe,ps:ht.ps,ws,Pd,ret:cd.wl,Tret:cd.Tc,mk,Mh:s.Mh,hw:s.Mh/HWM,Thw:s.Thw,
     Pc:cd.Pc,Tc:cd.Tc,wc:cd.wc,Qc:cd.Q,Tcw:cd.Tout,wcw:WCW,Pgen,wx,hx,
     exl,pel:lp.pe,psl:lp.ps,wsl,Tlp:lp.T,Ps:nw.Ps,Pcd:nw.Pcd,wp:nw.wp,wr:nw.wr,wcp:nw.wcp,xr:s.xr,cp,fp,fpt:s.fpt,npsh:nw.A,phi:nw.phi,cav:nw.cav,
-    Tm,wdh,wd:nw.wd,wduh,wdul,wv,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH,aL,xdh:s.xdh,xdl:s.xdl,hdp,hdvf:!!s.fail.hdv};
+    Tm,wdh,wd:nw.wd,wduh,wdul,wv,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH,aL,xdh:s.xdh,xdl:s.xdl,hdp,hdvf:!!s.fail.hdv,
+    wmu,wrj:nw.wrj,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst};
 };
 // scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
 // a second scram keeps the first; reset hands the heat back to the command
@@ -144,6 +155,7 @@ const fault=s=>{
   if(d.level>=Z.MSL)return 'flooded';
   if(d.P>21.5e6)return 'critical';
   if(s.Mh>HWM)return 'hotwell';
+  if(s.Mcst>CSTM)return 'cst';
   if(s.f.Pc>PCMAX)return 'condenser';
   return '';
 };
@@ -153,5 +165,6 @@ const API=6;
 export {API,V,H,A,Z,QR,PR,TFR,WMS,RATE,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PC,PCD,TTD,WR,PE,KXT,
   PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
   THPI,HDP0,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,VHS,VLS,LFL,LDU,XD0,MHS,MLS,DRATE,DPD,tubes,dumpX,dpFlow,fail,
+  CSTM,HCST,CRATE,KMU,KRJ,muFlow,rjBack,
   ETA,ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,turbinePower,condense,condSteady,
   fwFlow,fwValve,heater,heaterT,heatBalance,subF,wMS,wSRV,decayFrac,init,step,scram,reset,fault};

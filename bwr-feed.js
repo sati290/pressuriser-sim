@@ -52,13 +52,26 @@ const cpFlow=(on,Pcd,sc)=>{
 // (opening x, linear conductance KDVL·x) into the condensate line after the LP heater. Check valve.
 const HDP0=3.5e6,ZDT=5;
 const dpFlow=(dp,Ps)=>{if(!dp||!dp.on||!(dp.x>0))return 0;const D=dp.Pin+dp.f*HDP0-Ps;return D>0?Math.sqrt(D/(KDPP+1/(KDVL*dp.x)**2)):0};
+// Condensate storage tank (step 7): one mass and temperature, open to the atmosphere (PATM). Capacity
+// CSTM 1900 t (about 500,000 US gal, the size of a BWR/4 CST), HCST 12 m tall, level ∝ mass. Makeup valve
+// from the CST to the condenser hotwell (opening x, linear): flow KMU·x·√(PATM + ρg·(h − ZMU) − Pc), the
+// tank's head plus the condenser vacuum, ZMU 3 m the condenser inlet over the tank bottom; about 100 kg/s
+// fully open at 70 % full under vacuum. Below 2 % the tank's outlet uncovers and the flow falls to 0.
+// Reject valve from the condensate pump discharge to the CST: KRJ·x·√(Pcd − PATM − ρg·h), about
+// 100 kg/s fully open from 2.4 MPa. Both stroke at most CRATE per second. Sizes and elevations illustrative.
+const CSTM=1.9e6,HCST=12,PATM=0.1013e6,ZMU=3,CRATE=0.1;
+const KMU=100/Math.sqrt(PATM+992*9.81*(0.7*HCST-ZMU)-6.5e3),KRJ=100/Math.sqrt(2.3e6);
+const cstH=Mc=>HCST*clamp(Mc/CSTM,0,1.2);
+const muFlow=(x,Mc,pc)=>{const D=PATM+RHW*G*(cstH(Mc)-ZMU)-pc;return D>0&&x>0?KMU*x*Math.sqrt(D)*clamp(Mc/(0.02*CSTM),0,1):0};
+const rjBack=Mc=>PATM+RHW*G*cstH(Mc);
 // One solve of the whole train for one step. o: {cp condensate pump on, n feed pump speed 0–1, x feed
 // valve, xr min-flow valve, P vessel, pc condenser, Mh, Thw hotwell, pv vapour pressure at the feed pump
-// suction, dp drain pump {on, x valve, Pin suction pressure, f head factor} or none}. Unknowns: condensate
+// suction, dp drain pump {on, x valve, Pin suction pressure, f head factor} or none, rj reject valve
+// {x, Pb back pressure} or none}. Unknowns: condensate
 // pump discharge Pcd, feed pump suction Ps, discharge Pd. Bisection on Ps outside, on Pd and Pcd inside
 // (each flow is monotonic in its node pressures).
 // Returns {fw to the vessel, wr min-flow, wp feed pump, wcp condensate pump, wl through the LP heater,
-// wd drains pumped forward, Pcd, Ps, Pd, cav feed pump cavitating, Pin, A NPSHa m, phi condensate pump
+// wd drains pumped forward, wrj reject to the CST, Pcd, Ps, Pd, cav feed pump cavitating, Pin, A NPSHa m, phi condensate pump
 // head factor}.
 const network=o=>{
   const sc=suction(o.pc,o.Mh,o.Thw),n2=o.n*o.n*HF0,fv=o.x*o.x,wdOf=Ps=>dpFlow(o.dp,Ps);
@@ -69,7 +82,9 @@ const network=o=>{
   // feed side at suction Ps: Pd where the pump passes what the vessel line and the min-flow line take
   const side=Ps=>{let a=o.pc,b=Math.max(o.pc,Ps+n2);for(let i=0;i<40;i++){const m=(a+b)/2;if(wpOf(Ps,m)>fwOf(m)+wrOf(m))a=m;else b=m}return (a+b)/2};
   // condensate side at suction Ps: Pcd where the condensate pump passes what the LP line takes
-  const cside=Ps=>{let a=Math.min(sc.Pin,Ps),b=sc.Pin+HC0+1;for(let i=0;i<40;i++){const m=(a+b)/2;if(cpFlow(o.cp,m,sc)>wlOf(m,Ps))a=m;else b=m}return (a+b)/2};
+  // (and the reject line to the CST, which branches off there)
+  const wrjOf=Pcd=>o.rj&&o.rj.x>0&&Pcd>o.rj.Pb?KRJ*o.rj.x*Math.sqrt(Pcd-o.rj.Pb):0;
+  const cside=Ps=>{let a=Math.min(sc.Pin,Ps,o.rj?o.rj.Pb:Infinity),b=sc.Pin+HC0+1;for(let i=0;i<40;i++){const m=(a+b)/2;if(cpFlow(o.cp,m,sc)>wlOf(m,Ps)+wrjOf(m))a=m;else b=m}return (a+b)/2};
   // supply to the feed pump suction: condensate through the LP heater plus the drains pumped forward
   const r=Ps=>{const Pd=side(Ps),Pcd=cside(Ps),wl=wlOf(Pcd,Ps);return {Pd,Pcd,wl,ws:wl+wdOf(Ps),wp:wpOf(Ps,Pd)}};
   let lo=Math.max(o.pv||0,1e3),hi=Math.max(lo,sc.Pin+HC0,o.dp&&o.dp.on?o.dp.Pin+HDP0:0)+1,cav=false,Ps,q;
@@ -82,7 +97,8 @@ const network=o=>{
   // the flows from the converged pressures; the pumps pass exactly what the lines downstream take (mass):
   // the drains at the final suction pressure, the condensate pump the rest
   const fw=fwOf(q.Pd),wr=wrOf(q.Pd),wp=fw+wr,wd=Math.min(wdOf(Ps),wp),wl=wp-wd;
-  return {fw,wr,wp,wcp:wl,wl,wd,Pcd:q.Pcd,Ps,Pd:q.Pd,cav,Pin:sc.Pin,A:sc.A,phi:sc.f*(sc.A>=NPR*(q.wl/WR)**2?1:clamp(2*sc.A/(NPR*(q.wl/WR)**2)-1,0,1))};
+  const wrj=wrjOf(q.Pcd),wcp=wl+wrj,yr=NPR*(wcp/WR)**2;
+  return {fw,wr,wp,wcp,wl,wd,wrj,Pcd:q.Pcd,Ps,Pd:q.Pd,cav,Pin:sc.Pin,A:sc.A,phi:sc.f*(sc.A>=yr?1:clamp(2*sc.A/yr-1,0,1))};
 };
 // pump flow to the vessel at feed pump speed n (0–1), valve opening x (0–1), vessel pressure P, hotwell
 // mass Mh, condenser pc: the steady train with the condensate pump running, the min-flow valve shut and
@@ -192,7 +208,8 @@ const heatBalance=(Q,P,e=1)=>{const hg=sat(Tsat(P)).hg;let T=THW,W=0;
 const hotwellMix=(hw,ins,dt)=>{const h0=sat(hw.T).hf;let M=hw.M,U=M*h0;
   for(const[w,h]of ins){const dm=w*dt;M+=dm;U+=dm*(w>=0?h:h0)}
   return M>1?{M,T:Thf(U/M)}:{M:Math.max(0,M),T:hw.T}};
-export {H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,
+export {CSTM,HCST,PATM,ZMU,CRATE,KMU,KRJ,cstH,muFlow,rjBack,
+  H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,
   HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN,KR,RRATE,suction,cpFlow,network,shutoff,
   THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,DPD,VHS,VLS,LFL,LDU,XD0,RHS,RLS,MHS,MLS,mixT,dpFlow,tubes,dumpX,
   fwFlow,fwValve,stage,heater,heaterL,train,heaterT,heatBalance,hotwellMix};

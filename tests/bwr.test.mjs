@@ -135,7 +135,7 @@ test('mass and energy are conserved: closed vessel, then with feed and steam', (
   // with flows: integrate what went in and out at the start-of-step enthalpies the plant records
   // vessel plus hotwell change only by makeup in and relief out (the steam returns as condensate)
   let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls;
-  runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mk: 20, mv: 0.03, srv: [true] }, 300, 1, x => {
+  runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mu: 0.2, mv: 0.03, srv: [true] }, 300, 1, x => {
     const f = x.f; m += f.fw - f.wst - f.wsrv; u += f.Q + f.fw * f.hfw - (f.wst + f.wsrv) * f.hg; tot += f.mk - f.wsrv; return true;
   });
   assert.ok(s.f.fw > 10, `feed flowing: ${s.f.fw}`);

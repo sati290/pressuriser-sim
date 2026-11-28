@@ -168,12 +168,17 @@ shut" (`fail(s, 'hdv')`). All illustrative. With the drains forward the LP extra
 the condenser duty to 2158 MW and the stub output rises to 1130 MWe. The feed pump constant was re-chosen so
 the rated feed valve stays 74.5 % open.
 
-### 7. Condensate storage tank
+### 7. Condensate storage tank (done)
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the
 suction source for RCIC/HPCI and CRD.
 
 **Approach:** one mass and temperature state; makeup and reject become valves (position, flow from the
 head between tank and condenser vacuum) in place of today's ±100 kg/s flow input. Trivial on its own; good to ship with or right after step 5.
+
+**Done:** 1900 t tank, 12 m tall, one mass and temperature, starting 70 % full at 30 °C; makeup valve to the
+condenser driven by the tank head and the vacuum, reject valve from the condensate pump discharge (a branch of
+the train solve); split-range PI on the hotwell level with M/A on each valve; an empty tank gives no makeup;
+overfilling is a fault. Whole-plant water mass test. Sizes illustrative. Not yet a suction for RCIC/HPCI/CRD.
 
 ## Reactor
 
