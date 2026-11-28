@@ -12,11 +12,11 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 | Module | System | State it owns |
 |---|---|---|
 | `bwr-vessel.js` | Vessel geometry, water–steam solve (`at`, `solve`, `derive`, `vesselInit`) | `M`, `U`, `Mv`, `Mb`, `d` |
-| `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam valve, SRVs (`srvStep`), nozzle factor | `mv`, `spr[]` |
+| `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam line (`steamLine`, `cvPos`, `valveStep`: MSIVs, stop, control and bypass valves), SRVs (`srvStep`), nozzle factor | `ms[2]`, `sv`, `cv`, `bp`, `Pl`, `spr[]` |
 | `bwr-condenser.js` | Turbine stub (`expansion`, `turbinePower`), condenser shell (`condense`, `condSteady`) | `cd {Tc, Ms}` |
 | `bwr-feed.js` | Hotwell (`hotwellMix`), feed pump, heater, feed valve | `Mh`, `Thw`, `n`, `fv`, `Th` |
 
-`step()` runs the systems in this order on the start-of-step state: valves and SRVs, steam flow, feed
+`step()` runs the systems in this order on the start-of-step state: valves and SRVs, steam line (header pressure, turbine and bypass flows), feed
 pump and valve, heater and turbine stub, condenser, hotwell, then the vessel mass and energy and the
 pressure solve.
 
@@ -27,9 +27,12 @@ pressure solve.
 | `V`, `H`, `A` | 600 m³, 21 m, 28.6 m² | Free fluid volume, inside height, uniform free cross-section V/H |
 | `Z` | BAF 5.6, TAF 9.3, SHR 11.5, FW 13.0, NWL 14.3, MSL 16.5 m | Elevations above the inside bottom: active fuel, top of shroud, feedwater sparger, normal water level, main steam nozzle |
 | Net heat | −100 … +3400 MW (page) | Into the water: core or decay heat minus cleanup/shutdown cooling and losses. Rated 3293 MW |
-| Main steam valve | 2000 kg/s full open at 7.0 MPa (`WMS`, `PR`), ∝ P × subsonic factor ψ(PC/P)/ψ* (κ = 1.3), condenser pressure from the condenser model | Stands for MSIVs + turbine control and bypass valves. Travel ≤ 20 %/s (`RATE`, full stroke 5 s). `s.mv` is the position, `u.mv` the demand |
+| Main steam line | Dome → line → inboard MSIV → outboard MSIV → header (throttle, pressure `Pl`). Inflow w = √((P² − Pl²)/(`RL` + `RM`/a1² + `RM`/a2²)), a = MSIV position (flow area ∝ position). `DPL` 0.3 MPa dome-to-throttle drop at rated flow (`PL0` 6.7 MPa), each MSIV 15 % of the R | Pipes hold no steam: Pl solved algebraically each step (bisection) so the inflow equals the outflow (a header node would have τ ≈ 0.2 s, too fast for dt 2 s). MSIVs shut and a valve beyond open: Pl = condenser pressure; everything beyond shut: Pl = P. Illustrative numbers (typical of the class), not from one plant |
+| Turbine stop + control valves | w_t = `KT`·sv·fcv(cv)·Pl·ψ(Pc/Pl)/ψ*; fcv(x) = 1 − (1 − x)^1.5; `KT` so that valves wide open pass 105 % of rated (`VWO`) at 7.0 MPa dome | Choked ∝ Pl, subsonic factor near the condenser pressure (κ = 1.3). Control valve 86 % open at rated (`cvPos(w, P)` the lift for a flow). The characteristic is an illustrative shape, flattening near full open as a set of sequentially opened valves does. Stop valve: open/shut switch `u.sv`, trips shut in 0.2 s (`SVCLOSE`), opens in 5 s (`SVOPEN`). Control valve strokes in 5 s (`CVRATE`) |
+| Bypass valve | w_b = `KB`·bp·Pl·ψ, `KB` = 0.25·WR/PL0 (`BPF` 25 % of rated at the rated throttle pressure, decided), linear; strokes in 0.5 s (`BPRATE`) | From the header straight to the condenser upper shell, throttled at constant enthalpy, so it arrives superheated (h of the dome steam); `condense()` takes any enthalpy. Stroke time illustrative (fast opening on a trip) |
+| MSIVs | Two in series, open/shut switches `u.ms1`, `u.ms2`; 4 s stroke each way (`MSRATE`) | Closure 3–5 s is the usual specification. Undefined switch commands hold the valve. Protection hook for step 11: `u.trip = {turbine, msiv}` shuts the stop valve / both MSIVs whatever the switches |
 | SRVs | `SRV` = 11 valves `{p, w}`: 4 × 1090 psig (7.617 MPa abs) rated 800,000 lb/h (100.8 kg/s), 4 × 1100 psig (7.686 MPa) 808,000 lb/h (101.8 kg/s), 3 × 1110 psig (7.755 MPa) 815,000 lb/h (102.7 kg/s); flow w·P/p × subsonic factor to the pool at 0.1 MPa | From a GE BWR/4 training lesson plan (NRC-hosted; group counts partly illegible in the OCR, read so that capacity ∝ set pressure, which it is for one valve model). Each valve: spring opens it fully above p, recloses below p − `BD` (0.25 MPa, illustrative; not in the source), latch `s.spr[i]`; or opened by hand, `u.srv[i]` true. Open = spring or hand. No automatic relief logic, low-low set or ADS |
-| Turbine stub | `ETA` 0.85 isentropic along one expansion line from the throttle (dome, saturated) to the condenser pressure; generator `ETAG` 0.985 | `expansion(p0, h0)` → h(p): h0 − η·(h0 − h_s(p)), h_s from the throttle entropy (`satS` in common.js, IAPWS supplementary release). Extraction leaves at h(pe); the rest exhausts wet at h(Pc). `turbinePower(wt, h0, ext, hx)`. Rated: exhaust h 1950 kJ/kg (x ≈ 0.76), about 920 MWe gross with the one 2.4 MPa heater stage (a real BWR/4 with several stages and reheat makes about 1100 MWe; step 5 adds the LP stage) |
+| Turbine stub | `ETA` 0.85 isentropic along one expansion line from the throttle (the header at Pl, with the dome steam's enthalpy) to the condenser pressure; generator `ETAG` 0.985 | `expansion(p0, h0)` → h(p): h0 − η·(h0 − h_s(p)), h_s from the throttle entropy (`satS` in common.js, IAPWS supplementary release). Extraction leaves at h(pe); the rest exhausts wet at h(Pc). `turbinePower(wt, h0, ext, hx)`. Rated: exhaust h 1950 kJ/kg (x ≈ 0.76), about 920 MWe gross with the one 2.4 MPa heater stage (a real BWR/4 with several stages and reheat makes about 1100 MWe; step 5 adds the LP stage) |
 | Condenser | Steam space `VC` 4000 m³; circulating water `WCW` 38,000 kg/s at `TCW` 20 °C (fixed until the circulating water step); `UA` 2.4×10⁸ W/K; `PCMAX` 0.135 MPa | Saturated at Tc. Inflows `[w, h]` split into vapour w·(h − h′)/h_fg at Tc and liquid. Bundle: Q = m·c_p·(Tc − T_in)·(1 − e^(−UA/(m c_p))), w_c = Q/h_fg. Implicit each step: bisection on Tc for ρ″(Tc)·VC = Ms + (vapour − w_c)·dt. Liquid to the hotwell = inflow − storage change, at h′(Tc). Rated: 7.05 kPa, 39.1 °C, 2370 MW, CW out 34.9 °C. Illustrative numbers (38 m³/s and ~7 kPa are typical of an 1100 MWe unit; UA chosen to give them). `condSteady(ins, cw)` the steady Tc. Fault `'condenser'` above PCMAX (LP exhaust rupture diaphragms) |
 | Hotwell | `HWM` 600 t capacity, normal half full; its own mass `Mh` and temperature `Thw` | Mixes the condensate (at Tc), makeup at `TMK` 30 °C, and the feed drawn off. Design temperature `THW` 39.1 °C (the condenser at rated; the extraction constant is computed with it). Makeup from / reject to the condensate storage tank `u.mk`, ±100 kg/s (`MKMAX`) |
 | Feed pump | ΔP = n²·`H0` − `KPU`·w², H0 = 10 MPa, KPU = 0.24 Pa/(kg/s)²; suction at the condenser pressure | Condensate, booster and feed pumps lumped. Speed `u.n` 0–1 (affinity), state `s.n`, changes at most 10 %/s (`NRATE`). Shutoff 10.01 MPa at full speed, 6.4 MPa at 80 %. Loses suction below 5 % hotwell: flow × Mh/(0.05·HWM) |
@@ -53,11 +56,12 @@ continues from that value.
 ## State and step
 
 State: total mass `M`, total internal energy `U`, steam mass `Mv` (dome + voids, always saturated), void
-steam `Mb` (part of `Mv`), valve position `mv`, SRV spring latches `spr[]`; feedwater train: feed valve
+steam `Mb` (part of `Mv`), main steam valve positions `ms[0]`, `ms[1]` (MSIVs), `sv`, `cv`, `bp` and the header
+pressure `Pl`, SRV spring latches `spr[]`; feedwater train: feed valve
 position `fv`, heater outlet temperature `Th`, hotwell mass `Mh`.
 
 Each step (`step(s, u, dt)`):
-1. Valve moves toward its demand at `RATE`; each SRV spring latch from P; an SRV is open if its spring or `u.srv[i]` holds it.
+1. Each main steam valve moves toward its demand at its stroke rate (`valveStep`); `steamLine` gives the header pressure and the turbine and bypass flows; each SRV spring latch from P; an SRV is open if its spring or `u.srv[i]` holds it.
 2. Flows at the start-of-step pressure: steam out (main steam + SRVs) at h″, feedwater in at h(T_fw, P)
    with T_fw the heater outlet `Th` and the flow from `fwFlow` (pump speed, feed valve position after its
    travel, hotwell), heat Q. `M` and `U` updated; `Mv` loses the steam that left. Hotwell: Mh += (return
@@ -76,14 +80,27 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 21.5 MPa, `'hotwell'` hotwell over capacity (condenser flooding), `'range'` if the solve fails.
 
 Command `u` = {heat W, n 0–1 pump speed, fv 0–1 feed valve demand, ext 0–1 heater extraction, mk kg/s
-makeup (negative: reject), mv 0–1 steam valve demand, srv[]}. `s.f` records what was applied, with the feed
+makeup (negative: reject), ms1, ms2, sv booleans (MSIV and stop valve switches, true open; undefined holds),
+cv 0–1 control valve and bp 0–1 bypass demands, trip {turbine, msiv} (protection hook), srv[]}. `s.f` adds
+`Pl` (header pressure), `wt` (turbine flow), `wb` (bypass flow), and the valve positions; `wst` = wt + wb is the
+main steam line flow (what the feedwater controller's steam-flow signal measures). `s.f` records what was applied, with the feed
 train's fw, Tfw, Pd (pump discharge), pe (extraction pressure), Tt (heater target), ret (condensate
 return), mk, Mh, hw (hotwell fraction).
 
 ## Control (bwr-control.js)
 
-- Pressure regulator: steam valve demand = KP·(P − pset) + I, KP = 3×10⁻⁶ /Pa (0.1 MPa → 30 %), integral
-  time 30 s, anti-windup at 0 and 1.
+- Pressure regulator (GE EHC scheme, simplified): steam flow demand D (fraction of rated) = KP·(P − pset) + I,
+  KP = 3.4×10⁻⁶ /Pa (0.1 MPa → 34 % of rated), integral time 30 s. Control valve: min(D, load limit `c.ll`,
+  default 105 %); bypass: D − turbine flow reference, the reference being the control valve's flow demand (its
+  slider's flow when in M) times the measured stop valve position, so a turbine trip hands the whole demand to
+  the bypass. Each flow becomes a lift through the valve characteristic at the rated throttle pressure (no
+  pressure compensation): `cvLift(D)`, bp = (D − ref)/0.25. The brief suggested the measured turbine flow for
+  the bypass; with the page's 2 s step that lags a step and the two valves chase each other, so the reference
+  is used. Anti-windup: rising stops when no valve in A can pass more; falling stops at D = 0 (I falls only as
+  far as −KP·e, so the pressure still returns to the setpoint after a big transient). With both valves in M the
+  integral tracks the flow the two sliders pass. The real EHC senses throttle pressure; this one the dome.
+  Constants duplicated from bwr-steam.js (`WR`, `PL0`, `KT`, `BPF`); a test checks they match.
+- MSIVs and the turbine stop valve: switches, always manual.
 - Feedwater, three-element cascade: flow demand F = main steam flow + KL·(lset − level) + I, KL = 800 kg/s
   per m, integral time 60 s, 0 … 2500 kg/s; then a flow controller on the feed valve, x = KX·(F − fw) + I,
   KX = 10⁻⁴ per kg/s, integral time 4 s, anti-windup at 0 and 1 (the level integral also holds while the
@@ -108,7 +125,14 @@ return), mk, Mh, hw (hotwell fraction).
 
 - Rated heat balance (3293 MW, 216 °C feed, 7.0 MPa → 1788 kg/s) stays steady at dt 0.25 and 2 s, with the
   pump at full speed, the feed valve 74.5 % open, the heater at 216 °C and the hotwell half full.
-- Valve closure at rated heat: level shrinks > 0.4 m in 6 s (void collapse), pressure > 7.4 MPa. With no scram,
+- Steam line (tests/bwr-steam.test.mjs): 0.3 MPa dome-to-throttle at rated, control valve 86 % open, 105 % wide
+  open, bypass 25 % at 6.7 MPa (26 % with the turbine shut, the header nearer dome pressure). Rated with
+  everything in A steady at dt 0.25 and 2 s. Turbine trip at rated, no scram: bypass fully open 0.75 s after the
+  trip (dt 0.25; two steps at dt 2), all 11 SRVs open within 20 s and pressure passes 8 MPa. With a scram: peak
+  7.18 MPa (7.42 at dt 2), no SRV lifts, back to 7.0 MPa on the bypass (decay heat about 25 kg/s after 20 min).
+  Load limit 80 % at rated: turbine 80 %, bypass 17 % of rated, pressure at the setpoint. MSIV closure: no
+  steam past the MSIVs, no condensate. Startup with the stop valve shut: the bypass in A holds 1 MPa.
+- MSIV closure at rated heat (the old main steam valve closure tests): level shrinks > 0.4 m in 6 s (void collapse), pressure > 7.4 MPa. With no scram,
   pressure climbs past the feed pump's 10 MPa shutoff head in about 30 s, feed stops although the valve opens
   fully, and the core uncovers after about 80 s. With a scram, only the 1090 psig bank lifts and pressure
   peaks just above 7.6 MPa; the feed cools to the hotwell temperature (no extraction steam) and the level peaks about 1.6 m
@@ -133,9 +157,9 @@ use landscape). There is no separate phone layout. Solid parts are modelled; das
 - Inside the primary containment (dotted outline): vessel, SRVs and suppression pool, one recirculation
   loop (suction from the downcomer, pump below the core, back to one jet pump in the downcomer), the
   inboard MSIV. Feed check valve where the feed line leaves containment.
-- Main steam: inboard and outboard MSIV, then a tee for the bypass line (down into the condenser upper
-  shell) and the reheat steam (up to the MSR), then the turbine stop valve and the control valve. The
-  model's one main steam valve (`mv`) is drawn as the control valve.
+- Main steam (modelled, solid): inboard and outboard MSIV, then a tee for the bypass line (down into the
+  condenser upper shell, solid) and the reheat steam (up to the MSR, dashed), then the turbine stop valve and
+  the control valve. Header pressure shown over the tee.
 - Turbine hall: HP turbine → crossover up into the moisture separator reheater (drains to the heaters) →
   LP turbine (double flow, exhausts down into the condenser) → generator on the same shaft.
 - Condenser: shell, tube bundle with circulating water in/out, air removal to the steam jet air ejector
@@ -154,7 +178,10 @@ hydraulics, main steam drains to the condenser, generator output and grid breake
 
 ## Not modelled
 
-Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
+Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), automatic
+turbine trip or MSIV closure (only the `u.trip` hook), steam-line inventory and pressure waves (the header is
+algebraic), separate main steam lines (one line stands for four), several control/bypass valves (one each),
+turbine speed control and load reference (the load limit is the only turbine-side setting), recirculation pumps and jet pumps, downcomer
 subcooling separate from the core, steam superheat, air in the dome (below 100 °C the pressure goes
 sub-atmospheric), vessel and internals heat capacity, turbine (a stub: one expansion line), air in the condenser, circulating water as a system (fixed flow and inlet), moisture separator reheaters, separate heater stages and drain coolers (one throttled extraction line stands for the train; real extraction lines have only isolation and non-return valves), pump trips (no
 level-8 or low-suction trip; suction loss is a flow taper), pump minimum-flow recirculation, startup

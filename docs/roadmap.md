@@ -104,7 +104,7 @@ blanketing factor). A condenser open to atmosphere starts at 0.1 MPa full of air
 pressure full of air, the mechanical vacuum pump draws it down, then the SJAE takes over once main steam is
 available.
 
-### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass
+### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass (done)
 **Models:** the one `mv` becomes four valves in series and parallel, as drawn: inboard and outboard
 MSIV (open/shut, ~3–5 s closure), turbine stop valve (open/shut, fast), turbine control valve
 (throttling, to the turbine stub and on to the condenser), bypass valve (throttling, straight to the
@@ -122,6 +122,14 @@ lift for the rest; MSIV closure isolates the condenser.
 
 **Decided:** bypass capacity about 25 % of rated steam (typical BWR/4; full-capacity bypass is the exception),
 so a turbine trip from full power still lifts SRVs.
+
+**Done:** header pressure algebraic (no steam-line volume: a node would have τ ≈ 0.2 s, too fast for the
+page's 2 s step). Guesses, labelled illustrative: 0.3 MPa dome-to-throttle drop at rated, MSIVs 15 % of it each
+with flow area ∝ position, valves wide open 105 % of rated, control valve characteristic 1 − (1 − x)^1.5 (86 % open
+at rated), stroke times except the MSIV closure (stop valve 0.2 s shut / 5 s open, control valve 5 s, bypass
+0.5 s). The bypass follows D minus the turbine flow reference (control valve demand × stop valve position)
+rather than the measured turbine flow, which made the valves chase each other at dt 2 s. The regulator still
+senses dome pressure. Protection hook for step 11: `u.trip = {turbine, msiv}`.
 
 ### 5. Condensate and feed train split
 **Models:** the lumped pump and single heater split into what the layout draws: condensate pump
