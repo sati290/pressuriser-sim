@@ -742,11 +742,11 @@ const drawVessel=dtReal=>{
   // of the riser xr, heater on the riser, feed valve on the run into the vessel at the sparger elevation
   // the hotwell is the bottom of the condenser shell (hwX0…hwX1 under the LP turbine); the feed pump at the
   // foot of the riser xr, the heater on the riser, its extraction xe from the HP turbine
-  const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB=yb-8,hwT=hwB-0.7*(hwB-Y(4.4)),ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
+  const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB0=yb-8,hwT0=hwB0-0.7*(hwB0-Y(4.4)),ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
   // condensate train along the bottom (step 5): condensate pump xcp, polisher xpo, LP heater xlh; LP extraction
   // down xle from the LP turbine; min-flow line ymf from the feed pump discharge into the condenser shell
-  const xT0=W-96,xT1=W-18,yT0=hwT-14,yMu=hwB-16,xmu0=hwX1+24,xmuv=(hwX1+24+W-96)/2,xrj0=W*0.675-30,yRj=Hc-7;
-  const xcp=W*0.675,xpo=W*0.622,xlh=W*0.575,xle=W*0.692,yle=ysu-68,ymf=hwT-16,xmf=W*0.63;
+  const xT0=W-96,xT1=W-18,yT0=hwT0-14,yMu=hwB0-16,xmu0=hwX1+24,xmuv=(hwX1+24+W-96)/2,xrj0=W*0.675-30,yRj=Hc-7;
+  const xcp=W*0.675,xpo=W*0.622,xlh=W*0.575,xle=W*0.692,yle=ysu-68,ymf=hwT0-16,xmf=W*0.63;
   // heater drains (step 6): HP drain xhd down from the HP heater to the LP heater, its valve at yhdv; LP drain
   // up from the LP heater to the drain tank xdt, drain pump xdpp, its valve xdv, into the condensate line at xj
   const xhd=xlh-6,yhdv=(yh1+ymf)/2+4,ydt=ysu-40,xdt=W*0.542,xdpp=W*0.52,xdv=W*0.503,xj=xr+20,xld=xlh-24;
@@ -757,7 +757,9 @@ const drawVessel=dtReal=>{
   // containment wall xc, MSIVs either side, bypass/reheat tee xb, stop valve xsv, HP turbine
   // xh0…xh1 (half-heights hh0→hh1), LP turbine xl0…xl1, generator, condenser top yct, bypass entry yby
   const xc=x1+W*0.06,xm1=x1+W*0.03,xm2=xc+W*0.03,xb=W*0.5,xsv=W*0.527,xh0=W*0.58,xh1=W*0.66,hh0=16,hh1=30,
-    xl0=W*0.71,xl1=W*0.875,xlc=(xl0+xl1)/2,xg0=W*0.9,xg1=W*0.975,yct=hwB-0.7*(hwB-ys-64),yby=yct+40,
+    xl0=W*0.71,xl1=W*0.875,xlc=(xl0+xl1)/2,xg0=W*0.9,xg1=W*0.975,yct=ys+112,yby=yct+40,
+    // condenser shell yct…hwT (0.72 of the height it would have under the old, taller turbine hood), hotwell hwT…hwB as tall as before
+    hwT=yct+0.72*(hwT0-hwB0+0.7*(hwB0-ys-64)),hwB=hwT+hwB0-hwT0,
     ymr=yt+44,xr0=W*0.63,yA=yct+22,yV=yct+86,xr1=W*0.81,hpb=x=>ys+hh0+(hh1-hh0)*(x-xh0)/(xh1-xh0);
   const solid=(fn,fill)=>{cx.save();cx.lineWidth=2;cx.strokeStyle=col.ink;cx.beginPath();fn();if(fill){cx.fillStyle=col.panel;cx.fill()}cx.stroke();cx.restore()};
   const draft=(fn,fill)=>{cx.save();cx.setLineDash([5,4]);cx.lineWidth=1.5;cx.strokeStyle=col.mute;cx.beginPath();fn();if(fill){cx.fillStyle=col.panel;cx.fill()}cx.stroke();cx.restore()};
@@ -785,7 +787,7 @@ const drawVessel=dtReal=>{
     // condensate storage tank (step 7): makeup line from its foot into the hotwell's right wall; reject line
     // from the condensate pump discharge, under the hotwell, up into the tank's bottom
     pipe([xT0,yMu,xmu0,yMu,xmu0,hwT+14,hwX1,hwT+14],6);
-    pipe([xrj0,ysu,xrj0,yRj,xT0+18,yRj,xT0+18,hwB],4);
+    pipe([xrj0,ysu,xrj0,yRj,xT0+18,yRj,xT0+18,hwB0],4);
     // condensate and feed train (step 5): LP extraction from the LP turbine down to the LP heater, and the
     // feed pump's minimum-flow line from its discharge back into the condenser shell
     pipe([xl0,ys+30,xle,ys+30,xle,yle,xlh,yle,xlh,ysu-11],5);
@@ -794,7 +796,7 @@ const drawVessel=dtReal=>{
     const hopV=(x,y,w)=>{cx.strokeStyle=col.panel;cx.lineWidth=w+4;cx.beginPath();cx.moveTo(x,y-9);cx.lineTo(x,y+9);cx.stroke();pipe([x,y-9,x,y+9],w);
       cx.strokeStyle=col.panel;cx.lineWidth=3;cx.beginPath();cx.moveTo(x-w/2-2.5,y-6);cx.lineTo(x-w/2-2.5,y+6);cx.moveTo(x+w/2+2.5,y-6);cx.lineTo(x+w/2+2.5,y+6);cx.stroke()};
     // the min-flow line crosses the LP extraction
-    pipe([xr,ymf,hwX0,ymf],5);hopV(xle,ymf,5);
+    pipe([xr,ymf,hwX0-16,ymf,hwX0-16,hwT-16,hwX0,hwT-16],5);hopV(xle,ymf,5);
     // heater drains (step 6): HP drains cascade to the LP heater (crossing the min-flow line); LP drains up to the
     // drain tank, then the drain pump and its valve into the condensate line just before the feed pump
     pipe([xr+15,yh1-8,xhd,yh1-8,xhd,ysu-11],4);hopV(xhd,ymf,4);
@@ -891,21 +893,21 @@ const drawVessel=dtReal=>{
      mlbl('drains → heaters',xd+6,ymr+36,'left')}
     // LP turbine: double flow, steam in at the middle, exhausts at both ends down into the condenser
     solid(()=>{cx.moveTo(xl0,ys-46);cx.lineTo(xlc,ys-22);cx.lineTo(xl1,ys-46);cx.lineTo(xl1,ys+46);cx.lineTo(xlc,ys+22);cx.lineTo(xl0,ys+46);cx.closePath()},true);
-    mlbl('LP',xlc,ys+5,'center',col.ink);mlbl('Turbine stub',xlc,ys+64,'center',col.mute);
+    mlbl('LP',xlc,ys+5,'center',col.ink);mlbl('Turbine stub',xl0,ys-54,'left',col.mute);
     solid(()=>{cx.moveTo(xl0+6,ys+46);cx.lineTo(hwX0+4,yct);cx.moveTo(xl1-6,ys+46);cx.lineTo(hwX1-4,yct)},false);
     // generator
     solid(()=>cx.roundRect(xg0,ys-30,xg1-xg0,60,6),true);mlbl('Gen.',(xg0+xg1)/2,ys+5,'center',col.ink);mlbl('Generator',(xg0+xg1)/2,ys+50);cx.textAlign='center';lbl(`${(f.Pgen/1e6).toFixed(0)} MWe`,(xg0+xg1)/2,ys+68,col.ink,true);
     // condenser shell above the hotwell, tube bundle, circulating water, air removal
     solid(()=>{cx.moveTo(hwX0,hwT+2);cx.lineTo(hwX0,yct);cx.lineTo(hwX1,yct);cx.lineTo(hwX1,hwT+2)},false);
     mlbl('Condenser',hwX0+10,yct+22,'left');cx.textAlign='left';lbl(`${(f.Pc/1e3).toFixed(1)} kPa · ${(f.Tc-273.15).toFixed(1)} °C`,hwX0+10,yct+40,f.Pc>25e3?col.acc:col.ink,true);
-    {const by0=yct+(hwT-yct)*0.32,by1=hwT-20,bx0=hwX0+18,bx1=hwX1-18;solid(()=>cx.roundRect(bx0,by0,bx1-bx0,by1-by0,24),false);
+    {const by0=yct+82,by1=hwT-18,bx0=hwX0+hwW*0.16,bx1=hwX1-hwW*0.16;solid(()=>cx.roundRect(bx0,by0,bx1-bx0,by1-by0,24),false);
      cx.fillStyle=col.ink;for(let yy=by0+12;yy<by1-6;yy+=12)for(let xx=bx0+14;xx<bx1-8;xx+=14){cx.beginPath();cx.arc(xx+((yy/12)%2)*7,yy,1.6,0,7);cx.fill()}
      mlbl('tube bundle',(bx0+bx1)/2,by0-8);cx.textAlign='left';lbl(`${(f.Qc/1e6).toFixed(0)} MW to cooling water`,hwX0+10,yct+58,col.mute)}
     cx.textAlign='left';lbl('Dashed grey: layout draft, not modelled',xc+20,18,col.mute);
   }
   // ---- circulating water and condenser air removal (bwr-condenser.js) ----
   {
-    const xsj=xb-W*0.03,xS0=W*0.93,xS1=W*0.99,xSc=(xS0+xS1)/2,ycw1=hwT-70,ycw2=hwT-36,xvb=hwX0+hwW*0.3;
+    const xsj=xb-W*0.03,xS0=W*0.93,xS1=W*0.99,xSc=(xS0+xS1)/2,ycw1=hwT-56,ycw2=hwT-26,xvb=hwX0+hwW*0.2;
     // circulating water: out (upper) and in (lower) through the right wall, water-tinted while it flows
     pipe([hwX1,ycw1,W,ycw1],10);pipe([hwX1,ycw2,W,ycw2],10);
     if(f.wcw>1){cx.save();cx.globalAlpha=clamp(f.wcw/BWRSim.WCW,0.3,1);cx.strokeStyle=col.water;cx.lineWidth=5;cx.beginPath();cx.moveTo(hwX1,ycw1);cx.lineTo(W,ycw1);cx.moveTo(hwX1,ycw2);cx.lineTo(W,ycw2);cx.stroke();cx.restore()}
@@ -926,7 +928,7 @@ const drawVessel=dtReal=>{
     // air partial pressure in the shell, beside the condenser title
     cx.textAlign='right';lbl(`air ${(f.pa/1e3).toFixed(2)} kPa`,hwX1-10,yct+22,f.ya>0.2?col.acc:col.mute);
     // vacuum breaker on the exhaust hood: a stub to atmosphere with a valve
-    pipe([xvb,yct,xvb,yct-44],5);valve(xvb,yct-22,true,f.vb,f.wvb>0.01);
+    pipe([xvb,yct,xvb,yct-36],5);valve(xvb,yct-20,true,f.vb,f.wvb>0.01);
     cx.textAlign='left';lbl('Vacuum breaker',xvb+16,yct-26,col.mute);lbl(f.vb>0.001?`${(f.vb*100).toFixed(0)} % open`:'shut',xvb+16,yct-8,f.vb>0.001?col.acc:col.ink,f.vb>0.001);
   }
   // steam line: MSIVs, the bypass branch to the condenser, turbine stop and control valves; SRVs on the branch
@@ -936,7 +938,7 @@ const drawVessel=dtReal=>{
    cx.strokeStyle=col.panel;cx.lineWidth=14;cx.beginPath();cx.moveTo(xb,yby);cx.lineTo(hwX0,yby);cx.stroke();
    pipe([xb,ys,xb,yby,hwX0+2,yby],8);
    if(wb>0.5){cx.strokeStyle=`${accA(0.35+0.5*clamp(wb/450,0,1))}`;cx.lineWidth=3;cx.beginPath();cx.moveTo(xb,ys+8);cx.lineTo(xb,yby);cx.lineTo(hwX0,yby);cx.stroke()}
-   const ybv=ys+(yby-ys)*0.45;valve(xb,ybv,true,s.bp,wb>0.5);
+   const ybv=ys+100;valve(xb,ybv,true,s.bp,wb>0.5);
    mlbl('Bypass valve',xb+18,ybv-4,'left');mlbl(`${pos(s.bp)}`+(wb>0.5?` · ${wb.toFixed(0)} kg/s`:''),xb+18,ybv+14,'left',col.ink,true);mlbl('to condenser',xb+18,ybv+32,'left');
    valve(xm1,ys,false,s.ms[0],wst>0.5);valve(xm2,ys,false,s.ms[1],wst>0.5);
    mlbl('MSIV',xm1,ys+30);mlbl(pos(s.ms[0]),xm1,ys+48,'center',col.ink,true);mlbl('MSIV',xm2,ys+30);mlbl(pos(s.ms[1]),xm2,ys+48,'center',col.ink,true);
@@ -973,16 +975,16 @@ const drawVessel=dtReal=>{
     // condensate falling into the hotwell: arrow while it flows
     {const ax=hwX0+hwW*0.45;if(f.ret>0.5){cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(ax,hwT-2);cx.lineTo(ax-7,hwT-14);cx.lineTo(ax+7,hwT-14);cx.fill()}}
     // condensate storage tank: fill shows the fraction full; makeup and reject valves with their flows
-    {const tH=hwB-yT0,tl=yT0+tH*(1-clamp(f.cst,0,1));
-     cx.fillStyle=col.water;cx.globalAlpha=0.85;cx.beginPath();cx.roundRect(xT0,tl,xT1-xT0,hwB-tl,[0,0,6,6]);cx.fill();cx.globalAlpha=1;
+    {const tH=hwB0-yT0,tl=yT0+tH*(1-clamp(f.cst,0,1));
+     cx.fillStyle=col.water;cx.globalAlpha=0.85;cx.beginPath();cx.roundRect(xT0,tl,xT1-xT0,hwB0-tl,[0,0,6,6]);cx.fill();cx.globalAlpha=1;
      cx.lineWidth=2;cx.strokeStyle=col.ink;cx.beginPath();cx.roundRect(xT0,yT0,xT1-xT0,tH,[6,6,6,6]);cx.stroke();
      cx.textAlign='left';lbl('CST',xT0+8,yT0+20,tl<yT0+8?'rgba(255,255,255,.92)':col.mute);
      lbl(`${(f.cst*100).toFixed(0)} %`,xT0+8,yT0+38,tl<yT0+26?'#fff':col.ink,true);
      const mu=f.wmu>0.5,rj=f.wrj>0.5;
      valve(xmuv,yMu,false,s.xmu,mu);
      cx.textAlign='center';lbl('Makeup',xmuv,yMu-(mu?34:14),col.mute);if(mu)lbl(f.wmu.toFixed(0),xmuv,yMu-14,col.ink,true);
-     valve(xT0+18,(yRj+hwB)/2,true,s.xrj,rj);
-     cx.textAlign='right';lbl(rj?`Reject ${f.wrj.toFixed(0)}`:'Reject',xT0+1,(yRj+hwB)/2+5,rj?col.ink:col.mute,rj);
+     valve(xT0+18,(yRj+hwB0)/2,true,s.xrj,rj);
+     cx.textAlign='right';lbl(rj?`Reject ${f.wrj.toFixed(0)}`:'Reject',xT0+1,(yRj+hwB0)/2+5,rj?col.ink:col.mute,rj);
      cx.textAlign='left';
      if(mu&&!reduce){cx.fillStyle=col.water;const tt=performance.now()/400,ym=hwT+14,fall=Math.max(8,lvl-ym);
        for(let i=0;i<5;i++){const ph=(tt+i/5)%1;cx.globalAlpha=1-ph*0.6;cx.beginPath();cx.arc(hwX1-6-((i*7)%5)*2,ym+ph*fall,2.2,0,7);cx.fill()}cx.globalAlpha=1}}
@@ -1029,7 +1031,7 @@ const drawVessel=dtReal=>{
      cx.textAlign='right';lbl('LP extraction',xle-16,yv-4,col.mute);lbl(`${(f.exl*100).toFixed(0)} %`,xle-16,yv+14,col.ink,true);if(f.wsl>0.5)lbl(`${f.wsl.toFixed(0)} kg/s`,xle-16,yv+32,col.mute);
      // min-flow valve
      valve(xmf,ymf,false,s.xr,f.wr>0.5);cx.textAlign='center';lbl('Min-flow',xmf,ymf-30,col.mute);lbl(f.wr>0.5?`${(s.xr*100).toFixed(0)} % · ${f.wr.toFixed(0)} kg/s`:'shut',xmf,ymf-14,f.wr>0.5?col.ink:col.mute,f.wr>0.5);
-     if(f.wr>0.5){cx.fillStyle=col.acc;const ax=hwX0-14;cx.beginPath();cx.moveTo(ax+8,ymf);cx.lineTo(ax-4,ymf-7);cx.lineTo(ax-4,ymf+7);cx.fill()}
+     if(f.wr>0.5){cx.fillStyle=col.acc;const ay=hwT-16,ax=hwX0-2;cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(ax-12,ay-7);cx.lineTo(ax-12,ay+7);cx.fill()}
      cx.textAlign='left'}
     // extraction valve on the hot line
     valve(xe,yev,true,f.ext,f.ws>0.5);
