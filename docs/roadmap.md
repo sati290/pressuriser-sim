@@ -162,7 +162,8 @@ startup low-flow valve? Booster pump as part of the condensate pump?
 
 **Done (decided in the step):** one turbine-driven variable-speed feed pump, as BWR/4 (drive steam not
 modelled), with a run/stop switch; no startup low-flow valve (the feed valve throttles to zero and the
-condensate pump alone feeds through the idle feed pump at low vessel pressure). The booster pump is part
+condensate pump alone feeds through the idle feed pump at low vessel pressure; a startup feed valve with its
+own single-element level controller came later, outside the roadmap). The booster pump is part
 of the condensate pump (one constant-speed pump, 2.6 MPa shutoff). The train is solved for three node
 pressures (`network()`, nested bisection), not one flow, because the min-flow line branches off.
 Illustrative, not sourced: pump curves (split so the rated point of step 1 is unchanged), NPSH required

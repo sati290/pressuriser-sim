@@ -14,6 +14,10 @@ import {expansion,condSteady,WSJ,PATM} from './bwr-condenser.js';
 // the rated 1788 kg/s about 75 % open and 2400 kg/s wide open; the two pumps together shut off at
 // 10 MPa (H0) over the hotwell. Feed valve: drop w²/(KV·x²)² (quadratic characteristic, opening x),
 // strokes at most FRATE per second. HP heater and piping drop KLN·w².
+// Startup (low-flow) feed valve: in parallel with the feed valve, the same quadratic characteristic, sized
+// RSU of its conductance: wide open it passes about 290 kg/s (16 % of rated) with the feed pump holding
+// 2.2 MPa over the dome, enough for startup and low power. Strokes at FRATE. The two valves pass w = KV·(x² + RSU·xs²)·√ΔP between them.
+const RSU=0.085;
 const H0=10e6,KPU=0.24,KLN=0.094,KV=2.31,FRATE=0.1,NRATE=0.1,HWM=600e3,MKMAX=100,TMK=30+273.15;
 // Condensate pump: constant-speed motor, on or off; developed pressure φ·HC0 − KCP·w² (shutoff 2.6 MPa,
 // 0.26 MPa down at rated flow). Suction at the hotwell bottom: condenser pressure plus the water over the
@@ -65,16 +69,16 @@ const cstH=Mc=>HCST*clamp(Mc/CSTM,0,1.2);
 const muFlow=(x,Mc,pc)=>{const D=PATM+RHW*G*(cstH(Mc)-ZMU)-pc;return D>0&&x>0?KMU*x*Math.sqrt(D)*clamp(Mc/(0.02*CSTM),0,1):0};
 const rjBack=Mc=>PATM+RHW*G*cstH(Mc);
 // One solve of the whole train for one step. o: {cp condensate pump on, n feed pump speed 0–1, x feed
-// valve, xr min-flow valve, P vessel, pc condenser, Mh, Thw hotwell, pv vapour pressure at the feed pump
+// valve, xs startup feed valve (absent: shut), xr min-flow valve, P vessel, pc condenser, Mh, Thw hotwell, pv vapour pressure at the feed pump
 // suction, dp drain pump {on, x valve, Pin suction pressure, f head factor} or none, rj reject valve
 // {x, Pb back pressure} or none}. Unknowns: condensate
 // pump discharge Pcd, feed pump suction Ps, discharge Pd. Bisection on Ps outside, on Pd and Pcd inside
 // (each flow is monotonic in its node pressures).
-// Returns {fw to the vessel, wr min-flow, wp feed pump, wcp condensate pump, wl through the LP heater,
+// Returns {fw to the vessel (wsu of it through the startup valve), wr min-flow, wp feed pump, wcp condensate pump, wl through the LP heater,
 // wd drains pumped forward, wrj reject to the CST, Pcd, Ps, Pd, cav feed pump cavitating, Pin, A NPSHa m, phi condensate pump
 // head factor}.
 const network=o=>{
-  const sc=suction(o.pc,o.Mh,o.Thw),n2=o.n*o.n*HF0,fv=o.x*o.x,wdOf=Ps=>dpFlow(o.dp,Ps);
+  const sc=suction(o.pc,o.Mh,o.Thw),n2=o.n*o.n*HF0,xs=o.xs||0,fv=o.x*o.x+RSU*xs*xs,wdOf=Ps=>dpFlow(o.dp,Ps);
   const fwOf=Pd=>{const D=Pd-o.P;return D>0&&fv>0?Math.sqrt(D/(KLN+1/(KV*fv)**2)):0};
   const wrOf=Pd=>Pd>o.pc?KR*o.xr*Math.sqrt(Pd-o.pc):0;
   const wpOf=(Ps,Pd)=>{const D=Ps+n2-Pd;return D>0?Math.sqrt(D/KFP):0};
@@ -98,7 +102,7 @@ const network=o=>{
   // the drains at the final suction pressure, the condensate pump the rest
   const fw=fwOf(q.Pd),wr=wrOf(q.Pd),wp=fw+wr,wd=Math.min(wdOf(Ps),wp),wl=wp-wd;
   const wrj=wrjOf(q.Pcd),wcp=wl+wrj,yr=NPR*(wcp/WR)**2;
-  return {fw,wr,wp,wcp,wl,wd,wrj,Pcd:q.Pcd,Ps,Pd:q.Pd,cav,Pin:sc.Pin,A:sc.A,phi:sc.f*(sc.A>=yr?1:clamp(2*sc.A/yr-1,0,1))};
+  return {fw,wsu:fv>0?fw*RSU*xs*xs/fv:0,wr,wp,wcp,wl,wd,wrj,Pcd:q.Pcd,Ps,Pd:q.Pd,cav,Pin:sc.Pin,A:sc.A,phi:sc.f*(sc.A>=yr?1:clamp(2*sc.A/yr-1,0,1))};
 };
 // pump flow to the vessel at feed pump speed n (0–1), valve opening x (0–1), vessel pressure P, hotwell
 // mass Mh, condenser pc: the steady train with the condensate pump running, the min-flow valve shut and
@@ -212,7 +216,7 @@ const hotwellMix=(hw,ins,dt)=>{const h0=sat(hw.T).hf;let M=hw.M,U=M*h0;
   for(const[w,h]of ins){const dm=w*dt;M+=dm;U+=dm*(w>=0?h:h0)}
   return M>1?{M,T:Thf(U/M)}:{M:Math.max(0,M),T:hw.T}};
 export {WTR,CSTM,HCST,ZMU,CRATE,KMU,KRJ,cstH,muFlow,rjBack,
-  H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,
+  H0,KPU,KLN,KV,RSU,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,
   HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN,KR,RRATE,suction,cpFlow,network,shutoff,
   THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,DPD,VHS,VLS,LFL,LDU,XD0,RHS,RLS,MHS,MLS,mixT,dpFlow,tubes,dumpX,
   fwFlow,fwValve,stage,heater,heaterL,train,heaterT,heatBalance,hotwellMix};
