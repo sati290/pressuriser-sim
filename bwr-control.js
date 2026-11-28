@@ -4,16 +4,27 @@
 //
 // Settings c are in panel units: rod % control rod lever withdrawn (manual only: BWRs have no automatic
 // rod control); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed
-// pump speed; fv % feed valve; ext % heater extraction; mk kg/s hotwell makeup (negative: reject); cv %
+// pump speed; fv % feed valve; ext % heater extraction; mk kg/s net hotwell makeup (older callers, see step 7); cv %
 // turbine control valve; bp % bypass valve; ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop
 // valve switches, true open); ll % load limit (of rated steam flow); srv array, true for each SRV opened by
 // hand; pset Pa; lset m; dpset Pa; rw % reactor water cleanup reject; rp recirculation pump breaker (true
 // closed; a plain switch, no M/A); mg % MG set speed; wset % rated core flow setpoint; auto
-// {n,fv,cv,bp,mk,rw,mg} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
+// {n,fv,cv,bp,mk,rw,mg,rv,hdv,ldv,mu,rj} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
 // condenser air removal (manual only). The rods, heater extraction, the MSIV and stop valve switches and the
 // SRVs are always manual (the SRV springs are in the plant). The command is SI:
 // {rod 0–1, heat W (undefined unless c.heat is set), rp, mg 0–1 (undefined unless c.mg is set), n 0–1, fv 0–1,
-// ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
+// ext 0–1, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
+// Condensate and feed train (step 5): exl % LP heater extraction (manual; absent: the same as ext);
+// cp, fp condensate and feed pump run switches (booleans, plain on/off, absent: on); rv % feed pump
+// minimum-flow valve, with M/A.
+// Heater drains (step 6): hdv % HP heater drain valve, ldv % LP drain pump discharge valve, both with M/A
+// (a key absent from c.auto runs in A, for callers older than step 6; absent values are 50 %); hdp drain
+// pump run switch (absent: on).
+// Condensate storage tank (step 7): mu % makeup valve (CST → condenser), rj % reject valve (condensate pump
+// discharge → CST), each with M/A; they replace mk. The hotwell level loop is split range: its one output,
+// in kg/s of net makeup, opens the makeup valve above 0 and the reject valve below (1 % of stroke per kg/s,
+// about the valves' flow at a 70 % full CST). Keys absent from c.auto follow auto.mk, absent values follow
+// mk (positive: makeup, negative: reject), for callers older than step 7.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -46,7 +57,7 @@ const setdown=(s,t)=>s.scram?SDL*clamp(1-(s.t-s.scram.t-SDT)/SDR,0,1):0;
 // The feed flow demand goes to a flow controller on the feed valve (cascade): PI, 0.0001 of stroke per
 // kg/s of flow error, integral time 4 s. The valve's own stroke limit (10 %/s) is in the plant.
 const KX=1e-4,TIX=4;
-// hotwell level: makeup = feed − condensate return (feedforward) + PI on the hotwell level error
+// hotwell level: makeup = condensate pump flow − condensate return (feedforward) + PI on the hotwell level error
 // against a fixed half-full setpoint, 1000 kg/s per unit of fraction full (10 % low asks for the full
 // 100 kg/s), integral time 300 s
 const HSET=0.5,KH=1000,TIH=300;
@@ -63,12 +74,26 @@ const RDB=0.1,RBAND=0.3;
 // 5 s; anti-windup at 0 and 1. The MG set's speed limiter (2 %/s, minimum 20 %) is in the plant, so a
 // big setpoint change ramps.
 const WCR=12900,KW=2.3e-5,TIW=5;
+// feed pump minimum flow: the recirculation valve opens as the forward feed flow falls below WMIN (25 %
+// of rated pump flow), fully at zero forward flow; proportional only, as the valve's own job is to keep
+// the pump above its minimum flow. Must match bwr-feed.js WMIN.
+const WMIN=447;
+// heater shell levels (fraction full): PI on each drain valve, direct acting (high level opens it), 0.25
+// of level error strokes the valve fully (gain 4), integral time 30 s, setpoint half full (LSH)
+const KD=4,TID=30,LSH=0.5;
 // controller memory: iP, iF, iX, iH, iN, iW integrators (steam flow demand as a fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0,mg:1}});
+const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,
+  dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0,mg:1,rv:0,hdv:0.5,ldv:0.5,mu:0,rj:0}});
+// the drain level loops are in A unless c.auto says otherwise
+const autoD=(A,k)=>A[k]??true;
+// the makeup and reject valves follow the old makeup switch when their own keys are absent; the operator's
+// openings (%, read as kg/s of net makeup) likewise follow mk
+const autoM=(A,k)=>!!(A[k]??A.mk);
+const manMu=c=>c.mu??Math.max(0,c.mk||0),manRj=c=>c.rj??Math.max(0,-(c.mk||0));
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -103,9 +128,12 @@ const demands=(k,s,c,dt)=>{
   if(!fvA)k.iX=c.fv/100;
   else{const I=k.iX+KX/TIX*eF*dt,v=KX*eF+I;if(!((v>1&&eF>0)||(v<0&&eF<0)))k.iX=I}
   k.iX=clamp(k.iX,0,1);const fv=clamp(KX*eF+k.iX,0,1);
-  // hotwell makeup
-  const eH=HSET-f.hw,fh=f.fw-f.ret;
-  if(!A.mk)k.iH=c.mk-fh;
+  // hotwell level, split range onto the makeup and reject valves
+  // feedforward: what the condensate pump sends on through the LP heater (feed + min-flow less the pumped
+  // drains; not the reject, which is this loop's own output) less the condensate
+  const eH=HSET-f.hw,fh=(f.wcp??f.fw)-(f.wrj||0)-f.ret;
+  const aMu=autoM(A,'mu'),aRj=autoM(A,'rj');
+  if(!aMu&&!aRj)k.iH=manMu(c)-manRj(c)-fh;
   else{const I=k.iH+KH/TIH*eH*dt,v=fh+KH*eH+I;if(!((v>MKMAX&&eH>0)||(v<-MKMAX&&eH<0)))k.iH=I}
   k.iH=clamp(k.iH,-2*MKMAX,2*MKMAX);const mk=clamp(fh+KH*eH+k.iH,-MKMAX,MKMAX);
   // feed pump speed on the discharge-to-dome differential pressure
@@ -120,13 +148,24 @@ const demands=(k,s,c,dt)=>{
     else{const I=k.iW+KW/TIW*eW*dt,v=KW*eW+I;if(!((v>1&&eW>0)||(v<0&&eW<0)))k.iW=I}
     k.iW=clamp(k.iW,0,1);mg=clamp(KW*eW+k.iW,0,1)}
   const rw=clamp((d.level-c.lset-RDB)/RBAND,0,1);
-  k.dem={D,cv,bp,fw,fv,mk,n,rw,mg};
+  // minimum-flow valve on the measured forward feed flow
+  const rv=clamp((WMIN-f.fw)/WMIN,0,1);
+  // heater drain levels: HP shell on the HP drain valve, LP shell and drain tank on the drain pump's valve
+  const lvl=(key,iK,L,man)=>{const e=(L??LSH)-LSH;
+    if(!autoD(A,key))k[iK]=man;else{const I=k[iK]+KD/TID*e*dt,v=KD*e+I;if(!((v>1&&e>0)||(v<0&&e<0)))k[iK]=I}
+    k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
+  const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
+  const mu=clamp(mk/MKMAX,0,1),rj=clamp(-mk/MKMAX,0,1);
+  k.dem={D,cv,bp,fw,fv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  const u={heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,
-    ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[]};
+  const u={heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,
+    ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[],
+    exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100,
+    hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false,
+    mu:autoM(A,'mu')?D.mu:manMu(c)/100,rj:autoM(A,'rj')?D.rj:manRj(c)/100};
   // circulating water and condenser air removal: manual only, passed through (absent: the plant's normal
   // line-up). cwp CW pump, sj SJAE motive steam, vp vacuum pump, vb vacuum breaker (booleans); cwv % CW
   // valve; tcw °C CW inlet temperature (an operator input standing for the river or tower).
@@ -137,4 +176,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND,SDL,SDT,SDR,setdown};
+export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND,SDL,SDT,SDR,setdown,WMIN,KD,TID,LSH};

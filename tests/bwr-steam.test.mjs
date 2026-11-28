@@ -133,11 +133,11 @@ test('startup: stop valve shut, the bypass in A passes the steam once pressure r
 
 test('mass and energy: vessel + hotwell + condenser with the bypass open', () => {
   const s = rated();
-  let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms;
-  runPlant(s, { ...RATED_U, cv: 0.5, bp: 0.7, mk: 10, srv: [true] }, 300, 1, x => {
+  let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls;
+  runPlant(s, { ...RATED_U, cv: 0.5, bp: 0.7, mu: 0.1, srv: [true] }, 300, 1, x => {
     const f = x.f; m += f.fw - f.wst - f.wsrv; u += f.Q + f.Qs + f.fw * f.hfw - (f.wst + f.wsrv) * f.hg; tot += f.mk - f.wsrv; return true;
   });
   assert.ok(s.f.wb > 200 && s.f.wt > 500, `both paths flowing: ${s.f.wb}, ${s.f.wt}`);
   near(s.M, m, 1e-3, 'vessel mass'); near(s.U, u, 1e-9 * Math.abs(u), 'vessel energy');
-  near(s.M + s.Mh + s.cd.Ms, tot, 1e-3, 'vessel + hotwell + condenser steam mass');
+  near(s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls, tot, 1e-3, 'vessel + hotwell + condenser steam + heater shell mass');
 });

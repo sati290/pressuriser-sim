@@ -53,7 +53,7 @@ Step 12 can slot in anywhere. Steps 13–16 are low priority and come last: cont
 
 ## Steam–feed loop
 
-### 1. Condenser with a turbine stub
+### 1. Condenser with a turbine stub (done)
 **Models:** the condenser shell as a steam space over the hotwell. Main steam (later also the bypass and
 main steam drains) enters, condenses on the tube bundle, and the condensate falls into the hotwell
 at the shell saturation temperature, so condenser pressure and hotwell temperature follow the load
@@ -144,7 +144,7 @@ at rated), stroke times except the MSIV closure (stop valve 0.2 s shut / 5 s ope
 rather than the measured turbine flow, which made the valves chase each other at dt 2 s. The regulator still
 senses dome pressure. Protection hook for step 11: `u.trip = {turbine, msiv}`.
 
-### 5. Condensate and feed train split
+### 5. Condensate and feed train split (done)
 **Models:** the lumped pump and single heater split into what the layout draws: condensate pump
 (hotwell suction, NPSH from hotwell level and Pc), condensate polisher (pressure drop), LP heater
 (extraction from the turbine stub's LP end), feed pump (suction from the condensate header), HP heater
@@ -160,7 +160,16 @@ feed pump; the drive steam itself is not modelled yet).
 **Open:** keep one feed pump driven at variable speed (BWR/4 turbine-driven) or motor-driven with a
 startup low-flow valve? Booster pump as part of the condensate pump?
 
-### 6. Heater drains
+**Done (decided in the step):** one turbine-driven variable-speed feed pump, as BWR/4 (drive steam not
+modelled), with a run/stop switch; no startup low-flow valve (the feed valve throttles to zero and the
+condensate pump alone feeds through the idle feed pump at low vessel pressure). The booster pump is part
+of the condensate pump (one constant-speed pump, 2.6 MPa shutoff). The train is solved for three node
+pressures (`network()`, nested bisection), not one flow, because the min-flow line branches off.
+Illustrative, not sourced: pump curves (split so the rated point of step 1 is unchanged), NPSH required
+(2 m at rated) and the 1 m pump pit, the 0.7 MPa/5 s low-suction trip, polisher and LP heater drops, the
+0.28 MPa LP extraction. Gross output of the stub with two stages: 1046 MWe (920 with one).
+
+### 6. Heater drains (done)
 **Models:** each heater's shell level and its drain path: HP heater drains cascade to the LP heater, LP
 drains are pumped forward into the condensate line. Heater level control; high shell level as a
 failure (tube leak, drain valve stuck).
@@ -172,12 +181,25 @@ to lower pressure (energy carried at h_f). Replaces "drains go to the hotwell in
 line downstream of the LP heater (drain tank and drain pump), as is common on BWRs; it raises the feed
 temperature slightly and keeps the heat out of the condenser.
 
-### 7. Condensate storage tank
+**Done:** HP shell 30 m³, LP shell with its drain tank 60 m³ as one inventory (one level, labelled), each
+saturated at its shell pressure; HP drain valve and drain pump discharge valve on PI level control with
+M/A; drain pump start/stop; tube flooding above 60 % (heating ∝ uncovered tubes), high-level dump to the
+condenser from 80 %; LP shell vent for flash steam its tubes can't condense; event "HP drain valve fails
+shut" (`fail(s, 'hdv')`). All illustrative. With the drains forward the LP extraction falls to 163 kg/s,
+the condenser duty to 2158 MW and the stub output rises to 1130 MWe. The feed pump constant was re-chosen so
+the rated feed valve stays 74.5 % open.
+
+### 7. Condensate storage tank (done)
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the
 suction source for RCIC/HPCI and CRD.
 
 **Approach:** one mass and temperature state; makeup and reject become valves (position, flow from the
 head between tank and condenser vacuum) in place of today's ±100 kg/s flow input. Trivial on its own; good to ship with or right after step 5.
+
+**Done:** 1900 t tank, 12 m tall, one mass and temperature, starting 70 % full at 30 °C; makeup valve to the
+condenser driven by the tank head and the vacuum, reject valve from the condensate pump discharge (a branch of
+the train solve); split-range PI on the hotwell level with M/A on each valve; an empty tank gives no makeup;
+overfilling is a fault. Whole-plant water mass test. Sizes illustrative. Not yet a suction for RCIC/HPCI/CRD.
 
 ## Reactor
 
@@ -240,7 +262,14 @@ internal energy u_dc inside the existing M, U totals; the solve flashes only the
 pressure rise subcools it); mixing time ~6 s at rated flow stands for the transport delay. Level is the
 single free surface, read as the downcomer level. Mass and energy stay exact.
 
-### 11. Reactor protection: automatic scram and isolation
+### 11. Reactor protection: automatic scram and isolation (done)
+**Done:** bwr-rps.js inside the plant step: the trips listed in docs/bwr.md ("Reactor protection") with
+typical BWR/4 setpoints, a mode switch (Shutdown, Startup, Run) with its bypasses, latched trips with an event
+log and annunciator tiles on the page, reset only once the signal has cleared, the bypass valve interlock on
+low vacuum, and the scram level setpoint setdown in the feedwater controller. High drywell pressure waits for
+a drywell model; one logic channel (no voting). A pumped cleanup reject (placeholder for step 14) takes the
+startup swell to the condenser.
+
 **Models:** RPS trips (high pressure, low level L3, high flux, MSIV closure position switch, turbine
 stop valve closure, low condenser vacuum, high drywell pressure later) and the isolation logic (low-low
 level L2 and low steam line pressure close the MSIVs; L8 trips the turbine and feed pump). Scram stays
@@ -325,6 +354,7 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 - Recirculation pump on an MG set.
 - bwr-sim.js split into per-system modules at step 1.
 
-Still open: the feed pump drive at step 5 (turbine-driven variable speed, as now, or motor-driven with a
-startup low-flow valve), and the sourced numbers named under each step (condenser UA, kinetics
+- Feed pump at step 5: one turbine-driven variable-speed pump, no startup low-flow valve.
+
+Still open: the sourced numbers named under each step (condenser UA, kinetics
 coefficients, trip setpoints).
