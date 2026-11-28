@@ -17,7 +17,7 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 | `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam line (`steamLine`, `cvPos`, `valveStep`: MSIVs, stop, control and bypass valves), SRVs (`srvStep`), nozzle factor | `ms[2]`, `sv`, `cv`, `bp`, `Pl`, `spr[]` |
 | `bwr-turbine.js` | Turbine (step 15): expansion lines (`expansion`, `turbineLine`), Stodola stage pressures (`calib`, `stagePs`), turbine work (`work`); shaft and generator (`tgStep`), breaker (`breaker`, `brkTrips`), power–load unbalance and intercept valves (`pluStep`) | `tg {w, brk, lock, iv, PL, plu, trp}` |
 | `bwr-condenser.js` | Condenser shell (`condense`, `condSteady`), circulating water (`cwTarget`, `cwStep`), condenser air (`airFlows`, `airStep`, `sjSteam`, `sjCap`, `vpCap`, `blanket`) | `cd {Tc, Ms, Ma}`, `wcw`, `vb` |
-| `bwr-feed.js` | Hotwell (`hotwellMix`), condensate pump (`suction`, `cpFlow`), polisher, LP and HP heaters (`stage`, `heaterL`, `heater`, `train`), heater drains (`tubes`, `dumpX`, drain pump `dpFlow`), feed pump, min-flow line, feed valve; the train solve (`network`) | `Mh`, `Thw`, `n`, `fv`, `xr`, `fpt`, `tlo`, `Tsu`, `Th`, shells `Mhs`, `Mls`, `psh`, `psl`, `Ths`, `Tls`, drain valves `xdh`, `xdl`, failures `fail` |
+| `bwr-feed.js` | Hotwell (`hotwellMix`), condensate pump (`suction`, `cpFlow`), polisher, LP and HP heaters (`stage`, `heaterL`, `heater`, `train`), heater drains (`tubes`, `dumpX`, drain pump `dpFlow`), feed pump, min-flow line, feed valve and startup feed valve; the train solve (`network`) | `Mh`, `Thw`, `n`, `fv`, `sfv`, `xr`, `fpt`, `tlo`, `Tsu`, `Th`, shells `Mhs`, `Mls`, `psh`, `psl`, `Ths`, `Tls`, drain valves `xdh`, `xdl`, failures `fail` |
 | `bwr-vessel.js` (end) | Vessel steel (`steelStep`), level instruments (`IZ`, `LV`, `toIn`, `fromIn`), bulk-flash void clearance `TAUF` | `Ts`, `Mbf` |
 | `bwr-containment.js` | Suppression pool (`poolStep`, `poolLevel`, limits `PLIM`) | `pool {M, T}` |
 | `bwr-rps.js` | Reactor protection: trip list `TRIPS` with setpoints `SP`, mode switch (`rpsMode`), `rpsCheck` (latch and log), `rpsReset`, bypass valve interlock `bpBlock` | `rps {mode, lat, log, off}` |
@@ -63,6 +63,7 @@ and suppression pool, then the vessel mass and energy and the pressure solve.
 | Min-flow valve | flow `KR`·xr·√(Pd − Pc), linear; KR sized for `WMIN` = 25 % of rated (447 kg/s) open at 9.9 MPa; stroke ≤ 20 %/s (`RRATE`); `u.rv` demand, `s.xr` position | Returns feed pump discharge water to the condenser at the LP heater outlet enthalpy (it flashes there) |
 | HP heater + piping drop | `KLN`·w², KLN = 0.094 Pa/(kg/s)² | 0.3 MPa at rated flow |
 | Feed valve | drop w²/(`KV`·x²)², KV = 2.31 (kg/s)/√Pa, quadratic characteristic; stroke ≤ 10 %/s (`FRATE`) | Zero flow if the drop would be negative (check valve). `fwFlow(n, x, P, Mh)` the steady train (condensate pump on, min-flow shut, drain pump at its design opening `DPD`), inverse `fwValve(w, n, P)` (rated drains `WDD` forward). Rated 1788 kg/s at 74.5 % open; 2364 kg/s wide open at 7 MPa (2261 at step 5, the condensate pump short of NPSH; 2400 kg/s before step 5) |
+| Startup feed valve | In parallel with the feed valve, same quadratic characteristic, conductance `RSU` = 0.085 of it: the pair pass w = KV·(x² + RSU·xs²)·√ΔP; stroke ≤ 10 %/s | Wide open about 290 kg/s (16 % of rated) with the feed pump holding 2.2 MPa over the dome; `f.wsu` the flow through it (its share of the conductance). Size illustrative (startup and low-power valves are typically 10 to 20 % of rated flow) |
 | Feedwater heaters | LP: extraction pressure pe = the LP turbine's stage pressure peL, rated `PEL` 0.28 MPa; HP: the HP turbine's peH, rated `PE` 2.40 MPa (Stodola, see Turbine stages); valve flow `KX`·e·√(pe² − ps²) (`KXL`, `KXT`); shell condenses ws = fw·(h(T_out) − h(T_in))/(h(pe) − h′(ps)); T_out = T_sat(ps) − `TTD` (3 K) | Two stages of the same model (`stage(H, …)`): LP before the feed pump (condensate flow), HP after it (feed flow to the vessel). Extraction pressures are the turbine's stage pressures: they fall with the turbine flow, and a stage that takes more steam draws its own pressure down (less flow through the groups below it). The shell pressure ps is where the valve passes what the shell condenses (bisection on the shell saturation temperature). Design point: rated flows, 5 % drop across each open valve; LP 126.5 °C out (`TLPD`), ws ≈ 163 kg/s with the HP drains cascaded in (375 kg/s without); HP 216 °C out from `THPI`, ws ≈ 417 kg/s (wet steam on the expansion line). `u.exl` and `u.ext` (e) 0–1 valve openings (`exl` defaults to `ext` if absent). HP outlet follows T_out with `TAU.h`. `heaterL`, `heater(wst, e, fw, Tin, line)` → {T, pe, ps, ws, hx, hd}; `train(wst, eL, eH, fw, Tin, line)` the steady train with the drains cascaded and pumped forward; `heaterT(wst, e, fw, Tin)` both valves at e; `heatBalance(Q, P, e)` the steady {W, Tfw}. Drains: see the row above |
 | `TAU.c` | 10 s | Subcooled water condenses steam towards saturation |
 | `TAU.b` | 0.7 s | Flash voids `Mfl` (steam made beyond what the core boils, as in a depressurisation) leave the mixture |
@@ -326,7 +327,23 @@ Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the op
   to reach L8. SRV flow is not in the steam signal, so after a valve closure the level term alone has to call
   for feedwater. Level setpoint setdown after a scram: lset − `SDL` (0.45 m) for `SDT` 600 s, ramped back over
   `SDR` 1200 s, kept in the controller memory (`k.sdt`, the scram time) so a reset of the scram does not snap
-  the setpoint back up; `setdown(k, s)`.
+  the setpoint back up; `setdown(k, s)`. Selector `c.fwe` (1 or 3, default 3): single-element drops the
+  steam-flow feedforward (F = KL·e + I, same gains), as plants run at low power where the steam flow signal is
+  small; changing it adds or removes the present steam flow to the integral, so F does not step. Operator-selected
+  only (real systems transfer at about 20 to 25 % steam flow, and fall back to single-element on a bad flow signal).
+- Startup level control (startup feed valve, M/A `sfv`): single-element, F_s = KLS·(lset − level) + I_s, KLS = 200
+  kg/s per m, integral 120 s, 0 … 350 kg/s (`WSMAX`), then a flow controller on the startup valve against the
+  startup line's flow `f.wsu`, on √flow with gain KXSU = KXS/√RSU (the same loop gain as the main one), integral
+  4 s. Same setpoint and scram setdown as the main controller. In M the level integral holds the line's measured
+  flow and the valve integral the slider. Why a separate, softer loop: at low pressure the cold feed's subcooling
+  collapses core voids, so more feed first lowers the level (inverse response) and the void fraction per kelvin of
+  subcooling is large. With the main controller (800 kg/s per m, tuned for rated) at 1 MPa and 200 MW the feed
+  cycled between ~0 and ~220 kg/s every ~250 s and the level 14.17 … 14.48 m, growing; on the startup valve it
+  holds within 0.01 m. Transfer up: main valve to A (single-element; its integral has tracked the measured total
+  flow, and its flow loop works on the total, so it stays shut while the startup valve passes the flow), startup
+  valve to M and closed in steps (the main flow loop picks the flow up), then three-element. With both in A the
+  two level integrals share the error. `init(c, p)` with the plant state preloads both level integrals for the
+  plant's initial steam flow, split between the valves by their openings.
 - Hotwell level, split range (step 7): mk = (condensate pump flow − reject − return) + KH·(0.5 − hotwell fraction) + I,
   KH = 1000 kg/s per unit fraction, integral 300 s, ±100 kg/s, setpoint fixed at half full. The makeup valve
   demand is mk/100 above 0, the reject valve's −mk/100 below 0 (1 % per kg/s, about each valve's flow at a 70 %
@@ -391,6 +408,10 @@ Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the op
   holds within 5 % for 20 min with the pressure regulator.
 - Rods at rated: group 4 to 24 → power −6 %, peak from 44 % to about 60 % height; to 40 → +1.6 % (see above).
 - CRD pump: 3.8 kg/s, vessel + tank mass conserved; rods don't move with it stopped, the scram still works.
+- Startup level control (tests/bwr-level.test.mjs): 1 MPa, 200 MW, main three-element: level swing > 0.15 m and feed
+  swing > 100 kg/s; on the startup valve < 0.02 m and < 10 kg/s (dt 0.25 and 2 s). Transfer at 300 MW (startup valve
+  → main single-element → startup valve closed 2 % per 10 s → three-element): level within 14.22 … 14.38 m, no
+  step in the flow demand on the selector.
 - Flow control: 40 % core flow → 58.4 % power (64.5 % before the axial shape), MG set ~26 %; back to 100 %.
 - Pump trip at rated: coastdown, power dips to ~37 %, settles at 52 % on 33 % natural circulation.
 - Natural circulation alone at 30 % heat: 31 % flow.
@@ -510,9 +531,9 @@ and reheat, more than two heater stages, drain coolers, heater shell steam volum
 shell pressure follows the steam flow at once; one throttled extraction line per stage, where real
 extraction lines have only isolation and non-return valves), redundant pumps (one condensate pump stands for
 the condensate and booster pumps, one feed pump for three), feed pump drive steam and the pump's heating of
-the water, polisher chemistry, startup low-flow valve, condensate and feed water inventory in
+the water, polisher chemistry, condensate and feed water inventory in
 the pipes, reactor water cleanup (only a pumped reject placeholder to the condenser), containment pressure and
 drywell (the pool has no air space; its heat-up is modelled), RHR (pool cooling is a fixed placeholder
-cooler). The level controller at low pressure fights the void swing from the feed's subcooling (a real plant
-uses a startup level controller there). Voids from bulk flashing beyond what the core boils rise out with one
+cooler). Level control: no automatic single/three-element transfer and no signal validation; the startup
+level controller's gains are illustrative, tuned on the 1 MPa case. Voids from bulk flashing beyond what the core boils rise out with one
 time constant (2 s, illustrative).

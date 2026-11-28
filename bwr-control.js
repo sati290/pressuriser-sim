@@ -21,6 +21,8 @@
 // Heater drains (step 6): hdv % HP heater drain valve, ldv % LP drain pump discharge valve, both with M/A
 // (a key absent from c.auto runs in A, for callers older than step 6; absent values are 50 %); hdp drain
 // pump run switch (absent: on).
+// Startup level control: sfv % startup feed valve, with M/A (absent: shut, in M); fwe 1 or 3, the main
+// level controller's single- or three-element selector (absent: 3).
 // Condensate storage tank (step 7): mu % makeup valve (CST → condenser), rj % reject valve (condensate pump
 // discharge → CST), each with M/A; they replace mk. The hotwell level loop is split range: its one output,
 // in kg/s of net makeup, opens the makeup valve above 0 and the reject valve below (1 % of stroke per kg/s,
@@ -76,6 +78,18 @@ const setdown=(k,s)=>{if(s.scram&&k.sdt!==s.scram.t)k.sdt=s.scram.t;if(k.sdt==nu
 // The feed flow demand goes to a flow controller on the feed valve (cascade): PI on the error in √flow, with
 // the gain that gives 0.0001 of stroke per kg/s of flow error at rated flow, integral time 4 s. The valve's own stroke limit (10 %/s) is in the plant.
 const KX=1e-4,TIX=4,KXS=KX*2*Math.sqrt(WR);
+// Single-element (fwe 1): the same level PI with no steam-flow feedforward, so the level error alone sets
+// the flow demand (real plants run single-element at low power, where the steam flow signal is small and
+// unreliable, and transfer to three-element above about 20-25 % of rated). Changing the selector moves the
+// feedforward into the integral, so the demand does not step.
+// Startup level controller on the startup (low-flow) feed valve, single-element: PI on the level error
+// gives a flow demand for the startup line, KLS 200 kg/s per m, integral time TILS 120 s, 0 … WSMAX; a flow
+// controller on the startup valve, characterised on √flow like the main one, with the gain scaled to the
+// smaller valve (RSU, must match bwr-feed.js). A quarter of the main controller's gain: at low power the
+// cold feed's subcooling moves the core voids against the level (more feed, less void, the level drops
+// before it rises), and the main loop's 800 kg/s per m, tuned for rated, swings the feed between nothing and
+// several hundred kg/s and the level ±0.15 m at 1 MPa. Gains illustrative, tuned on that case.
+const KLS=200,TILS=120,WSMAX=350,RSU=0.085,KXSU=KXS/Math.sqrt(RSU);
 // hotwell level: makeup = condensate pump flow − condensate return (feedforward) + PI on the hotwell level error
 // against a fixed half-full setpoint, 1000 kg/s per unit of fraction full (10 % low asks for the full
 // 100 kg/s), integral time 300 s
@@ -103,10 +117,13 @@ const KD=4,TID=30,LSH=0.5;
 // controller memory: iP, iF, iX, iH, iN, iW integrators (steam flow demand as a fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
-// init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
-// starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({Lr:null,nr:null,iL:0,iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,
-  dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0,mg:1,rv:0,hdv:0.5,ldv:0.5,mu:0,rj:0}});
+// init(c, p) preloads the integrators from the operator's settings c (panel units), so an actuator that
+// starts in A starts from its slider; the three-element level loop's flow integral starts at 0 (feed = steam flow).
+// With the plant state p (optional) the level loops start steady too: the feed it starts with (its steam
+// flow), shared between the two valves by their openings.
+const init=(c,p)=>{const w0=p?.f?.gen||0,x=p?.fv||0,xs=p?.sfv||0,g=x*x+RSU*xs*xs,sh=g>0?RSU*xs*xs/g:0;
+  return {iS:w0*sh,iXS:c?(c.sfv||0)/100:0,lm:c?.fwe===1,Lr:null,nr:null,iL:0,iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:c?.fwe===1?w0:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,
+  dem:{D:0,cv:0,bp:0,fw:0,fv:0,fws:0,sfv:0,mk:0,n:0,rw:0,mg:1,rv:0,hdv:0.5,ldv:0.5,mu:0,rj:0}}};
 // the drain level loops are in A unless c.auto says otherwise
 const autoD=(A,k)=>A[k]??true;
 // the makeup and reject valves follow the old makeup switch when their own keys are absent; the operator's
@@ -146,7 +163,9 @@ const demands=(k,s,c,dt)=>{
   // feedwater level, three-element: steam flow measured in the main steam line only (SRV discharge
   // is not). Its output is the flow demand F for the flow controller. In M the integral holds the
   // measured feed flow net of the feedforward, so F is the present flow plus the level correction.
-  const lset=c.lset-setdown(k,s),eL=lset-d.level,ff=f.wst,fvA=!!A.fv;
+  const lset=c.lset-setdown(k,s),eL=lset-d.level,one=c.fwe===1,ff=one?0:f.wst,fvA=!!A.fv;
+  // single/three-element transfer: the feedforward that leaves (or joins) the demand goes into (or out of) the integral
+  if(one!==k.lm){k.iF+=one?f.wst:-f.wst;k.lm=one}
   // the flow controller's valve demand before this step's level update, for anti-windup
   const sat1=k.dem.fv>=1&&fvA,sat0=k.dem.fv<=0&&fvA;
   if(!fvA)k.iF=f.fw-ff;
@@ -160,6 +179,16 @@ const demands=(k,s,c,dt)=>{
   if(!fvA)k.iX=c.fv/100;
   else{const I=k.iX+eF/TIX*dt,v=eF+I;if(!((v>1&&eF>0)||(v<0&&eF<0)))k.iX=I}
   k.iX=clamp(k.iX,0,1);const fv=clamp(eF+k.iX,0,1);
+  // startup level controller: single-element PI → startup line flow demand → flow controller on the
+  // startup valve. In M the level integral holds the measured startup line flow, the valve integral the slider.
+  const wsu=f.wsu||0,sA=!!A.sfv,ss1=k.dem.sfv>=1&&sA,ss0=k.dem.sfv<=0&&sA;
+  if(!sA)k.iS=wsu;
+  else{const I=k.iS+KLS/TILS*eL*dt,v=KLS*eL+I;if(!((v>WSMAX||ss1)&&eL>0||(v<0||ss0)&&eL<0))k.iS=I}
+  k.iS=clamp(k.iS,-WSMAX,WSMAX);const fws=clamp(KLS*eL+k.iS,0,WSMAX);
+  const eS=KXSU*(Math.sqrt(fws)-Math.sqrt(wsu));
+  if(!sA)k.iXS=(c.sfv||0)/100;
+  else{const I=k.iXS+eS/TIX*dt,v=eS+I;if(!((v>1&&eS>0)||(v<0&&eS<0)))k.iXS=I}
+  k.iXS=clamp(k.iXS,0,1);const sfv=clamp(eS+k.iXS,0,1);
   // hotwell level, split range onto the makeup and reject valves
   // feedforward: what the condensate pump sends on through the LP heater (feed + min-flow less the pumped
   // drains; not the reject, which is this loop's own output) less the condensate
@@ -190,12 +219,12 @@ const demands=(k,s,c,dt)=>{
     k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
   const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
   const mu=clamp(mk/MKMAX,0,1),rj=clamp(-mk/MKMAX,0,1);
-  k.dem={D,SL,Lr:k.Lr,nr:k.nr,cv,bp,fw,fv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
+  k.dem={D,SL,Lr:k.Lr,nr:k.nr,cv,bp,fw,fv,fws,sfv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  const u={heat:c.heat!=null?c.heat*1e6:undefined,rods:c.rods?c.rods.map(p=>p==null?undefined:p/48):undefined,crd:!!c.crd,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,
+  const u={heat:c.heat!=null?c.heat*1e6:undefined,rods:c.rods?c.rods.map(p=>p==null?undefined:p/48):undefined,crd:!!c.crd,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,sfv:A.sfv?D.sfv:(c.sfv||0)/100,ext:c.ext/100,
     ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[],
     exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100,
     hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false,
@@ -210,4 +239,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {NR,HIN,MWR,LRATE,TIMW,DROOP,ACC,init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,KXS,RDB,RBAND,SDL,SDT,SDR,setdown,WMIN,KD,TID,LSH};
+export {KLS,TILS,WSMAX,RSU,KXSU,NR,HIN,MWR,LRATE,TIMW,DROOP,ACC,init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,KXS,RDB,RBAND,SDL,SDT,SDR,setdown,WMIN,KD,TID,LSH};

@@ -27,7 +27,7 @@ import {WDR,HPR,HS,KPP,MGRATE,NMIN,TCD,mgStep,loopStep,recircInit} from './bwr-r
 import {WTR,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValve,heater,heaterT,heatBalance,hotwellMix,
   PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN as WMINF,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
   THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,VHS,VLS,LFL,LDU,XD0,MHS,MLS,DPD,mixT,dpFlow,tubes,dumpX,Thf,
-  CSTM,HCST,CRATE,KMU,KRJ,muFlow,rjBack,TK,PGR,lineAt} from './bwr-feed.js';
+  CSTM,HCST,CRATE,KMU,KRJ,muFlow,rjBack,RSU,TK,PGR,lineAt} from './bwr-feed.js';
 // heater drain valves (HP drain valve, LP drain pump discharge valve) travel at most DRATE per second
 const DRATE=0.1;
 // Scram: the rods go in and core heat falls to the fission tail plus decay heat, a fraction of the
@@ -42,7 +42,7 @@ const HMK=sat(TMK).hf;
 const motiveP=s=>s.Pl??s.d.P;
 // o: {P Pa, L m two-phase level, Tl °C water temperature (default saturated), gen kg/s steaming the
 // voids start in equilibrium with, cv control valve and bp bypass valve positions 0–1 (default shut), ms MSIV
-// and sv stop valve positions 0–1 (default open), fv feed valve position 0–1, n pump speed 0–1, tfw °C heater
+// and sv stop valve positions 0–1 (default open), fv feed valve and sfv startup feed valve positions 0–1, n pump speed 0–1, tfw °C heater
 // outlet (default the hotwell temperature), hw hotwell fraction full (default 0.5), ext, exl 0–1 HP and LP
 // extraction valves the condenser starts steady with (default 1; exl defaults to ext), xr min-flow valve 0–1,
 // xdh, xdl heater drain valves 0–1 (default the design 0.5), hs, ls HP and LP heater shell fraction full
@@ -52,7 +52,7 @@ const motiveP=s=>s.Pl??s.d.P;
 // drywell), tpool °C suppression pool (default 32), mode switch 'shutdown' | 'startup' | 'run' (default run at
 // 6 MPa and above, else startup), rps false to run without protection (tests of the bare physics), tau overrides}
 const init=o=>{
-  const s={t:0,wcw:WCW,vb:0,ms:[o.ms??1,o.ms??1],sv:o.sv??1,cv:o.cv||0,bp:o.bp||0,fv:o.fv||0,n:o.n||0,
+  const s={t:0,wcw:WCW,vb:0,ms:[o.ms??1,o.ms??1],sv:o.sv??1,cv:o.cv||0,bp:o.bp||0,fv:o.fv||0,sfv:o.sfv||0,n:o.n||0,
     xr:o.xr||0,fpt:false,tlo:0,xdh:o.xdh??XD0,xdl:o.xdl??XD0,Mhs:(o.hs??0.5)*MHS,Mls:(o.ls??0.5)*MLS,fail:{},
     Mcst:(o.cst??0.7)*CSTM,Tcst:TMK,xmu:o.xmu||0,xrj:o.xrj||0,
     Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
@@ -101,7 +101,7 @@ const init=o=>{
   const pa0=pAir(Ma,Tc),Pc=sat(Tc).p+pa0;
   s.f={Q:0,fw:0,Tfw:s.Th,hfw:0,hg:0,wst:0,wsrv:0,nsrv:0,open:Array(NV).fill(false),spr:Array(NV).fill(false),gen:o.gen||0,cond:0,
     ms:s.ms.slice(),sv:s.sv,cv:s.cv,bp:s.bp,Pl:s.Pl,wt:sl.wt,wb:sl.wb,
-    n:s.n,fv:s.fv,ext:0,Tt:s.Th,pe:0,ps:0,Pd:Pc,ret:0,Tret:Tc,mk:0,Mh:s.Mh,hw:s.Mh/HWM,Thw:Tc,
+    n:s.n,fv:s.fv,sfv:s.sfv,wsu:0,ext:0,Tt:s.Th,pe:0,ps:0,Pd:Pc,ret:0,Tret:Tc,mk:0,Mh:s.Mh,hw:s.Mh/HWM,Thw:Tc,
     Pc,Tc,wc:0,Qc:0,Tcw:TCW,wcw:WCW,Pgen:brk?ETAG*(wk.hp+wk.lp-PW0F*PGR):0,wx:0,hx:0,
     ...tbF(line.ps,s.tg,{Pm:wk.hp+wk.lp,Pw:PW0F*PGR*s.tg.w**3},wk),ws:wsH,wsl:wsL,
     Tcwi:TCW,cwp:true,cwv:1,pa:pa0,ya:pa0/Pc,Ma,wsj:0,sj:vac,vp:false,vb:0,sjc:0,vpc:0,wlk:0,wrad:0,wvb:0,wain:0,waout:0,Vsj:0,Vvp:0,
@@ -128,7 +128,7 @@ const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf
 // switch (true running; absent or false stopped, so the other systems' tests run without its flow; stopped,
 // the rods can't be moved, the scram still works); heat W fixed net heat into the water (a test hook: if it is a number the
 // core heat is that value and the kinetics stand still); n 0–1 feed pump speed;
-// fv 0–1 feed valve demand; ext 0–1 HP heater extraction valve; exl 0–1 LP heater extraction valve
+// fv 0–1 feed valve demand; sfv 0–1 startup feed valve demand (absent: shut); ext 0–1 HP heater extraction valve; exl 0–1 LP heater extraction valve
 // (absent: the same as ext); cp, fp condensate and feed pump run switches (absent: running); rv 0–1
 // min-flow valve demand; hdv 0–1 HP heater drain valve demand, ldv 0–1 LP drain pump discharge valve demand
 // (absent: the design opening 0.5), hdp heater drain pump run switch (absent: running);
@@ -183,6 +183,7 @@ const step=(s,u,dt)=>{
   const cp=u.cp!==false,fp=u.fp!==false;if(!fp){s.fpt=false;s.tlo=0}
   s.n+=clamp((fp&&!s.fpt&&!pr.fwp?clamp(u.n||0,0,1):0)-s.n,-NRATE*dt,NRATE*dt);const n=s.n;
   s.fv+=clamp(clamp(u.fv||0,0,1)-s.fv,-FRATE*dt,FRATE*dt);
+  s.sfv=(s.sfv||0)+clamp(clamp(u.sfv||0,0,1)-(s.sfv||0),-FRATE*dt,FRATE*dt);
   s.xr+=clamp(clamp(u.rv||0,0,1)-s.xr,-RRATE*dt,RRATE*dt);
   // heater drains (step 6): valve travel (the HP drain valve fails shut on the event s.fail.hdv); flows on
   // the start-of-step shell pressures and levels. HP drains cascade to the LP shell, both shells dump to
@@ -198,7 +199,7 @@ const step=(s,u,dt)=>{
   // the whole train at once: condensate pump, polisher, LP heater, drain pump, feed pump, min-flow line,
   // HP heater, feed valve
   const dp={on:hdp,x:s.xdl,Pin:s.psl+992*9.81*ZDT,f:clamp(LL/0.1,0,1)};
-  const pv=sat(s.Tsu).p,nw=network({cp,n,x:s.fv,xr:s.xr,P,pc:pc0,Mh:s.Mh,Thw:s.Thw,pv,dp,rj:{x:s.xrj,Pb:rjBack(s.Mcst)}}),fw=nw.fw,Pd=nw.Pd;
+  const pv=sat(s.Tsu).p,nw=network({cp,n,x:s.fv,xs:s.sfv,xr:s.xr,P,pc:pc0,Mh:s.Mh,Thw:s.Thw,pv,dp,rj:{x:s.xrj,Pb:rjBack(s.Mcst)}}),fw=nw.fw,Pd=nw.Pd;
   if(fp&&!s.fpt){s.tlo=nw.Ps<PLO?s.tlo+dt:0;if(s.tlo>=TLO)s.fpt=true}
   // core: kinetics, fuel, voids and the recirculation loop in substeps at the start-of-step pressure.
   // The core inlet is downcomer water: inlet subcooling u′ − u_dc, at the downcomer temperature.
@@ -283,7 +284,7 @@ const step=(s,u,dt)=>{
   s.d=derive(s,e);
   s.f={Q,fw,Tfw,hfw,hg,wst,wsrv,nsrv,open,spr:s.spr.slice(),gen,cond:mc/dt,
     ms:s.ms.slice(),sv:s.sv,cv:s.cv,bp:s.bp,Pl:sl.Pl,wt,wb,
-    n,fv:s.fv,ext,Tt,pe:ht.pe,ps:ht.ps,ws,Pd,ret:cd.wl,Tret:cd.Tc,mk,Mh:s.Mh,hw:s.Mh/HWM,Thw:s.Thw,
+    n,fv:s.fv,sfv:s.sfv,wsu:nw.wsu,ext,Tt,pe:ht.pe,ps:ht.ps,ws,Pd,ret:cd.wl,Tret:cd.Tc,mk,Mh:s.Mh,hw:s.Mh/HWM,Thw:s.Thw,
     Pc:cd.Pc,Tc:cd.Tc,wc:cd.wc,Qc:cd.Q,Tcw:cd.Tout,wcw:s.wcw,Pgen,wx,hx,...tbF(line.ps,tg,tq,wk),
     Tcwi,cwp,cwv,pa:cd.pa,ya:cd.ya,Ma:s.cd.Ma,wsj,sj,vp,vb:s.vb,sjc:fsj*sjCap(Pm,pc0),vpc:vp?vpCap(pc0):0,
     wlk:af.wlk,wrad:af.wrad,wvb:af.wvb,wain:af.wi,waout:cd.wout,Vsj:af.Vsj,Vvp:af.Vvp,
@@ -331,13 +332,13 @@ const fault=s=>{
 };
 // the condensate pump suction pressure the page reads for the shutoff-head message
 const PC=PCD;
-const API=13;
+const API=14;
 export {CST,UAS,UAL,TDW,INCH,IZ,LV,toIn,fromIn,TAUF,MPOOL,APOOL,TP0,UAP,TSW,TPMAX,PLIM,poolLevel};
 export {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,cwTarget,TAUCW,motiveP};
 export {PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMINF as WMIN,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
   THPI,HDP0,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,VHS,VLS,LFL,LDU,XD0,MHS,MLS,DRATE,DPD,tubes,dumpX,dpFlow,fail,
   CSTM,HCST,CRATE,KMU,KRJ,muFlow,rjBack};
-export {API,V,H,A,Z,QR,PR,TFR,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PC,PCD,TTD,WR,PE,KXT,
+export {API,V,H,A,Z,QR,PR,TFR,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,RSU,FRATE,NRATE,HWM,MKMAX,TMK,THW,PC,PCD,TTD,WR,PE,KXT,
   ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,condense,condSteady,breaker,
   turbineLine,stagePs,work,P1R,PXR,PLIR,ETAH,ETAL,NR,HIN,PW0F,TRH,IVRATE,PLU,SYNC,TRP,TK,PGR,lineAt,
   WTR,fwFlow,fwValve,heater,heaterT,heatBalance,subF,wSRV,decayFrac,init,step,scram,reset,fault,rpsSignals,setMode,manualScram,SP,MODES,TRIPS,GROUP,inHgVac,rpsActive,RWMAX,
