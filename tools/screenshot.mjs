@@ -8,8 +8,9 @@
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { serve } from './serve.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values: a } = parseArgs({ options: {
@@ -26,7 +27,9 @@ try { ({ chromium } = createRequire(import.meta.url)('playwright')); }
 catch { console.error('Playwright not found: npm i -D playwright && npx playwright install chromium'); process.exit(2); }
 
 mkdirSync(a.out, { recursive: true });
-const url = pathToFileURL(join(ROOT, 'index.html')).href;
+// the scripts are ES modules, which browsers won't load from file://, so serve the repo locally
+const srv = await serve(0, { quiet: true });
+const url = `http://127.0.0.1:${srv.address().port}/index.html`;
 const b = await chromium.launch(a.chrome ? { executablePath: a.chrome } : {});
 let ok = true;
 for (const [w, h, name] of [[1400, 1100, 'wide'], [720, 1400, 'mid'], [390, 1600, 'phone']]) {
@@ -48,4 +51,5 @@ for (const [w, h, name] of [[1400, 1100, 'wide'], [720, 1400, 'mid'], [390, 1600
   }
 }
 await b.close();
+srv.close();
 process.exit(ok ? 0 : 1);

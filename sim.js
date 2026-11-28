@@ -1,15 +1,12 @@
 // Pressuriser + RCS plant model: pure physics, no DOM, no automatic control.
 // step() takes final actuator commands (from the operator or from control.js; the plant can't tell).
-// Loaded after common.js, as a classic <script> (index.html) or a module (tests); it only defines
-// globalThis.PZSim. Equations and constants are described in docs/physics.md.
+// An ES module; imports only common.js. Equations and constants are described in docs/physics.md.
 //
 // The pressuriser is two regions at one pressure, never forced into equilibrium: water (compressed
 // liquid, may be below or above saturation) and a gas space of steam and/or nitrogen with its own
 // temperature (steam superheated, saturated, or wet for one step before the condensate rains out).
 // With no gas space it is water-solid. Below the water sits the insurge layer.
-globalThis.PZSim = (() => {
-'use strict';
-const {sat,Tsat,clamp,LIM,QP,QB,T0,THI}=globalThis.PZCommon;
+import {sat,Tsat,clamp,LIM,QP,QB,T0,THI} from './common.js';
 // isothermal compressibility of liquid water, 1/Pa (approximate, near saturation)
 const KT=[[0,.509],[25,.452],[50,.441],[75,.456],[100,.49],[150,.58],[200,.74],[250,1.03],[300,1.6],[325,2.2],[340,3],[350,3.8],[360,5.5],[374,12]];
 const kap=c=>{if(c<=0)return .509e-9;for(let i=1;i<KT.length;i++)if(c<=KT[i][0]){const[a,x]=KT[i-1],[b,y]=KT[i];return (x+(y-x)*(c-a)/(b-a))*1e-9}return 12e-9};
@@ -227,5 +224,5 @@ const fault=s=>{
 };
 // API: bump when the plant state or s.d fields the page reads change; index.html checks it, so a
 // cached older sim.js beside a newer page (raw.githack caches files separately) is reported, not shown as NaN
-return {API:3,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
-})();
+const API=3;
+export {API,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};

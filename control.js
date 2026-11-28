@@ -1,16 +1,13 @@
 // Automatic control for the pressuriser simulator: no DOM, no plant equations.
 // It reads the plant state (s.d, s.Tr) and the operator's settings, and produces the final command
-// that PZSim.step() takes. Loaded after common.js (it does not need sim.js), as a classic <script>
-// (index.html) or a module (tests); it only defines globalThis.PZCtl. See docs/physics.md.
+// that sim.js step() takes. An ES module; imports only common.js (not sim.js). See docs/physics.md.
 //
 // Settings c are in panel units: ch, ld, sp kg/s; hp proportional heaters %;
 // hb backup heater groups on; relMan %; heat MW; set, relSet Pa;
 // lset %; dT K; inv 'pres'|'lev'; pzMode 'pres'|'dT'; auto {ch,ld,hp,hb,sp,rel} booleans; n2 %
 // (nitrogen supply valve opening; always manual, no automatic logic).
 // The command is SI: {ch, ld, sp kg/s; hp 0–1; hb groups; rel 0–1; n2 0–1; heat W}.
-globalThis.PZCtl = (() => {
-'use strict';
-const {sat,clamp,LIM,NB,THI}=globalThis.PZCommon;
+import {sat,clamp,LIM,NB,THI} from './common.js';
 // controller memory, kept apart from the plant state:
 // iL, iC net-inflow integrators of the 'pres' and 'lev' inventory logic (kg/s);
 // hold the charging/letdown flows a held flow keeps when both are in A; porv the auto-relief latch;
@@ -79,5 +76,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for PZSim.step.
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-return {init,engage,demands,command,update,relHys,propH,backH,BON,BOFF};
-})();
+export {init,engage,demands,command,update,relHys,propH,backH,BON,BOFF};

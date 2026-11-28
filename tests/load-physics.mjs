@@ -1,13 +1,10 @@
 // Loads the model headless in Node, with no DOM: common.js (steam tables, limits), sim.js (plant)
-// and control.js (automatic control). Each is a plain script that defines one global
-// (PZCommon, PZSim, PZCtl), so the browser can load them from file://.
-import '../common.js';
-import '../sim.js';
-import '../control.js';
+// and control.js (automatic control), each an ES module, exposed here as namespaces.
+import * as common from '../common.js';
+import * as phys from '../sim.js';
+import * as ctrl from '../control.js';
 
-export const common = globalThis.PZCommon;
-export const phys = globalThis.PZSim;
-export const ctrl = globalThis.PZCtl;
+export { common, phys, ctrl };
 
 // Controller memory for a plant state, created on first use, so a test can keep passing the
 // same `s` to run() the way the page keeps its plant and controller side by side.

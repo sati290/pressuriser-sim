@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Minimal static file server for the repo root (no dependencies).
 // Usage:  node tools/serve.mjs [port]   (default 8000; or set PORT)
+// Also importable: serve(port, {quiet}) resolves to the listening server (port 0 = any free port).
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { argv } from 'node:process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const port = +(process.argv[2] || process.env.PORT || 8000);
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -15,7 +16,7 @@ const types = {
   '.png': 'image/png', '.ico': 'image/x-icon',
 };
 
-createServer(async (req, res) => {
+export const serve = (port, { quiet = false } = {}) => new Promise(ok => { const srv = createServer(async (req, res) => {
   let path;
   try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
   catch { res.writeHead(400).end('Bad request'); return; }
@@ -27,5 +28,10 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(body);
   } catch { res.writeHead(404).end('Not found'); }
-  console.log(req.method, req.url, res.statusCode);
-}).listen(port, () => console.log(`Serving ${ROOT} at http://localhost:${port}/`));
+  if (!quiet) console.log(req.method, req.url, res.statusCode);
+}); srv.listen(port, '127.0.0.1', () => ok(srv)); });
+
+if (argv[1] && resolve(argv[1]) === fileURLToPath(import.meta.url)) {
+  const port = +(argv[2] || process.env.PORT || 8000);
+  serve(port).then(() => console.log(`Serving ${ROOT} at http://localhost:${port}/`));
+}
