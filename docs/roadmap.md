@@ -53,7 +53,7 @@ instead of being the fixed 0.01 MPa / 45.8 °C.
 **Approach:** one lumped steam space, saturated, at pressure Pc. Condensation rate
 w_c = UA·ΔT_lm/h_fg, with ΔT_lm the log-mean difference between T_sat(Pc) and the circulating water
 (inlet T_in, outlet T_in + Q/(m_cw·c_p)); at this stage m_cw and T_in are constants (step 2 makes them
-states). Steam-space mass balance dMs/dt = w_in − w_c with Ms·ρ″(Pc) fixing Pc (small volume, so fast,
+operator inputs). Steam-space mass balance dMs/dt = w_in − w_c with Ms·ρ″(Pc) fixing Pc (small volume, so fast,
 time constant of a few seconds; solve implicitly or substep). Hotwell gains w_c at T_sat(Pc) (or a little
 subcooled, an illustrative 1–2 K), and its temperature becomes a state (mixing with makeup and drains).
 Main steam valve and feed pump suction see Pc in place of the constant `PC`.
@@ -90,8 +90,9 @@ SJAE: capacity curve vs suction pressure, needs motive steam pressure above a mi
 fixed volumetric flow, only useful above ~20 kPa. Air fraction near the tubes reduces UA (a simple
 blanketing factor). A condenser open to atmosphere starts at 0.1 MPa full of air.
 
-**Open:** whether hogging from atmosphere should be part of the startup scenario now, or the scenario
-starts with vacuum drawn.
+**Decided:** the startup scenario includes pulling vacuum: it starts with the condenser at atmospheric
+pressure full of air, the mechanical vacuum pump draws it down, then the SJAE takes over once main steam is
+available.
 
 ### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass
 **Models:** the one `mv` becomes four valves in series and parallel, as drawn: inboard and outboard
@@ -261,11 +262,10 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 ## Open questions (summary)
 
 Decided (Attila, 2026-11-28): generic BWR/4-class plant; the turbine stub is fine; circulating water is
-an in/out pipe for now; bypass about 25 % of rated steam, as is typical.
+an in/out pipe for now; bypass about 25 % of rated steam, as is typical; startup includes pulling condenser vacuum.
 
 Still open:
 
-1. Condenser vacuum at startup: model pulling vacuum now (step 3) or start with vacuum drawn?
-2. Heater drains: cascade to condenser or pumped forward?
-3. Recirculation drive: MG set (BWR/4) or VFD?
-4. Module split of bwr-sim.js: now, or when it hurts?
+1. Heater drains: cascade to condenser or pumped forward?
+2. Recirculation drive: MG set (BWR/4) or VFD?
+3. Module split of bwr-sim.js: now, or when it hurts?
