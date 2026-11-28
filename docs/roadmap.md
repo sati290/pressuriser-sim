@@ -160,7 +160,7 @@ head between tank and condenser vacuum) in place of today's ±100 kg/s flow inpu
 
 ## Reactor
 
-### 8. Point kinetics with reactivity feedback
+### 8. Point kinetics with reactivity feedback (done)
 **Models:** core power from neutron kinetics instead of a net-heat slider: the pressurisation power
 spike on a valve closure, power rising with colder feedwater, power falling with void.
 
@@ -176,7 +176,15 @@ an assumed core flow. The net-heat slider becomes the rod/reactivity control (st
 BWR/4 core; whether to model the void spatially at all (one node is crude: void feedback depends
 strongly on where the voids are).
 
-### 9. Recirculation loop and jet pump
+**Done** (bwr-core.js; numbers in docs/bwr.md, "Core"): six groups, prompt-jump with implicit precursors,
+β 0.0056; void −1×10⁻³/%, Doppler −2×10⁻⁵/K, moderator −2×10⁻⁵/K on the inlet temperature, generic BOC
+values, labelled illustrative (no plant source found offline). Core void from the core thermal-hydraulics
+(one channel, flat axial power, drift flux), not from Mb. Seven decay-heat groups fitted to the old
+(1 + t)^−0.2 shape. One rod lever, S-shaped worth, critical at 60 % HZP and 80 % at rated; manual only.
+Decided: void spatially as boiling boundary + linear quality, one node; the flat power shape makes the
+feedwater-temperature response about twice a real core's (labelled). `u.heat` stays as a fixed-heat test hook.
+
+### 9. Recirculation loop and jet pump (done)
 **Models:** one recirculation pump driving one jet pump (standing for all), core flow as a state; power
 following flow along a rod line through the void feedback of step 8 (flow control of power). Void
 clearance and carry-under depend on flow instead of one time constant.
@@ -190,7 +198,14 @@ with a speed limiter; recirculation pump trip as a transient.
 speed follows the flow controller through a speed limiter. One loop drawn; scale its flow to stand for two
 loops and 20 jet pumps.
 
-### 10. Downcomer node and core inlet subcooling
+**Done** (bwr-recirc.js): drive and core momentum equations with a mixing-section jet pump model, natural
+circulation head, homogeneous two-phase multiplier; loss coefficients set from the rated point (4300 kg/s,
+1.6 MPa, M = 2, 12,900 kg/s); MG set speed limiter 2 %/s, minimum 20 %, coastdown 5 s; core flow
+controller (PI on the MG set speed) with M/A, breaker as a plain switch. Mb now comes from the core and
+chimney voids (plus flash voids beyond core boiling with τb). Committed together with step 10: the void
+model needs the downcomer for a sensible pressurisation collapse.
+
+### 10. Downcomer node and core inlet subcooling (done)
 **Models:** a separate downcomer region where feedwater mixes with the separator return, so core inlet
 subcooling responds to feed temperature with a transport delay, and the jet pump suction sees
 downcomer water.
@@ -198,6 +213,11 @@ downcomer water.
 **Approach:** split the vessel's liquid into downcomer (subcooled, own energy) and core/riser
 (two-phase), linked by the recirculation flow from step 9; the dome and separators stay as today. Level
 measured in the downcomer (which is where the instrument taps are).
+
+**Done** (bwr-vessel.js, bwr-sim.js): the downcomer is a fixed 100 m³ (illustrative) with its own specific
+internal energy u_dc inside the existing M, U totals; the solve flashes only the core region (u_dc held, so a
+pressure rise subcools it); mixing time ~6 s at rated flow stands for the transport delay. Level is the
+single free surface, read as the downcomer level. Mass and energy stay exact.
 
 ### 11. Reactor protection: automatic scram and isolation
 **Models:** RPS trips (high pressure, low level L3, high flux, MSIV closure position switch, turbine
