@@ -19,10 +19,12 @@ const inHgVac=x=>101325-x*3386.39;
 //  isolation (closes both MSIVs): low-low level L2 (some BWR/4s use L1); main steam line low pressure
 //  850 psig at the header (Run only); main steam line high flow 140 % of rated; low condenser vacuum 7 inHg
 //  (bypassed outside Run, as with the startup bypass switch).
-//  turbine: high level L8 (also trips the feed pump); low condenser vacuum 22.5 inHg.
+//  turbine control valve fast closure (the power–load unbalance, on a load rejection) with first-stage
+//  pressure above 30 % (as the stop valve closure).
+//  turbine: high level L8 (also trips the feed pump); low condenser vacuum 22.5 inHg; overspeed 110 %.
 //  bypass valves: close while the condenser vacuum is below 7 inHg (an interlock, not latched).
 const SP=Object.freeze({P:psig(1045),aprmRun:1.20,aprmSU:0.15,ms:0.9,sv:0.9,fsp:0.30,vacScram:inHgVac(23),
-  plow:psig(850),wHigh:1.40,vacIso:inHgVac(7),vacTurb:inHgVac(22.5),vacBP:inHgVac(7),L3:LV.L3,L2:LV.L2,L8:LV.L8});
+  plow:psig(850),wHigh:1.40,vacIso:inHgVac(7),vacTurb:inHgVac(22.5),ovsp:1.10,vacBP:inHgVac(7),L3:LV.L3,L2:LV.L2,L8:LV.L8});
 const MODES=['shutdown','startup','run'];
 // Trip list: key, group (scram | iso | turb | fwp), text for the log and the annunciator, the modes it is
 // active in (all if absent), and the test on the signals g.
@@ -32,6 +34,7 @@ const TRIPS=[
   {k:'aprm',g:'scram',t:'APRM high flux',f:g=>g.aprm>(g.mode==='run'?SP.aprmRun:SP.aprmSU)},
   {k:'msc',g:'scram',t:'MSIV closure',m:['run'],f:g=>g.ms<SP.ms},
   {k:'tsv',g:'scram',t:'Turbine stop valve closure',f:g=>g.sv<SP.sv&&g.fsp>SP.fsp},
+  {k:'tcv',g:'scram',t:'Turbine control valve fast closure',f:g=>!!g.plu&&g.fsp>SP.fsp},
   {k:'vac',g:'scram',t:'Condenser low vacuum',m:['run'],f:g=>g.Pc>SP.vacScram},
   {k:'mode',g:'scram',t:'Mode switch in Shutdown',m:['shutdown'],f:()=>true},
   {k:'L2',g:'iso',t:'Reactor low-low level (L2)',f:g=>g.lin<SP.L2},
@@ -40,6 +43,7 @@ const TRIPS=[
   {k:'vacIso',g:'iso',t:'Condenser low vacuum (isolation)',m:['run'],f:g=>g.Pc>SP.vacIso},
   {k:'L8',g:'turb',t:'Reactor high level (L8)',f:g=>g.lin>SP.L8},
   {k:'vacT',g:'turb',t:'Condenser low vacuum (turbine)',f:g=>g.Pc>SP.vacTurb},
+  {k:'ovsp',g:'turb',t:'Turbine overspeed',f:g=>g.spd>SP.ovsp},
   {k:'L8f',g:'fwp',t:'Reactor high level (L8): feed pump trip',f:g=>g.lin>SP.L8}];
 const GROUP={scram:'Scram',iso:'MSIV isolation',turb:'Turbine trip',fwp:'Feed pump trip'};
 const LOGN=60;

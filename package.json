@@ -1,6 +1,6 @@
 {
   "name": "pressuriser-sim",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "private": true,
   "description": "Interactive PWR pressuriser + RCS simulator and BWR vessel page (ES modules, no build step)",
   "type": "module",

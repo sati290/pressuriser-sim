@@ -93,7 +93,10 @@ test('feed pump speed in A holds the discharge-to-dome differential pressure, at
     let dps = 0, nd = 0;
     run(s, k, c, 1200, dt);
     run(s, k, c, 600, dt, x => { dps += (x.f.Pd - x.d.P) / 1e6; nd++; return true; });
-    near(MPa(s.d.P), 1.0, 0.03, `depressurised dt=${dt}`);
+    // the control valve shuts when the heat drops to 200 MW, the generator trips on reverse power, and from
+    // then the bypass holds the pressure with the turbine idling at speed
+    assert.equal(s.f.brk, false, `generator tripped dt=${dt}`);
+    near(MPa(s.d.P), 1.0, 0.04, `depressurised dt=${dt}`);
     near(dps / nd, 2.2, 0.1, `ΔP held on average dt=${dt}`);
     assert.ok(s.n < 0.6, `the pump slowed with the vessel pressure: ${s.n} dt=${dt}`);
     near(s.d.level, 14.3, 0.4, `level held dt=${dt}`); // was ±0.15: at 1 MPa the core voids swing with the feed's subcooling (steps 9–10)
