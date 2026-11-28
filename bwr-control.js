@@ -2,11 +2,12 @@
 // It reads the plant state (s.d, s.f) and the operator's settings, and produces the final command
 // that bwr-sim.js step() takes. An ES module; imports only common.js (not bwr-sim.js). See docs/bwr.md.
 //
-// Settings c are in panel units: heat MW; n % feed pump speed; fv % feed valve; ext % heater
+// Settings c are in panel units: rod % control rod lever withdrawn (manual only: BWRs have no automatic
+// rod control); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed pump speed; fv % feed valve; ext % heater
 // extraction; mk kg/s hotwell makeup (negative: reject); mv % main steam valve; srv array, true for each
 // SRV opened by hand; pset Pa; lset m; dpset Pa; auto {n,fv,mv,mk} booleans. Net heat, heater extraction
 // and the SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array}.
+// {rod 0–1, heat W (undefined unless c.heat is set), n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -76,7 +77,7 @@ const demands=(k,s,c,dt)=>{
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  return {heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
+  return {heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
 };
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
