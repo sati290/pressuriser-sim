@@ -79,3 +79,9 @@ const toIn=z=>(z-IZ)/INCH,fromIn=x=>IZ+x*INCH;
 // the downcomer and lower plenum, and those bubbles have further to go than the core's); illustrative
 const TAUF=2;
 export {CST,UAS,UAL,TDW,steelStep,INCH,IZ,LV,toIn,fromIn,TAUF};
+// Reactor water cleanup reject (a placeholder for the RWCU system, which is not modelled): a pumped line
+// that takes vessel water at up to RWMAX kg/s to the main condenser, so the level can be held while the
+// water swells on a heat-up. Opening u.rw 0–1, flow ∝ opening, no pump curve. Real RWCU rejects run at
+// some 5–15 kg/s; illustrative.
+const RWMAX=10;
+export {RWMAX};

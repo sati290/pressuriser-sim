@@ -43,7 +43,8 @@ const steamLine=(P,pc,v,Pl0=P)=>{
 // (choked); null if wide open would not pass it
 const cvPos=(w,P)=>{const Pl=Math.sqrt(P*P-RS0*w*w),f=w/(KT*Pl);return Pl>0&&f<=1?fcvInv(f):null};
 // valve travel: each moves toward its target at its stroke rate. u.trip is the hook for reactor
-// protection (step 11): trip.turbine shuts the stop valve, trip.msiv the MSIVs, whatever the switches.
+// protection (bwr-rps.js): trip.turbine shuts the stop valve, trip.msiv the MSIVs, trip.bypass the bypass
+// valve, whatever the switches and demands.
 // A switch command left undefined holds its valve where it is.
 const valveStep=(s,u,dt)=>{
   const mv=(x,t,up,dn)=>x+Math.min(Math.max(t-x,-dn*dt),up*dt),tr=u.trip||{};
@@ -51,7 +52,7 @@ const valveStep=(s,u,dt)=>{
   s.ms=s.ms.map((x,i)=>mv(x,msT[i],MSRATE,MSRATE));
   const svT=tr.turbine?0:u.sv==null?(s.sv>0.5?1:0):u.sv?1:0;s.sv=mv(s.sv,svT,SVOPEN,SVCLOSE);
   s.cv=mv(s.cv,Math.min(1,Math.max(0,u.cv||0)),CVRATE,CVRATE);
-  s.bp=mv(s.bp,Math.min(1,Math.max(0,u.bp||0)),BPRATE,BPRATE);
+  s.bp=mv(s.bp,tr.bypass?0:Math.min(1,Math.max(0,u.bp||0)),BPRATE,BPRATE);
 };
 // safety/relief valves (SRVs), discharging to the suppression pool at PB. Each valve has a spring
 // that opens it fully above its set pressure p (Pa abs) and recloses it BD below, and can also be

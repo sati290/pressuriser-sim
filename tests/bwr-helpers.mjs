@@ -1,7 +1,10 @@
 // Shared helpers for the BWR test files (not a test file itself).
 import assert from 'node:assert/strict';
 import * as common from '../common.js';
-import * as B from '../bwr-sim.js';
+import * as BS from '../bwr-sim.js';
+// The physics tests run the plant without reactor protection (init option rps false), so that a trip does not
+// change what they check; tests/bwr-rps.test.mjs turns it on with rps: true.
+const B = { ...BS, init: o => BS.init({ rps: false, ...o }) };
 import * as K from '../bwr-control.js';
 export { common, B, K };
 export const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, expected ${b} ± ${tol}`);

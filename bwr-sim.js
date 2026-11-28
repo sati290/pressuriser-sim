@@ -6,10 +6,12 @@
 //   bwr-condenser.js turbine stub, main condenser, circulating water, condenser air removal
 //   bwr-feed.js      hotwell, feed pump, feedwater heater, feed valve
 //   bwr-containment.js suppression pool
+//   bwr-rps.js       reactor protection: scram, isolation, turbine and feed pump trips (latched, logged)
 // Equations and constants are described in docs/bwr.md.
 import {sat,clamp,hLiq} from './common.js';
 import {V,H,A,Z,TAU,solve,derive,vesselInit} from './bwr-vessel.js';
-import {CST,UAS,UAL,TDW,steelStep,INCH,IZ,LV,toIn,fromIn,TAUF} from './bwr-vessel.js';
+import {CST,UAS,UAL,TDW,steelStep,INCH,IZ,LV,toIn,fromIn,TAUF,RWMAX} from './bwr-vessel.js';
+import {SP,MODES,TRIPS,GROUP,inHgVac,rpsInit,rpsCheck,rpsReset,rpsMode,bpBlock,rpsActive,groups} from './bwr-rps.js';
 import {MPOOL,APOOL,TP0,UAP,TSW,TPMAX,PLIM,poolStep,poolLevel} from './bwr-containment.js';
 import {QR,PR,TFR,WR,SRV,NV,PB,BD,subF,wSRV,srvStep} from './bwr-steam.js';
 import {DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,steamLine,cvPos,valveStep} from './bwr-steam.js';
@@ -32,10 +34,13 @@ const motiveP=s=>s.Pl??s.d.P;
 // outlet (default the hotwell temperature), hw hotwell fraction full (default 0.5), ext 0–1 extraction valve the
 // condenser starts steady with (default 1), vac false for a condenser open to atmosphere (full of air at
 // 0.1 MPa; default: under vacuum, air at its steady value with the SJAE in service), ts °C vessel steel (default
-// steady between water and drywell), tpool °C suppression pool (default 32), tau overrides}
+// steady between water and drywell), tpool °C suppression pool (default 32), mode switch 'shutdown' |
+// 'startup' | 'run' (default run at 6 MPa and above, else startup), rps false to run without protection
+// (tests of the bare physics), tau overrides}
 const init=o=>{
   const s={t:0,wcw:WCW,vb:0,ms:[o.ms??1,o.ms??1],sv:o.sv??1,cv:o.cv||0,bp:o.bp||0,fv:o.fv||0,n:o.n||0,Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
   vesselInit(s,o);
+  s.rps=rpsInit(o.mode??(o.P>=6e6?'run':'startup'),o.rps===false);
   s.Ts=o.ts!=null?o.ts+273.15:(UAS*s.d.Tl+UAL*TDW)/(UAS+UAL);s.Mbf=0;s.pool={M:MPOOL,T:o.tpool!=null?o.tpool+273.15:TP0};
   // condenser and hotwell start steady for the initial steam flow (turbine exhaust plus heater drains)
   const P=s.d.P,hg=sat(s.d.T).hg;let Tc=TCW+0.1,ht={ws:0,hd:0},sl=steamLine(P,PCD,s);
@@ -57,7 +62,7 @@ const init=o=>{
     n:s.n,fv:s.fv,ext:0,Tt:s.Th,pe:0,ps:0,ws:0,Pd:Pc,ret:0,Tret:Tc,mk:0,Mh:s.Mh,hw:s.Mh/HWM,Thw:Tc,
     Pc,Tc,wc:0,Qc:0,Tcw:TCW,wcw:WCW,Pgen:0,wx:0,hx:0,
     Tcwi:TCW,cwp:true,cwv:1,pa:pa0,ya:pa0/Pc,Ma,wsj:0,sj:vac,vp:false,vb:0,sjc:0,vpc:0,wlk:0,wrad:0,wvb:0,wain:0,waout:0,Vsj:0,Vvp:0,
-    Ts:s.Ts,Qs:0,Ql:0,Tp:s.pool.T,Mp:s.pool.M,Lp:0,Qpc:0,pc:false,lin:toIn(s.d.level)};
+    Ts:s.Ts,Qs:0,Ql:0,Tp:s.pool.T,Mp:s.pool.M,Lp:0,Qpc:0,pc:false,lin:toIn(s.d.level),wrw:0,trip:groups(s.rps)};
   return s;
 };
 // One step. u is the final command, SI: {heat W net heat into the water; n 0–1 feed pump speed;
@@ -70,7 +75,7 @@ const init=o=>{
 // steam valve open, vp mechanical vacuum pump running, vb vacuum breaker open (booleans)}. An absent cwp,
 // cwv, tcw or sj means the normal running line-up (pump on, valve open, 20 °C, SJAE in service); absent vp
 // and vb mean off and shut. These are also the hooks for protection: a CW pump trip is cwp false.
-// pc true: suppression pool cooling on.
+// pc true: suppression pool cooling on. rw 0–1 reactor water cleanup reject to the condenser.
 // After scram(s) the core heat is the decay curve and u.heat is ignored until reset(s).
 // Each command is clamped to its range; the valves move toward their demands at their stroke rates; each
 // SRV's spring opens it on pressure whatever the command. Feed flow follows from the pump, the valve and
@@ -80,7 +85,14 @@ const init=o=>{
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,tau=s.tau,pc0=s.f.Pc;
   const q=sat(d.T),hg=q.hg,hf0=q.hf,ug=q.ug,uf=q.uf; // sat() reuses one object: copy fields first
-  valveStep(s,u,dt);
+  // reactor protection on the start-of-step signals: the latched turbine trip and isolation shut their
+  // valves this step; the MSIV and stop valve position switches are read after the valves have moved,
+  // with the turbine first-stage pressure (∝ turbine flow) from before the step
+  const sg=rpsSignals(s);let pr=rpsCheck(s.rps,sg,s.t);
+  const ut=u.trip||{};
+  valveStep(s,{...u,trip:{turbine:ut.turbine||pr.turb,msiv:ut.msiv||pr.iso,bypass:ut.bypass||bpBlock(s.rps,pc0)}},dt);
+  pr=rpsCheck(s.rps,{...sg,ms:Math.min(...s.ms),sv:s.sv},s.t);
+  if(pr.scram&&!s.scram)scram(s,s.f.Q);
   // SRVs: spring on pressure (with blowdown), or opened by hand
   const {open,wsrv,nsrv}=srvStep(s.spr,u.srv||[],P);
   const Q=s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat||0;
@@ -88,7 +100,7 @@ const step=(s,u,dt)=>{
   const sl=steamLine(P,pc0,s,s.Pl),wst=sl.w;s.Pl=sl.Pl;
   // feedwater train: valve travel, pump and valve flow against the vessel pressure, hotwell, heater
   const ext=clamp(u.ext||0,0,1),mk=clamp(u.mk||0,-MKMAX,MKMAX);
-  s.n+=clamp(clamp(u.n||0,0,1)-s.n,-NRATE*dt,NRATE*dt);const n=s.n;
+  s.n+=clamp((pr.fwp?0:clamp(u.n||0,0,1))-s.n,-NRATE*dt,NRATE*dt);const n=s.n;
   s.fv+=clamp(clamp(u.fv||0,0,1)-s.fv,-FRATE*dt,FRATE*dt);
   const Tfw=s.Th,hfw=hLiq(Tfw,P);
   const fw=Math.min(fwFlow(n,s.fv,P,s.Mh,pc0),Math.max(0,s.Mh/dt)),Pd=pc0+Math.max(0,n*n*H0-KPU*fw*fw);
@@ -108,7 +120,9 @@ const step=(s,u,dt)=>{
   const wx=wt-ws,hx=wx>0?line(pc0):0,Pgen=wt>0?turbinePower(wt,hg,[{w:ws,h:ht.hx}],hx):0;
   // condenser: exhaust steam, heater drains, bypass steam and SJAE steam (both at the dome enthalpy) in,
   // condensate down to the hotwell
-  const cd=condense(s.cd,[[wx,hx],[ws,ht.hd],[wb,hg],[wsj,hg]],dt,{w:s.wcw,T:Tcwi},af);
+  // reactor water cleanup reject: vessel water to the condenser (it flashes there)
+  const wrw=Math.min(clamp(u.rw||0,0,1)*RWMAX,0.1*Math.max(0,d.Ml)/dt),hrw=hLiq(d.Tl,P);
+  const cd=condense(s.cd,[[wx,hx],[ws,ht.hd],[wb,hg],[wsj,hg],[wrw,hrw]],dt,{w:s.wcw,T:Tcwi},af);
   const hw=hotwellMix({M:s.Mh,T:s.Thw},[[cd.wl,sat(cd.Tc).hf],[mk,HMK],[-fw,0]],dt);
   s.Mh=hw.M;s.Thw=hw.T;
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
@@ -117,7 +131,7 @@ const step=(s,u,dt)=>{
   const st=steelStep(s.Ts,d.Tl,dt);s.Ts=st.Ts;
   // suppression pool: the SRV steam condenses in it
   const pl=poolStep(s.pool,wsrv*Math.min(1,mo/((wst+wsrv)*dt||1)),hg,!!u.pc,dt);s.pool={M:pl.M,T:pl.T};
-  let M=s.M+fw*dt-mo,U=s.U+fw*dt*hfw-mo*hg+(Q+st.Qw)*dt,Mv=Math.max(0,s.Mv-mo);
+  let M=s.M+(fw-wrw)*dt-mo,U=s.U+fw*dt*hfw-wrw*dt*hrw-mo*hg+(Q+st.Qw)*dt,Mv=Math.max(0,s.Mv-mo);
   // subcooled water condenses steam, relaxing towards saturation at the start-of-step steam temperature
   let mc=0;{const Ml=M-Mv,ul=(U-Mv*ug)/Ml;
     if(Mv>0&&ul<uf)mc=Math.min(Ml*(uf-ul)/(ug-uf)*(1-Math.exp(-dt/tau.c)),0.9*Mv);Mv-=mc}
@@ -138,12 +152,24 @@ const step=(s,u,dt)=>{
     Pc:cd.Pc,Tc:cd.Tc,wc:cd.wc,Qc:cd.Q,Tcw:cd.Tout,wcw:s.wcw,Pgen,wx,hx,
     Tcwi,cwp,cwv,pa:cd.pa,ya:cd.ya,Ma:s.cd.Ma,wsj,sj,vp,vb:s.vb,sjc:fsj*sjCap(Pm,pc0),vpc:vp?vpCap(pc0):0,
     wlk:af.wlk,wrad:af.wrad,wvb:af.wvb,wain:af.wi,waout:cd.wout,Vsj:af.Vsj,Vvp:af.Vvp,
-    Ts:s.Ts,Qs:st.Qw,Ql:st.Ql,Tp:pl.T,Mp:pl.M,Lp:poolLevel(pl.M),Qpc:pl.Qc,pc:!!u.pc,lin:toIn(s.d.level)};
+    Ts:s.Ts,Qs:st.Qw,Ql:st.Ql,Tp:pl.T,Mp:pl.M,Lp:poolLevel(pl.M),Qpc:pl.Qc,pc:!!u.pc,lin:toIn(s.d.level),wrw,hrw,trip:pr};
 };
 // scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
 // a second scram keeps the first; reset hands the heat back to the command
 const scram=(s,q=s.f.Q)=>{if(!s.scram)s.scram={t:s.t,P0:Math.max(0,q)}};
-const reset=s=>{s.scram=null};
+// Protection signals from the plant state at the start of a step: dome pressure, level in inches above
+// instrument zero, APRM (the core heat of the last step as a fraction of rated: no neutronics), MSIV and stop
+// valve positions, turbine first-stage pressure as the turbine flow fraction, header and condenser
+// pressures, main steam line flow fraction
+const rpsSignals=s=>({P:s.d.P,lin:toIn(s.d.level),aprm:Math.max(0,s.f.Q)/QR,ms:Math.min(...s.ms),sv:s.sv,
+  fsp:(s.f.wt||0)/WR,Pl:s.Pl,Pc:s.f.Pc,wst:(s.f.wst||0)/WR});
+// reset: the protection resets every trip whose signal has cleared; the scram resets once no scram trip is
+// left in, and the heat goes back to the command
+const reset=s=>{rpsReset(s.rps,rpsSignals(s),s.t);if(!groups(s.rps).scram)s.scram=null};
+// the reactor mode switch (Shutdown scrams)
+const setMode=(s,m)=>{rpsMode(s.rps,m,s.t);const pr=rpsCheck(s.rps,rpsSignals(s),s.t);if(pr.scram&&!s.scram)scram(s,s.f.Q)};
+// the operator's scram button: logged with the protection's events
+const manualScram=(s,q)=>{if(!s.scram)s.rps.log.push({t:s.t,text:'Manual scram'});scram(s,q)};
 // why the model must stop, or '' while the state is valid
 const fault=s=>{
   const d=s.d;
@@ -158,10 +184,10 @@ const fault=s=>{
 };
 // the condensate pump suction pressure the page reads for the shutoff-head message
 const PC=PCD;
-const API=7;
+const API=8;
 export {CST,UAS,UAL,TDW,INCH,IZ,LV,toIn,fromIn,TAUF,MPOOL,APOOL,TP0,UAP,TSW,TPMAX,PLIM,poolLevel};
 export {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,cwTarget,TAUCW,motiveP};
 export {API,V,H,A,Z,QR,PR,TFR,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PC,PCD,TTD,WR,PE,KXT,
   ETA,ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,turbinePower,condense,condSteady,
-  WTR,fwFlow,fwValve,heater,heaterT,heatBalance,subF,wSRV,decayFrac,init,step,scram,reset,fault,
+  WTR,fwFlow,fwValve,heater,heaterT,heatBalance,subF,wSRV,decayFrac,init,step,scram,reset,fault,rpsSignals,setMode,manualScram,SP,MODES,TRIPS,GROUP,inHgVac,rpsActive,RWMAX,
   DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,steamLine,cvPos};

@@ -6,10 +6,10 @@
 // extraction; mk kg/s hotwell makeup (negative: reject); cv % turbine control valve; bp % bypass valve;
 // ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop valve switches, true open); ll % load
 // limit (of rated steam flow); srv array, true for each SRV opened by hand; pset Pa; lset m; dpset Pa;
-// auto {n,fv,cv,bp,mk} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
+// rw % reactor water cleanup reject; auto {n,fv,cv,bp,mk,rw} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
 // condenser air removal (manual only). Net heat, heater extraction, the MSIV and stop valve switches and the
 // SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
+// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -44,12 +44,16 @@ const HSET=0.5,KH=1000,TIH=300;
 // turbine-driven feed pumps do, so the feed valve keeps a steady pressure drop to work with at any vessel
 // pressure. PI, 0.1 MPa of error moves the speed 0.15 %, integral time 10 s.
 const KN=1.5e-8,TIN=10;
+// reactor water cleanup reject: proportional only, opening from RDB above the level setpoint to fully open
+// RBAND higher. Its band sits above the feedwater controller's setpoint, so the two do not fight: the feed
+// valve closes as the level rises and the reject takes the swell of a heat-up.
+const RDB=0.1,RBAND=0.3;
 // controller memory: iP, iF, iX, iH integrators (steam flow demand, fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0}});
+const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0}});
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -94,13 +98,14 @@ const demands=(k,s,c,dt)=>{
   if(!A.n)k.iN=c.n/100;
   else{const I=k.iN+KN/TIN*eN*dt,v=KN*eN+I;if(!((v>1&&eN>0)||(v<0&&eN<0)))k.iN=I}
   k.iN=clamp(k.iN,0,1);const n=clamp(KN*eN+k.iN,0,1);
-  k.dem={D,cv,bp,fw,fv,mk,n};
+  const rw=clamp((d.level-c.lset-RDB)/RBAND,0,1);
+  k.dem={D,cv,bp,fw,fv,mk,n,rw};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
   const u={heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,
-    ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,srv:c.srv||[]};
+    ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[]};
   // circulating water and condenser air removal: manual only, passed through (absent: the plant's normal
   // line-up). cwp CW pump, sj SJAE motive steam, vp vacuum pump, vb vacuum breaker (booleans); cwv % CW
   // valve; tcw °C CW inlet temperature (an operator input standing for the river or tower).
@@ -111,4 +116,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN};
+export {init,demands,command,update,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND};
