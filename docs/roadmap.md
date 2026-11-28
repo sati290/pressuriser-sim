@@ -123,7 +123,7 @@ lift for the rest; MSIV closure isolates the condenser.
 **Decided:** bypass capacity about 25 % of rated steam (typical BWR/4; full-capacity bypass is the exception),
 so a turbine trip from full power still lifts SRVs.
 
-### 5. Condensate and feed train split
+### 5. Condensate and feed train split (done)
 **Models:** the lumped pump and single heater split into what the layout draws: condensate pump
 (hotwell suction, NPSH from hotwell level and Pc), condensate polisher (pressure drop), LP heater
 (extraction from the turbine stub's LP end), feed pump (suction from the condensate header), HP heater
@@ -138,6 +138,15 @@ feed pump; the drive steam itself is not modelled yet).
 
 **Open:** keep one feed pump driven at variable speed (BWR/4 turbine-driven) or motor-driven with a
 startup low-flow valve? Booster pump as part of the condensate pump?
+
+**Done (decided in the step):** one turbine-driven variable-speed feed pump, as BWR/4 (drive steam not
+modelled), with a run/stop switch; no startup low-flow valve (the feed valve throttles to zero and the
+condensate pump alone feeds through the idle feed pump at low vessel pressure). The booster pump is part
+of the condensate pump (one constant-speed pump, 2.6 MPa shutoff). The train is solved for three node
+pressures (`network()`, nested bisection), not one flow, because the min-flow line branches off.
+Illustrative, not sourced: pump curves (split so the rated point of step 1 is unchanged), NPSH required
+(2 m at rated) and the 1 m pump pit, the 0.7 MPa/5 s low-suction trip, polisher and LP heater drops, the
+0.28 MPa LP extraction. Gross output of the stub with two stages: 1046 MWe (920 with one).
 
 ### 6. Heater drains
 **Models:** each heater's shell level and its drain path: HP heater drains cascade to the LP heater, LP
@@ -283,6 +292,7 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 - Recirculation pump on an MG set.
 - bwr-sim.js split into per-system modules at step 1.
 
-Still open: the feed pump drive at step 5 (turbine-driven variable speed, as now, or motor-driven with a
-startup low-flow valve), and the sourced numbers named under each step (condenser UA, kinetics
+- Feed pump at step 5: one turbine-driven variable-speed pump, no startup low-flow valve.
+
+Still open: the sourced numbers named under each step (condenser UA, kinetics
 coefficients, trip setpoints).

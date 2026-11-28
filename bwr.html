@@ -120,6 +120,11 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 button#scram{border-color:var(--warn);color:var(--warn);font-weight:600}
 button#scram[aria-pressed=true]{background:var(--warn);color:var(--bg);border-color:var(--warn)}
 button:disabled{opacity:.45;cursor:not-allowed}
+/* pump run switches: filled = running; a tripped pump shows its trip in the warning colour */
+.pumps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pumps button{font-size:14px;min-height:40px;padding:2px 8px;line-height:1.2}
+.pumps button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pumps button.trip{border-color:var(--warn);color:var(--warn);background:var(--panel)}
 /* SRVs: one toggle per valve in a single row; filled = opened by hand, orange ring = open on its spring */
 .srvh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .srvh output{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -143,7 +148,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <header class="band"><div class="wrap">
   <div>
     <h1>BWR reactor vessel simulator</h1>
-    <p>A boiling-water reactor pressure vessel with its main steam line, safety/relief valves, a turbine stub, the condenser and the feedwater train: hotwell, feed pump, heater and feed valve. Heat it up from 100 °C, run it at power, isolate it, and watch pressure, level and the core voids interact. <a class="nav" href="index.html">PWR pressuriser simulator</a></p>
+    <p>A boiling-water reactor pressure vessel with its main steam line, safety/relief valves, a turbine stub, the condenser and the condensate and feed train: hotwell, condensate pump, polisher, LP heater, feed pump, HP heater and feed valve. Heat it up from 100 °C, run it at power, isolate it, and watch pressure, level and the core voids interact. <a class="nav" href="index.html">PWR pressuriser simulator</a></p>
   </div>
   <div class="bar">
     <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
@@ -175,7 +180,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <h2>Events</h2>
       <div class="btns">
         <button id="scClose" title="Put the steam valve in M and shut it; it strokes closed over 5 s.">Close main steam valve</button>
-        <button id="scFwh" title="Throttle the extraction valve to 20 %, as when part of the heater train is lost: at rated power the feed reaches the vessel about 55 K colder over a few minutes.">Lose feedwater heating</button>
+        <button id="scFwh" title="Throttle both extraction valves to 20 %, as when the heater train is lost: at rated power the feed reaches the vessel about 70 K colder over a few minutes.">Lose feedwater heating</button>
       </div>
     </div>
     <div class="grp">
@@ -187,8 +192,15 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <h2 class="srvh">Feedwater <output id="fwsum"></output></h2>
       <div class="row"><label for="n">Feed pump speed <output id="no"></output></label><input id="n" type="range" min="0" max="100" step="0.1" value="0"></div>
       <div class="row"><label for="fv">Feed valve <output id="fvo"></output></label><input id="fv" type="range" min="0" max="100" step="0.01" value="0"></div>
-      <div class="row"><label for="ext">Heater extraction valve <output id="exto"></output></label><input id="ext" type="range" min="0" max="100" step="1" value="0"></div>
+      <div class="row"><label for="ext">HP heater extraction valve <output id="exto"></output></label><input id="ext" type="range" min="0" max="100" step="1" value="0"></div>
       <div class="row"><label for="mk">Hotwell makeup <output id="mko"></output></label><input id="mk" type="range" min="-100" max="100" step="0.1" value="0"></div>
+    </div>
+    <div class="grp">
+      <h2>Condensate and feed pumps</h2>
+      <p id="cpsum" role="status"></p>
+      <div class="pumps"><button id="cp" type="button" aria-pressed="false" title="Condensate pump: constant-speed motor, start or stop. It draws from the hotwell and pushes the condensate through the polisher and the LP heater to the feed pump suction (2.6 MPa at shutoff).">Condensate pump</button><button id="fp" type="button" aria-pressed="false" title="Feed pump run switch. The pump trips on low suction pressure (below 0.7 MPa for 5 s); press twice (stop, run) to reset a trip. Its speed is the slider in the feedwater group.">Feed pump</button></div>
+      <div class="row"><label for="exl">LP heater extraction valve <output id="exlo"></output></label><input id="exl" type="range" min="0" max="100" step="1" value="0"></div>
+      <div class="row"><label for="rv">Feed pump min-flow valve <output id="rvo"></output></label><input id="rv" type="range" min="0" max="100" step="1" value="0"></div>
     </div>
     <div class="grp">
       <h2>Main steam line</h2>
@@ -213,7 +225,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <section class="band wrap" style="padding-top:0;padding-bottom:0">
   <div class="card assists">
     <div class="chead"><h2>Automatic control</h2>
-      <p>The feed pump speed, the feed valve, the hotwell makeup and the steam valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. Net heat, the extraction valve and the safety/relief valves are always manual; the valves' springs open them on pressure whatever you do. Nothing switches between M and A by itself.</p></div>
+      <p>The feed pump speed, the feed valve, the feed pump's minimum-flow valve, the hotwell makeup and the steam valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. Net heat, the two extraction valves, the pump run switches and the safety/relief valves are always manual; the valves' springs open them on pressure whatever you do. Nothing switches between M and A by itself.</p></div>
     <div class="agrid">
       <div class="grp">
         <h3>Pressure regulator (steam valve)</h3>
@@ -231,8 +243,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <p>Proportional-integral on the pump discharge pressure minus dome pressure, as turbine-driven feed pumps are run: the speed follows the vessel pressure, so the feed valve always has about the same pressure drop to work with (2.2 MPa at rated, 0.3 MPa of it in the heater and piping). 0.1 MPa of error moves the speed 0.15 %, integral 10 s. The speed changes at most 10 % per second.</p>
       </div>
       <div class="grp">
+        <h3>Feed pump minimum flow</h3>
+        <p>The recirculation valve from the feed pump discharge back to the condenser opens in proportion as the flow to the vessel falls below 25 % of rated (447 kg/s), fully at no forward flow, so the pump never runs dead-headed. Proportional only.</p>
+      </div>
+      <div class="grp">
         <h3>Hotwell level (makeup)</h3>
-        <p>Makeup from the condensate storage tank, or reject to it when negative, holds the hotwell half full: feed flow minus condensate return, plus a proportional-integral term on the hotwell level (10 % low asks for the full 100 kg/s, integral 300 s).</p>
+        <p>Makeup from the condensate storage tank, or reject to it when negative, holds the hotwell half full: what the condensate pump draws (feed plus minimum-flow recirculation) minus the condensate return, plus a proportional-integral term on the hotwell level (10 % low asks for the full 100 kg/s, integral 300 s).</p>
       </div>
     </div>
     <p class="astat" id="astat" role="status"></p>
@@ -243,18 +259,20 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="notes card">
     <div><h2>Things to try</h2>
       <ol>
-        <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level low at 11.5 m, every valve shut, the feed pump stopped and 30 MW of heat. Every control starts in A except the feed valve, which starts in M and shut: the level controller can only add water, and the water expands about 3 m on the way to 7 MPa, so in A it would fill the vessel to the steam nozzle. Open it by hand once the steam valve is passing steam, or the level boils down to the fuel in about 4 hours; switch it to A once the level has stopped swelling. The water heats at about 80 °C per hour, faster than the usual 55 °C/h limit, so turn the heat down to stay inside it. Pressure follows the saturation curve, and the level rises as the water expands: about 3 m on the way to 7 MPa. The steam valve in A opens when pressure reaches 7 MPa and holds it there. The pump speed in A runs the pump just fast enough to keep its discharge 2.2 MPa above the vessel, so the feed valve has a sensible pressure drop to work with. At full speed it would push over 4000 kg/s into a vessel at atmospheric pressure. The pump develops at most 10 MPa at full speed (6.4 MPa at 80 %), so near 7 MPa it needs more than 84 % speed to deliver anything.</li>
+        <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level low at 11.5 m, every valve shut, the feed pump stopped and 30 MW of heat. Every control starts in A except the feed valve, which starts in M and shut: the level controller can only add water, and the water expands about 3 m on the way to 7 MPa, so in A it would fill the vessel to the steam nozzle. Open it by hand once the steam valve is passing steam, or the level boils down to the fuel in about 4 hours; switch it to A once the level has stopped swelling. The water heats at about 80 °C per hour, faster than the usual 55 °C/h limit, so turn the heat down to stay inside it. Pressure follows the saturation curve, and the level rises as the water expands: about 3 m on the way to 7 MPa. The steam valve in A opens when pressure reaches 7 MPa and holds it there. The pump speed in A runs the pump just fast enough to keep its discharge 2.2 MPa above the vessel, so the feed valve has a sensible pressure drop to work with. Below about 2.5 MPa the condensate pump alone pushes water through the idle feed pump, so the speed sits at zero until the vessel pressure rises; the minimum-flow valve in A recirculates about 240 kg/s to the condenser while nothing goes to the vessel. The two pumps together develop at most 10 MPa at full feed pump speed (7.3 MPa at 80 %: the condensate pump's 2.6 MPa does not change with the feed pump speed), so near 7 MPa the feed pump needs more than about 77 % speed to deliver anything.</li>
         <li><b>Rated power.</b> Every control starts in A, balanced: pump at full speed, feed valve 75 % open, heater at 216 °C. Change the net heat and watch the controllers follow. Less heat means less steam made in the core, fewer voids and a lower level (shrink); the feedwater controller sees the level fall and the steam flow drop at the same time. Less steam also means less extraction steam, so the feed arrives colder: at 2000 MW about 188 °C.</li>
         <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: all eleven safety/relief valves open on their springs at 7.75 MPa pass about 1130 kg/s, less than the 1790 kg/s the core makes, so pressure keeps climbing. Within about 30 s it passes the feed pump's 10 MPa shutoff head: the feed valve opens wide in A, but no water gets in, and the core uncovers after about 80 s. Press <b>Scram</b> as the valve closes: only the lowest bank of four lifts, pressure peaks just above 7.6 MPa, and they cycle as in a real isolation. With no steam to the turbine there is no extraction steam, so the feed cools to the hotwell's temperature, which falls towards the circulating water's as the condenser unloads and the level controller overshoots by about 1.2 m before it settles.</li>
         <li><b>Isolation at 200 MW</b> (about 6 % of rated, decay heat shortly after a scram). The steam valve starts in M and closes; everything else is in A. and the four valves set lowest (7.62 MPa) lift on their springs and cycle, about once every 40 s. Each lift drops the pressure 0.25 MPa and blows inventory to the suppression pool. The feed valve in A keeps the level, and makeup in A tops up the hotwell for the steam that went to the pool instead of back to it; switch makeup to M at zero and watch the hotwell drain. Open one or two valves by hand to depressurise steadily, as for a cooldown: one valve at 20 MW takes the vessel from 7 to about 1.6 MPa in half an hour.</li>
-        <li><b>Lose feedwater heating</b> at rated power with everything in A. The extraction valve throttles to 20 %, the heater shell pressure drops, and the feed reaches the vessel about 35 K colder within a minute, 54 K colder after a few. Colder feedwater takes more heat to bring to saturation, so about 12 % less steam is made and the voids shrink while the controllers follow. With everything in M the steam valve passes the old steam flow, so pressure falls, the pump delivers more against the lower pressure, and the vessel floods in under 3 minutes. In a real BWR the colder water also raises reactor power through void feedback; here the heat is what you set.</li>
+        <li><b>Lose feedwater heating</b> at rated power with everything in A. Both extraction valves throttle to 20 %, the heater shell pressures drop, and the feed reaches the vessel about 40 K colder within a minute, 70 K colder after a few. Colder feedwater takes more heat to bring to saturation, so about 12 % less steam is made and the voids shrink while the controllers follow. With everything in M the steam valve passes the old steam flow, so pressure falls, the pump delivers more against the lower pressure, and the vessel floods in under 3 minutes. In a real BWR the colder water also raises reactor power through void feedback; here the heat is what you set.</li>
+        <li><b>Stop the condensate pump</b> at rated power. The feed pump loses its suction pressure: within a second it is below the 0.7 MPa trip setting, the pump starts to cavitate and delivers almost nothing, and after 5 s it trips. Start the condensate pump again: the feed pump stays tripped until you switch it to stop and back to run, and its speed then comes back at 10 % per second. Without feed the level falls about 0.5 m every 5 s, so be quick.</li>
         <li><b>Depressurise.</b> At hot standby open the steam valve wide by hand. The water flashes as the pressure falls, the voids grow and the level rises at first, before the lost inventory brings it down.</li>
       </ol></div>
     <div><h2>What the model solves</h2>
       <p>The vessel (600 m³ of free volume, 21 m tall) holds water and steam at one pressure. It tracks the total mass and energy, and the steam mass. Each step it finds the pressure at which the water and the saturated steam exactly fill the vessel. Water hotter than saturation at that pressure flashes at once, so a falling pressure makes steam throughout the water. Water below saturation, after cold feedwater or cooling, condenses steam at a finite rate (10 s time constant), so pressure drops after a cold-water injection.</p>
       <p>The steam the water makes passes through it as bubbles before it reaches the dome. These voids take up volume inside the two-phase mixture, so they raise the level without changing the pressure. They clear with a 0.7 s time constant, sized to give about 35 m³ of voids, about 1.2 m of swell, at rated power. The level shown is the height of water plus voids over the vessel's mean cross-section; the recorder also shows the collapsed level, water alone.</p>
       <p>Net heat goes into the water: core power or decay heat minus cleanup and shutdown cooling, with the vessel's own heat losses included. Steam leaves through the main steam line and the safety/relief valves at saturated-steam enthalpy; feedwater enters as compressed liquid at the heater outlet temperature.</p>
-      <p>The feedwater train is a hotwell, one pump, one heater and the feed valve. The flow is where the pump's pressure (10 MPa at full speed, falling with flow and with the square of speed) equals the vessel pressure plus the drops in the heater, the piping and the valve, so the same valve opening passes more water when the vessel pressure falls. The heater stands for the whole heater train: a shell in which steam extracted from the turbine condenses on the feed tubes. The extraction pressure rises in proportion to the main steam flow (2.4 MPa at rated). The extraction valve's opening sets how much steam reaches the shell, and so the shell pressure; the feed leaves 3 K below the shell's saturation temperature, 216 °C at rated with the valve open. With no steam to the turbine there is no heating, and the feed comes in at the hotwell temperature.</p></div>
+      <p>The condensate and feed train: the condensate pump draws from the hotwell and pushes the water through the polisher and the LP heater to the feed pump, which raises it to the vessel through the HP heater and the feed valve; a minimum-flow line takes water from the feed pump discharge back to the condenser. The pipes hold no water, so each step the model solves the whole train at once: the pressures between the pumps are where every pump passes what the lines after it take. The condensate pump (constant speed, 2.6 MPa at shutoff) and the feed pump (variable speed, 7.4 MPa more at full speed) develop at most 10 MPa together, so the same feed valve opening passes more water when the vessel pressure falls. The condensate pump needs net positive suction head: the hotwell level plus a 1 m pit over the vapour pressure, 3 m at half full against 2 m needed at rated flow, so as the hotwell runs low it cavitates and loses head.</p>
+      <p>Two heaters, each a shell in which steam extracted from the turbine condenses on the feed tubes. Each extraction pressure rises in proportion to the main steam flow: 0.28 MPa for the LP heater, 2.4 MPa for the HP heater at rated. Each extraction valve's opening sets how much steam reaches its shell, and so the shell pressure; the feed leaves 3 K below the shell's saturation temperature, 126 °C from the LP heater and 216 °C from the HP heater at rated. With no steam to the turbine there is no heating, and the feed comes in at the hotwell temperature.</p></div>
     <div><h2>Assumptions and limits</h2>
       <ul>
         <li>No neutronics: power is the net heat you set and does not respond to voids, pressure or feedwater temperature. Scram is a button only: nothing trips it automatically (real plants scram on valve closure, high pressure, low level). After a scram the heat follows a fixed curve: the fission power falls with the rods in (a prompt drop, then 10 s and 80 s delayed-neutron tails) and decay heat of 6.5 % falls as (1 + t)^−0.2, about 7 % of the pre-scram heat at 10 s, 3.3 % at 1 min, 1.3 % at 1 h, assuming long operation at that heat. No recirculation pumps or flow control, no jet pumps. The voids clear at the same rate at every power and pressure; in a real core they depend on recirculation flow, and the bubbles from bulk flashing in a depressurisation rise more slowly, so swell on depressurisation is underestimated.</li>
@@ -262,11 +280,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
         <li>Level is the volume of water and voids over a uniform cross-section of 28.6 m², from the inside bottom of the vessel: top of active fuel 9.3 m, normal level 14.3 m, main steam nozzle 16.5 m. Real vessels measure level in the downcomer, against a reference leg. The model stops if the level falls to the top of the fuel or reaches the steam nozzle.</li>
         <li>The main steam valve stands for the main steam isolation valves together with the turbine control and bypass valves: 2000 kg/s fully open at 7.0 MPa, in proportion to pressure (choked), into the condenser. It strokes at most 20 % per second. On the mimic it sits at the turbine control valve.</li>
-        <li>Turbine stub: there is no turbine model yet. The steam expands along one fixed line from the throttle to the condenser pressure with an isentropic efficiency of 0.85, the heater's extraction steam leaving on the way, and the gross output is that work times 0.985. No moisture separator reheater, no shaft speed or stage pressures. With one heater stage drawing 46 % of the steam at 2.4 MPa the output is about 920 MWe at rated, lower than the 1100 MWe of a real plant with several heater stages and reheat.</li>
+        <li>Turbine stub: there is no turbine model yet. The steam expands along one fixed line from the throttle to the condenser pressure with an isentropic efficiency of 0.85, the heater's extraction steam leaving on the way, and the gross output is that work times 0.985. No moisture separator reheater, no shaft speed or stage pressures. With two heater stages (about 420 kg/s at 2.4 MPa and 375 kg/s at 0.28 MPa) the output is about 1050 MWe at rated, still below the 1100 MWe of a real plant with five or six stages and reheat.</li>
         <li>Condenser: one steam space of 4000 m³ over the hotwell, saturated at its own temperature. The exhaust and the heater drains flash or condense into it, and the tube bundle condenses steam at a rate set by the circulating water: 38 m³/s at 20 °C, fixed for now, through a bundle sized (not sourced) for about 7 kPa at rated. The condensate falls into the hotwell at the shell temperature, so the hotwell and the feed pump suction follow the load: 39 °C at rated, colder at low load. No air in the shell yet. Above 0.135 MPa the LP turbine exhaust diaphragms would blow, and the model stops.</li>
         <li>Safety/relief valves: eleven, each with a spring set pressure and a rated capacity from a GE BWR/4 training lesson plan: four at 1090 psig (7.62 MPa abs) rated 800,000 lb/h (101 kg/s), four at 1100 psig (7.69 MPa) 808,000 lb/h, three at 1110 psig (7.75 MPa) 815,000 lb/h. Hover a valve's button for its opening pressure and capacity. A spring opens its valve fully above the set pressure and recloses it 0.25 MPa lower; that blowdown is an illustrative figure, not from the source. Flow scales in proportion to pressure from the rated capacity, into a suppression pool at 0.1 MPa that does not heat up. Opening by hand stands for the valve's relief (pneumatic) mode; there is no automatic relief logic, no low-low set and no automatic depressurisation system.</li>
-        <li>Feedwater: the hotwell is the water under the condenser; it changes with the condensate, makeup, feed, and steam lost through the safety/relief valves. It holds 600 t; makeup from the condensate storage tank, or reject to it, is up to 100 kg/s. The condensate, booster and feed pumps are one pump with an illustrative curve (10 MPa shutoff at full speed), no trips, no minimum-flow line and no startup valve; below 5 % hotwell it loses suction gradually. One heater stage stands for the train, with one throttling valve on its extraction line; real plants have several low- and high-pressure stages whose extraction lines carry only isolation and non-return valves. The outlet follows with a 60 s lag. The heater drains go to the condenser, which flashes them. The cleanup (reject) flow is not modelled, so there is no way to drain water during heat-up other than the valves.</li>
-        <li>Plant layout: the mimic draws the whole plant as a draft. Solid parts are modelled; dashed grey parts (containment, recirculation pump and jet pump, MSIVs, stop and bypass valves, moisture separator reheater, circulating water, air ejector and its motive steam, vacuum pump, condensate pump, polisher, LP heater) are drawn only and do nothing yet. The main steam valve is drawn as the turbine control valve; the heater's extraction is drawn from the HP turbine. The HP and LP turbines and the generator are drawn solid for the turbine stub.</li>
+        <li>Feedwater: the hotwell is the water under the condenser; it changes with the condensate, makeup, feed, and steam lost through the safety/relief valves. It holds 600 t; makeup from the condensate storage tank, or reject to it, is up to 100 kg/s. One condensate pump (standing for the condensate and booster pumps; 2.6 MPa shutoff, constant speed) and one turbine-driven feed pump (variable speed, 7.4 MPa more at full speed; its drive steam is not modelled), with illustrative curves; real plants have three of each. The condensate pump loses head as its NPSH runs out (required 2 m at rated flow, rising with the square of the flow; available from the hotwell level, a 1 m pit and the hotwell's subcooling), and below 2 % hotwell its suction uncovers. The feed pump trips on suction pressure below 0.7 MPa for 5 s (illustrative setting), and cavitates if its suction would fall below the vapour pressure. The polisher is a pressure drop only. Minimum-flow valve sized for 25 % of rated flow; no startup low-flow valve (the feed valve throttles down to zero). Two heater stages (LP and HP) stand for the train, each with one throttling valve on its extraction line; real plants have five or six stages whose extraction lines carry only isolation and non-return valves. The feed pump's own heating of the water is ignored. The outlet follows with a 60 s lag. The heater drains go to the condenser, which flashes them. The cleanup (reject) flow is not modelled, so there is no way to drain water during heat-up other than the valves.</li>
+        <li>Plant layout: the mimic draws the whole plant as a draft. Solid parts are modelled; dashed grey parts (containment, recirculation pump and jet pump, MSIVs, stop and bypass valves, moisture separator reheater, circulating water, air ejector and its motive steam, vacuum pump) are drawn only and do nothing yet. The main steam valve is drawn as the turbine control valve; the HP heater's extraction is drawn from the HP turbine and the LP heater's from the LP turbine. The HP and LP turbines and the generator are drawn solid for the turbine stub.</li>
         <li>No vessel or internals heat capacity: the steel would slow heat-up and pressure changes. Generic numbers for a large BWR (about 3300 MW thermal); not any specific plant. All pressures are absolute.</li>
       </ul></div>
   </div>
@@ -288,26 +306,26 @@ import {sat,Tsat,clamp,hLiq} from './common.js';
 import * as BWRSim from './bwr-sim.js';
 import * as Ctl from './bwr-control.js';
 import {VERSION} from './version.js';
-const {init,step,fault,Z,H,NV,WMS,SRV,BD,THW,H0,PC,heatBalance,fwValve}=BWRSim;
+const {init,step,fault,Z,H,NV,WMS,SRV,BD,THW,H0,PC,heatBalance,fwValve,shutoff,PLO,TLO,WMIN}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
 const SIM_API=6,simStale=BWRSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
-const ids=['heat','n','fv','ext','mk','mv','pset','lset','dpset'];
+const ids=['heat','n','fv','ext','mk','mv','pset','lset','dpset','exl','rv'];
 // sliders with an M/A switch → key in ctl.auto
-const AK={n:'n',fv:'fv',mk:'mk',mv:'mv'},auto={n:false,fv:false,mk:false,mv:false};
+const AK={n:'n',fv:'fv',mk:'mk',mv:'mv',rv:'rv'},auto={n:false,fv:false,mk:false,mv:false,rv:false};
 const pct=v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut';
-const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',n:v=>+v?(+v).toFixed(1)+' %':'stopped',fv:pct,ext:v=>+v?Math.round(v)+' %':'shut',
+const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',n:v=>(+v).toFixed(1)+' %',fv:pct,ext:v=>+v?Math.round(v)+' %':'shut',
   mk:v=>Math.abs(v)<0.05?'0 kg/s':(v>0?'+':'−')+Math.abs(v).toFixed(Math.abs(v)<10?1:0)+' kg/s',mv:pct,
-  pset:v=>(+v).toFixed(2)+' MPa',dpset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m'};
+  pset:v=>(+v).toFixed(2)+' MPa',dpset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m',exl:v=>+v?Math.round(v)+' %':'shut',rv:v=>+v?Math.round(v)+' %':'shut'};
 // SRVs opened by hand (ctl.srv, passed through to the plant); the springs act in the plant
-const srvMan=Array(NV).fill(false),ctl={srv:srvMan};
+const srvMan=Array(NV).fill(false),ctl={srv:srvMan,cp:true,fp:true};
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
   ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
   ctl.pset*=1e6;ctl.dpset*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider; each press snaps to the next multiple of the step, hold to repeat
-const bump={heat:5,n:1,fv:0.5,ext:5,mk:5,mv:0.5,pset:0.1,lset:0.1,dpset:0.1};
+const bump={heat:5,n:1,fv:0.5,ext:5,mk:5,mv:0.5,pset:0.1,lset:0.1,dpset:0.1,exl:5,rv:5};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
@@ -342,17 +360,17 @@ const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
   for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
 const toggle=()=>{running=!running;showSpeed()};
 $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
-const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else $(k).value=o[k]}readCtl()};
+const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='cp'||k==='fp')ctl[k]=o[k];else $(k).value=o[k]}readCtl()};
 // scenarios set the plant state, put every control in A and close every SRV
-const MAN={auto:{n:true,fv:true,mk:true,mv:true}};
+const MAN={auto:{n:true,fv:true,mk:true,mv:true,rv:true},cp:true,fp:true};
 const start=(st,cfg)=>{srvMan.fill(false);setC({...MAN,...cfg});s=init(st);cs=Ctl.init(ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 // at power: steam flow and feed temperature from the heat balance with the heaters in, pump at full
 // speed, feed valve where it passes that flow
 const atPower=(Q,cfg)=>{const {W,Tfw}=heatBalance(Q*1e6,7e6,1),fv=fwValve(W,1,7e6)*100;
-  start({P:7e6,L:14.3,gen:W,mv:W/WMS,fv:fv/100,n:1,tfw:Tfw-273.15},{heat:Q,n:100,fv:+fv.toFixed(2),ext:100,mk:0,mv:+(W/WMS*100).toFixed(2),pset:7,lset:14.3,dpset:2.2,...cfg})};
+  start({P:7e6,L:14.3,gen:W,mv:W/WMS,fv:fv/100,n:1,tfw:Tfw-273.15},{heat:Q,n:100,fv:+fv.toFixed(2),ext:100,exl:100,rv:0,mk:0,mv:+(W/WMS*100).toFixed(2),pset:7,lset:14.3,dpset:2.2,...cfg})};
 // startup: the feed valve stays in M and shut, because the water expands about 3 m on the way to
 // 7 MPa and the level controller (which can only add water) would fill the vessel to the steam nozzle
-$('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,n:0,fv:0,ext:0,mk:0,mv:0,pset:7,lset:14.3,dpset:2.2,win:21600,auto:{n:true,fv:false,mk:true,mv:true}});
+$('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,n:0,fv:0,ext:0,exl:0,rv:0,mk:0,mv:0,pset:7,lset:14.3,dpset:2.2,win:21600,auto:{n:true,fv:false,mk:true,mv:true,rv:true}});
 $('scHot').onclick=()=>atPower(20,{win:3600});
 $('scRated').onclick=()=>atPower(3293,{win:600});
 $('scIso').onclick=()=>{atPower(200,{win:3600,mv:0});setC({auto:{mv:false}})};
@@ -364,7 +382,9 @@ const MPa2=p=>(p/1e6).toFixed(3);
 const srvTitle=i=>`SRV ${i+1}: opens at ${MPa2(SRV[i].p)} MPa, ${SRV[i].w.toFixed(1)} kg/s`;
 const srvB=SRV.map((v,i)=>{const b=document.createElement('button');b.type='button';b.textContent=i+1;b.setAttribute('aria-pressed','false');b.title=srvTitle(i);
   b.onclick=()=>{srvMan[i]=!srvMan[i];if(s)syncAuto()};$('srvs').append(b);return b});
-$('scFwh').onclick=()=>{setC({ext:Math.min(ctl.ext,20)})};
+$('scFwh').onclick=()=>{setC({ext:Math.min(ctl.ext,20),exl:Math.min(ctl.exl,20)})};
+// pump run switches: plain toggles (a tripped feed pump resets when its switch goes to stop)
+for(const k of ['cp','fp'])$(k).onclick=()=>{ctl[k]=!ctl[k];if(s)syncAuto()};
 
 const FAULT={'':'',range:'The vessel state left the range of the model.',
   uncovered:'The level has fallen to the top of the fuel. The model has no fuel temperatures, so it cannot follow a core uncovery.',
@@ -391,7 +411,7 @@ const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[his
 const fmtT=t=>t<120?`${t.toFixed(0)} s`:t<7200?`${(t/60).toFixed(0)} min`:`${(t/3600).toFixed(1)} h`;
 const syncAuto=()=>{
   const d=s.d,A=ctl.auto,D=cs.dem;
-  const dv={n:D.n*100,fv:D.fv*100,mk:D.mk,mv:D.mv*100},dtx={n:v=>v.toFixed(1),fv:v=>v.toFixed(1),mk:v=>(Math.round(v)||0).toFixed(0),mv:v=>v.toFixed(1)};
+  const dv={n:D.n*100,fv:D.fv*100,mk:D.mk,mv:D.mv*100,rv:D.rv*100},dtx={n:v=>v.toFixed(1),fv:v=>v.toFixed(1),mk:v=>(Math.round(v)||0).toFixed(0),mv:v=>v.toFixed(1),rv:v=>v.toFixed(0)};
   for(const k in AK){
     const on=A[AK[k]],el=$(k),v=dv[k],m=$(k+'m');
     el.disabled=$(k+'Dn').disabled=$(k+'Up').disabled=on;
@@ -408,15 +428,23 @@ const syncAuto=()=>{
   {const f=s.f;srvB.forEach((b,i)=>{const spr=!!(f.spr&&f.spr[i]);b.setAttribute('aria-pressed',String(srvMan[i]));b.classList.toggle('spr',spr);});
    $('srvo').textContent=f.nsrv?`${f.nsrv} open · ${f.wsrv.toFixed(0)} kg/s`:'all shut'}
   {const f=s.f;$('fwsum').textContent=`${f.fw.toFixed(0)} kg/s · ${(f.Tfw-273.15).toFixed(0)} °C`}
-  let m='',bad=false;const fS=s.f,shut=s.n>0.001&&s.n**2*H0+fS.Pc<d.P;
+  // pump switches: pressed = running; a tripped feed pump in the warning colour until its switch is cycled
+  {const f=s.f;$('cp').setAttribute('aria-pressed',String(ctl.cp));$('cp').textContent=ctl.cp?'Condensate pump running':'Condensate pump stopped';
+   $('fp').setAttribute('aria-pressed',String(ctl.fp&&!s.fpt));$('fp').classList.toggle('trip',!!s.fpt);
+   $('fp').textContent=s.fpt?'Feed pump tripped':ctl.fp?'Feed pump run':'Feed pump stopped';
+   $('cpsum').textContent=`Condensate ${f.wcp.toFixed(0)} kg/s · feed pump suction ${(f.Ps/1e6).toFixed(2)} MPa`+(f.wr>0.5?` · min-flow ${f.wr.toFixed(0)} kg/s`:'')}
+  let m='',bad=false;const fS=s.f,shut=shutoff(s.n,fS.Pc,s.Mh)<d.P;
   const nspr=(s.f.spr||[]).filter(x=>x).length;
   if(nspr){m=`${nspr} safety/relief valve${nspr>1?'s':''} open on ${nspr>1?'their springs':'its spring'}; each recloses ${(BD/1e6).toFixed(2)} MPa below its set pressure.`;bad=true}
-  else if(fS.hw<0.05){m=`Hotwell ${(fS.hw*100).toFixed(1)} % full: the feed pump is losing suction. Add makeup.`;bad=true}
-  else if(shut&&s.fv>0.001){m=`The feed pump at ${(s.n*100).toFixed(0)} % speed develops at most ${((s.n**2*H0+fS.Pc)/1e6).toFixed(2)} MPa, below vessel pressure: no feed flow whatever the valve does.`;bad=true}
+  else if(s.fpt){m=`The feed pump tripped on low suction pressure (below ${(PLO/1e6).toFixed(1)} MPa for ${TLO} s). Restore its suction (condensate pump, hotwell), then switch it to stop and back to run.`;bad=true}
+  else if(ctl.fp&&fS.Ps<PLO&&s.n>0.001){m=`Feed pump suction ${(fS.Ps/1e6).toFixed(2)} MPa, below the ${(PLO/1e6).toFixed(1)} MPa trip setting: it trips after ${TLO} s.`;bad=true}
+  else if(fS.phi<0.999){m=`Hotwell ${(fS.hw*100).toFixed(1)} % full: the condensate pump is short of NPSH (${fS.npsh.toFixed(1)} m available) and losing head. Add makeup.`;bad=true}
+  else if(shut&&s.fv>0.001){m=`The pumps at ${(s.n*100).toFixed(0)} % feed pump speed develop at most ${(shutoff(s.n,fS.Pc,s.Mh)/1e6).toFixed(2)} MPa, below vessel pressure: no feed flow whatever the valve does.`;bad=true}
   else if(A.mv&&d.P<ctl.pset-0.05e6&&s.mv<0.001)m='Pressure is below the regulator setpoint, so the regulator keeps the steam valve shut.';
   else if(d.P<0.101e6)m='Below atmospheric pressure. A real vessel would have its head vent open here; the model has no air in the dome.';
   else if(A.fv&&d.level-d.collapsed>0.3)m=`Voids add ${(d.level-d.collapsed).toFixed(2)} m to the level. A sudden pressure rise or less heat collapses them, and the level drops without any water leaving.`;
   else if(A.fv&&fS.fw<1&&s.n<0.001)m='The feed valve is in A but the feed pump is stopped: set its speed, or switch it to A.';
+  else if(!ctl.cp)m='The condensate pump is stopped: the feed pump has no suction pressure and trips if it runs.';
   else m=(A.n||A.fv||A.mv||A.mk?'':'Every control is in M; the notches show the automatic demand. ')+(d.sub>0.05?`Water subcooled by ${d.sub.toFixed(1)} K: steam is condensing.`:'Water saturated.');
   $('astat').textContent=m;$('astat').classList.toggle('bad',bad);
 };
@@ -435,7 +463,11 @@ const updText=()=>{
     ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
     ['Feedwater',`${f.fw.toFixed(0)} kg/s at ${(f.Tfw-273.15).toFixed(0)} °C`],['Heat to bring feed to saturation',(fwLoad/1e6).toFixed(0)+' MW'],
     ['Feed pump discharge',(f.Pd/1e6).toFixed(2)+' MPa',f.n>0&&f.Pd<P],['Feed valve position',(s.fv*100).toFixed(1)+' %'],
-    ['Extraction steam',f.ws>0.5?`${f.ws.toFixed(0)} kg/s from ${(f.pe/1e6).toFixed(2)} MPa, shell ${(f.ps/1e6).toFixed(2)} MPa`:f.pe>0.01e6&&f.ext>0?`${(f.pe/1e6).toFixed(2)} MPa at the turbine`:'none'],['Heater outlet',`${(f.Tfw-273.15).toFixed(0)} °C, heading for ${(f.Tt-273.15).toFixed(0)} °C`],['Feed pump speed',(s.n*100).toFixed(1)+' %'],
+    ['HP extraction steam',f.ws>0.5?`${f.ws.toFixed(0)} kg/s from ${(f.pe/1e6).toFixed(2)} MPa, shell ${(f.ps/1e6).toFixed(2)} MPa`:f.pe>0.01e6&&f.ext>0?`${(f.pe/1e6).toFixed(2)} MPa at the turbine`:'none'],['HP heater outlet',`${(f.Tfw-273.15).toFixed(0)} °C, heading for ${(f.Tt-273.15).toFixed(0)} °C`],['Feed pump speed',(s.n*100).toFixed(1)+' %'],
+    ['Condensate pump',ctl.cp?`${f.wcp.toFixed(0)} kg/s · ${(f.Pcd/1e6).toFixed(2)} MPa out`:'stopped',!ctl.cp],['Condensate pump NPSH',`${f.npsh.toFixed(1)} m available`+(f.phi<0.999?` · head ${(f.phi*100).toFixed(0)} %`:''),f.phi<0.999],
+    ['Feed pump suction',`${(f.Ps/1e6).toFixed(2)} MPa`+(f.cav?' · cavitating':''),f.Ps<PLO||f.cav],['Feed pump',s.fpt?'tripped (low suction)':ctl.fp?'run':'stopped',!!s.fpt],
+    ['LP heater',f.wsl>0.5?`${(f.Tlp-273.15).toFixed(0)} °C out · ${f.wsl.toFixed(0)} kg/s from ${(f.pel/1e6).toFixed(2)} MPa`:`${(f.Tlp-273.15).toFixed(0)} °C out · no extraction`],
+    ['Min-flow recirculation',f.wr>0.5?`${f.wr.toFixed(0)} kg/s · valve ${(s.xr*100).toFixed(0)} %`:'shut'],
     ['Hotwell',`${(f.hw*100).toFixed(1)} % · ${(f.Mh/1000).toFixed(0)} t · ${(f.Thw-273.15).toFixed(1)} °C`,f.hw<0.1||f.hw>0.9],['Condensate return',f.ret.toFixed(0)+' kg/s'],
     ['Condenser',`${(f.Pc/1e3).toFixed(2)} kPa abs · ${(f.Tc-273.15).toFixed(1)} °C`,f.Pc>25e3],['Condenser duty',`${(f.Qc/1e6).toFixed(0)} MW · cooling water out ${(f.Tcw-273.15).toFixed(1)} °C`],['Gross output (turbine stub)',(f.Pgen/1e6).toFixed(0)+' MWe'],['Makeup',fmt.mk(f.mk)],
     ['Voids',d.Vb.toFixed(1)+' m³'],['Swell (level − collapsed)',(d.level-d.collapsed).toFixed(2)+' m'],['Collapsed level',d.collapsed.toFixed(2)+' m'],
@@ -510,6 +542,9 @@ const drawVessel=dtReal=>{
   // the hotwell is the bottom of the condenser shell (hwX0…hwX1 under the LP turbine); the feed pump at the
   // foot of the riser xr, the heater on the riser, its extraction xe from the HP turbine
   const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB=yb-8,hwT=hwB-0.7*(hwB-Y(4.4)),ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
+  // condensate train along the bottom (step 5): condensate pump xcp, polisher xpo, LP heater xlh; LP extraction
+  // down xle from the LP turbine; min-flow line ymf from the feed pump discharge into the condenser shell
+  const xcp=W*0.672,xpo=W*0.617,xlh=W*0.537,xle=W*0.692,yle=ysu-68,ymf=hwT-16,xmf=W*0.605;
   // SRVs: a branch off the dome to the left, down into the pool
   const xs=44,yst=Y(18.2),poolT=Y(7.0),poolB=yb,poolX0=14,poolX1=x0-58;
   // the main steam valve is drawn as the turbine control valve, just before the HP turbine
@@ -545,8 +580,15 @@ const drawVessel=dtReal=>{
     dpipe([hwX1,hwT-70,W,hwT-70],10);dpipe([hwX1,hwT-36,W,hwT-36],10);
     // shaft: HP – LP – generator
     cx.strokeStyle=col.mute;cx.lineWidth=2;cx.beginPath();cx.moveTo(xh1,ys);cx.lineTo(xg0,ys);cx.stroke();
-    // makeup stub into the hotwell through the condenser's left wall
-    pipe([hwX0-34,hwT+14,hwX0,hwT+14],6);
+    // makeup stub into the hotwell through the condenser's right wall
+    pipe([hwX1,hwT+14,hwX1+34,hwT+14],6);
+    // condensate and feed train (step 5): LP extraction from the LP turbine down to the LP heater, and the
+    // feed pump's minimum-flow line from its discharge back into the condenser shell
+    pipe([xl0,ys+30,xle,ys+30,xle,yle,xlh,yle,xlh,ysu-11],5);
+    if(f.wsl>0.5){cx.strokeStyle=`rgba(255,79,0,${0.35+0.5*clamp(f.wsl/600,0,1)})`;cx.lineWidth=2.5;cx.beginPath();cx.moveTo(xl0,ys+30);cx.lineTo(xle,ys+30);cx.lineTo(xle,yle);cx.lineTo(xlh,yle);cx.lineTo(xlh,ysu-11);cx.stroke()}
+    // the min-flow line crosses the LP extraction: a gap marks that they are not joined
+    pipe([xr,ymf,hwX0,ymf],5);cx.strokeStyle=col.panel;cx.lineWidth=9;cx.beginPath();cx.moveTo(xle,ymf-9);cx.lineTo(xle,ymf+9);cx.stroke();pipe([xle,ymf-9,xle,ymf+9],5);
+    {cx.strokeStyle=col.panel;cx.lineWidth=3;cx.beginPath();cx.moveTo(xle-5,ymf-6);cx.lineTo(xle-5,ymf+6);cx.moveTo(xle+5,ymf-6);cx.lineTo(xle+5,ymf+6);cx.stroke()}
   }
   // suppression pool
   cx.fillStyle=col.water;cx.globalAlpha=0.85;cx.beginPath();cx.roundRect(poolX0,poolT,poolX1-poolX0,poolB-poolT,10);cx.fill();cx.globalAlpha=1;
@@ -645,10 +687,6 @@ const drawVessel=dtReal=>{
     box(W*0.93,yA-10,W*0.99,yA+10,3);mlbl('SJAE',W*0.96,yA+5);mlbl('off-gas',W-6,yA+36,'right');
     mlbl('motive steam to SJAE',W-14,yt+16,'right');
     box(W*0.93,yV-10,W*0.99,yV+10,3);mlbl('Vac. pump',W*0.96,yV+28);
-    // condensate train under the turbine hall floor: condensate pump, polisher, LP heater, then the feed pump
-    {const yc=ysu;draft(()=>cx.arc(W*0.655,yc,11,0,7),true);mlbl('Cond. pump',W*0.655,yc-18);
-     box(W*0.565,yc-9,W*0.605,yc+9,3);mlbl('Polisher',W*0.585,yc-18);
-     box(W*0.5,yc-9,W*0.54,yc+9,3);mlbl('LP heater',W*0.52,yc-18)}
     cx.textAlign='left';lbl('Dashed grey: layout draft, not modelled',xc+20,18,col.mute);
   }
   // steam line: main steam valve on the run; SRVs on the branch
@@ -683,11 +721,11 @@ const drawVessel=dtReal=>{
     // condensate falling into the hotwell: arrow while it flows
     {const ax=hwX0+hwW*0.45;if(f.ret>0.5){cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(ax,hwT-2);cx.lineTo(ax-7,hwT-14);cx.lineTo(ax+7,hwT-14);cx.fill()}}
     // makeup from / reject to the storage tank: a stub into the hotwell, drops falling while it runs
-    {const xm=hwX0,ym=hwT+14,mk=f.mk,on=Math.abs(mk)>0.5;
-     cx.textAlign='right';lbl(on?(mk>0?`Makeup +${mk.toFixed(0)}`:`Reject ${(-mk).toFixed(0)}`):'Makeup',xm-40,ym+5,on?col.ink:col.mute,on);lbl('from storage tank',xm-40,ym+23,col.mute);cx.textAlign='left';
-     if(on){cx.fillStyle=col.acc;cx.beginPath();const ax=xm-17;if(mk>0){cx.moveTo(ax+7,ym);cx.lineTo(ax-5,ym-7);cx.lineTo(ax-5,ym+7)}else{cx.moveTo(ax-7,ym);cx.lineTo(ax+5,ym-7);cx.lineTo(ax+5,ym+7)}cx.fill()}
+    {const xm=hwX1,ym=hwT+14,mk=f.mk,on=Math.abs(mk)>0.5;
+     cx.textAlign='left';lbl(on?(mk>0?`Makeup +${mk.toFixed(0)}`:`Reject ${(-mk).toFixed(0)}`):'Makeup',xm+40,ym+5,on?col.ink:col.mute,on);lbl('from storage tank',xm+40,ym+23,col.mute);
+     if(on){cx.fillStyle=col.acc;cx.beginPath();const ax=xm+17;if(mk>0){cx.moveTo(ax-7,ym);cx.lineTo(ax+5,ym-7);cx.lineTo(ax+5,ym+7)}else{cx.moveTo(ax+7,ym);cx.lineTo(ax-5,ym-7);cx.lineTo(ax-5,ym+7)}cx.fill()}
      if(mk>0.5&&!reduce){cx.fillStyle=col.water;const tt=performance.now()/400,fall=Math.max(8,lvl-ym);
-       for(let i=0;i<5;i++){const ph=(tt+i/5)%1;cx.globalAlpha=1-ph*0.6;cx.beginPath();cx.arc(xm+6+((i*7)%5)*2,ym+ph*fall,2.2,0,7);cx.fill()}cx.globalAlpha=1}}
+       for(let i=0;i<5;i++){const ph=(tt+i/5)%1;cx.globalAlpha=1-ph*0.6;cx.beginPath();cx.arc(xm-6-((i*7)%5)*2,ym+ph*fall,2.2,0,7);cx.fill()}cx.globalAlpha=1}}
     // pump at the foot of the riser: circle with a triangle pointing up, filled while running
     const yp=ysu;
     cx.beginPath();cx.arc(xr,yp,15,0,7);cx.fillStyle=f.n>0?col.panel:col.ink;cx.fill();cx.lineWidth=2;cx.strokeStyle=fl?col.acc:col.ink;cx.stroke();
@@ -702,6 +740,26 @@ const drawVessel=dtReal=>{
     if(heat>0.01){cx.fillStyle=`rgba(255,79,0,${0.15+0.55*heat})`;cx.fillRect(xr-hw/2,yh0,hw,hh)}
     cx.strokeStyle=col.ink;cx.lineWidth=1.2;cx.beginPath();for(let i=1;i<4;i++){const yy=yh0+hh*i/4;cx.moveTo(xr-hw/2+4,yy);cx.lineTo(xr+hw/2-4,yy)}cx.stroke();
     cx.lineWidth=2;cx.strokeRect(xr-hw/2,yh0,hw,hh);
+    // condensate train (step 5): condensate pump, polisher, LP heater with its extraction, min-flow valve
+    {const yc=ysu,run=f.cp,cf=f.wcp>0.5;
+     cx.beginPath();cx.arc(xcp,yc,13,0,7);cx.fillStyle=run?col.panel:col.ink;cx.fill();cx.lineWidth=2;cx.strokeStyle=cf?col.acc:col.ink;cx.stroke();
+     cx.beginPath();cx.moveTo(xcp-9,yc);cx.lineTo(xcp+5,yc-7);cx.lineTo(xcp+5,yc+7);cx.closePath();cx.fillStyle=run?(cf?col.acc:col.ink):col.panel;cx.fill();
+     cx.textAlign='left';lbl('Cond. pump',xcp-14,yc-40,col.mute);lbl(run?`${f.wcp.toFixed(0)} kg/s`:'stopped',xcp-14,yc-22,f.phi<0.999?col.acc:col.ink,true);
+     solid(()=>cx.roundRect(xpo-26,yc-10,52,20,4),true);
+     cx.textAlign='center';lbl('Polisher',xpo,yc-40,col.mute);lbl(`${(f.Pcd/1e6).toFixed(2)} MPa`,xpo,yc-22,col.ink,true);
+     const lw=56,lh=22,heat=clamp((f.Tlp-f.Thw)/90,0,1);
+     cx.fillStyle=col.panel;cx.fillRect(xlh-lw/2,yc-lh/2,lw,lh);
+     if(heat>0.01){cx.fillStyle=`rgba(255,79,0,${0.15+0.55*heat})`;cx.fillRect(xlh-lw/2,yc-lh/2,lw,lh)}
+     cx.strokeStyle=col.ink;cx.lineWidth=1.2;cx.beginPath();for(let i=1;i<4;i++){const xx=xlh-lw/2+lw*i/4;cx.moveTo(xx,yc-lh/2+4);cx.lineTo(xx,yc+lh/2-4)}cx.stroke();
+     cx.lineWidth=2;cx.strokeRect(xlh-lw/2,yc-lh/2,lw,lh);
+     cx.textAlign='center';lbl('LP heater',xlh,yle-28,col.mute);lbl(`${(f.Tlp-273.15).toFixed(0)} °C`+(f.psl?` · ${(f.psl/1e6).toFixed(2)} MPa`:''),xlh,yle-10,col.ink,true);
+     // LP extraction valve on the vertical run
+     const yv=(ys+30+yle)/2+40;valve(xle,yv,true,f.exl,f.wsl>0.5);
+     cx.textAlign='right';lbl('LP extraction',xle-16,yv-4,col.mute);lbl(`${(f.exl*100).toFixed(0)} %`,xle-16,yv+14,col.ink,true);if(f.wsl>0.5)lbl(`${f.wsl.toFixed(0)} kg/s`,xle-16,yv+32,col.mute);
+     // min-flow valve
+     valve(xmf,ymf,false,s.xr,f.wr>0.5);cx.textAlign='center';lbl('Min-flow',xmf,ymf-30,col.mute);lbl(f.wr>0.5?`${(s.xr*100).toFixed(0)} % · ${f.wr.toFixed(0)} kg/s`:'shut',xmf,ymf-14,f.wr>0.5?col.ink:col.mute,f.wr>0.5);
+     if(f.wr>0.5){cx.fillStyle=col.acc;const ax=hwX0-14;cx.beginPath();cx.moveTo(ax+8,ymf);cx.lineTo(ax-4,ymf-7);cx.lineTo(ax-4,ymf+7);cx.fill()}
+     cx.textAlign='left'}
     // extraction valve on the hot line
     valve(xe,yev,true,f.ext,f.ws>0.5);
     {const ex=xe-16;cx.textAlign='right';
