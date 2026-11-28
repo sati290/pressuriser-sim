@@ -2,12 +2,12 @@
 // load rejection, turbine trip, turbine roll.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { common, B, K, near, run, runPlant, P0, W0, CV0, FV0, RATED_C, RATED_U } from './bwr-helpers.mjs';
+import { common, B, K, near, run, runPlant, P0, W0, CV0, FV0, RATED_C, RATED_U, rodsC } from './bwr-helpers.mjs';
 
 // rated with protection on and the controllers in A (rods at the critical position, kinetics on)
 const ratedA = () => {
   const s = B.init({ P: P0, L: 14.3, gen: W0, cv: CV0, fv: FV0, n: 1, tfw: 216, rps: true });
-  const c = { ...RATED_C(), mw: 1200, rod: s.core.x * 100 };
+  const c = { ...RATED_C(), mw: 1200, rods: rodsC(s), crd: true };
   delete c.heat;
   return [s, c, K.init(c)];
 };
@@ -38,7 +38,8 @@ test('rated: on the grid at 1800 rpm, about 1110 MWe, steady at dt 0.25 and 2 s'
     assert.equal(s.tg.brk, true); near(s.tg.w, 1, 0, 'grid speed');
     near(s.f.Pgen / 1e6, 1110, 10, `gross output dt=${dt}`);
     near(s.d.P / 1e6, 7, 0.005, `pressure dt=${dt}`);
-    near(s.f.p1 / 1e6, 5.9, 0.03, `first stage dt=${dt}`);
+    // all rods out leaves the power 0.3 % under init's heat balance (tests/bwr-core.test.mjs), the first stage with it
+    near(s.f.p1 / 1e6, 5.88, 0.03, `first stage dt=${dt}`);
     assert.equal(s.rps.log.length, 0, `no event dt=${dt}`);
   }
 });
@@ -54,7 +55,9 @@ test('load rejection at rated: fast closure and scram, speed peaks about 105 %, 
     assert.ok(s.scram, 'scrammed');
     assert.ok(!s.rps.lat.ovsp, `no overspeed trip: peak ${pk} dt=${dt}`);
     assert.ok(pk > 1.02 && pk < 1.08, `speed peak ${pk} dt=${dt}`);
-    assert.ok(pm < 7.6e6, `pressure peak ${pm} dt=${dt}`);
+    // the bottom-entry rods' scram worth builds up more slowly at first than the old uniform lever's (about
+    // −0.8 $ at 1 s), so the peak is higher than before (7.39/7.48 MPa): 7.54 MPa, and at dt 2 7.62 with a few SRVs lifting
+    assert.ok(pm < 7.7e6, `pressure peak ${pm} dt=${dt}`);
     run(s, k, c, 600, dt);
     near(s.tg.w, 1, 0.006, `back near 1800 rpm dt=${dt}`);
     assert.equal(s.f.Pgen, 0, 'no output off the grid');
@@ -102,7 +105,7 @@ test('turbine roll from hot standby: the governor brings it to 1800 rpm, the bre
     const s = B.init({ P, L: 14.3, gen: W, cv: 0, bp: W / (B.KB * P), sv: 0, fv: B.fwValve(W, 1, P), n: 1, tfw: B.THW - 273.15, mg: 0.3, mode: 'startup', rps: true });
     assert.equal(s.tg.brk, false); assert.equal(s.tg.w, 0);
     const c = { n: 100, fv: B.fwValve(W, 1, P) * 100, ext: 0, exl: 0, ms1: true, ms2: true, sv: false, cv: 0, bp: s.bp * 100, ll: 105, srv: [], pset: 7e6, lset: 14.3, dpset: 2.2e6,
-      rod: s.core.x * 100, mg: 30, mw: 1200, auto: { n: true, fv: true, cv: true, bp: true, mu: true, rj: true, rw: true, rv: true } };
+      rods: rodsC(s), crd: true, mg: 30, mw: 1200, auto: { n: true, fv: true, cv: true, bp: true, mu: true, rj: true, rw: true, rv: true } };
     const k = K.init(c);
     run(s, k, c, 60, dt);
     assert.equal(B.breaker(s, true), 'sync', 'not at speed');

@@ -38,3 +38,6 @@ export const RATED_U = { heat: Q0 + QL0, n: 1, fv: FV0, ext: 1, ...OPEN, cv: CV0
 export const NOFEED = { n: 0, fv: 0, ext: 0 };
 export const AUTO = () => ({ n: true, fv: true, cv: true, bp: true, mk: true });
 export const RATED_C = () => ({ heat: 3293, n: 100, fv: FV0 * 100, ext: 100, mk: 0, ...OPEN, cv: CV0 * 100, bp: 0, ll: 105, srv: [], pset: 7e6, lset: 14.3, dpset: 2.2e6, auto: AUTO() });
+// the rods where they are, in panel units (group positions 00–48), and all in
+export const rodsC = s => s.core.x.map(v => v * B.NPOS);
+export const ALLIN = () => Array(B.NG).fill(0);

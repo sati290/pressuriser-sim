@@ -1,9 +1,9 @@
 // BWR recirculation tests: MG set, jet pump, core flow, natural circulation, flow control of power.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { B, K, near, runPlant, run, rated, RATED_U, RATED_C, Q0 } from './bwr-helpers.mjs';
+import { B, K, near, runPlant, run, rated, RATED_U, RATED_C, Q0, rodsC } from './bwr-helpers.mjs';
 // rated settings with the kinetics in charge and the recirculation on the page's controls
-const KC = s => { const c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100, rp: true }; delete c.heat; c.auto.mg = true; return c; };
+const KC = s => { const c = { ...RATED_C(), rods: rodsC(s), mg: 100, wset: 100, rp: true }; delete c.heat; c.auto.mg = true; return c; };
 
 test('rated recirculation: 4300 kg/s drive flow at 1.6 MPa pump head entrains twice that; 12,900 kg/s core flow', () => {
   const s = rated();
