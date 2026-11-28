@@ -20,7 +20,7 @@ import {QR,PR,TFR,WR,SRV,NV,PB,BD,subF,wSRV,srvStep} from './bwr-steam.js';
 import {DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,steamLine,cvPos,valveStep} from './bwr-steam.js';
 import {ETA,ETAG,expansion,turbinePower,VC,WCW,TCW,CPW,UA,PCMAX,condense,condSteady} from './bwr-condenser.js';
 import {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,VBRATE,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,airFlows,cwStep,cwTarget,TAUCW} from './bwr-condenser.js';
-import {QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,WMIN,voids,voidVol,rodRho,rodFor,coreInit,coreStep} from './bwr-core.js';
+import {NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,WMIN,voids,voidVol,rodRho,rodFor,coreInit,coreStep} from './bwr-core.js';
 import {WDR,HPR,HS,KPP,MGRATE,NMIN,TCD,mgStep,loopStep,recircInit} from './bwr-recirc.js';
 import {WTR,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValve,heater,heaterT,heatBalance,hotwellMix,
   PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN as WMINF,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
@@ -99,10 +99,10 @@ const init=o=>{
   return s;
 };
 // core readings into s.f: Pth core thermal power (fission + decay, W), nf fission power, rho reactivity,
-// per period (s), Tf fuel temperature, ac core-average void, ae exit void, xe exit quality, Wc core
+// per period (s), Tf fuel temperature, pk axial peaking, zpk its height (fraction of the core), sh the shape, ac core-average void, ae exit void, xe exit quality, Wc core
 // flow, dhin inlet subcooling (J/kg), rod lever position 0–1, pc prompt critical
 // recirculation: rp pump breaker closed, ng pump (MG set) speed 0–1, mg speed demand, Wd drive flow
-const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf,ac:k.ac,ae:k.ae,xe:k.xe,Wc:k.W,dhin:k.dh,rod:k.x,pc:k.pc,
+const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf,ac:k.ac,ae:k.ae,xe:k.xe,Wc:k.W,dhin:k.dh,rod:k.x,pc:k.pc,pk:k.pk,zpk:k.zpk,sh:k.s,
   rp:r.on,ng:r.ng,mg:r.dm,Wd:r.Wd});
 // One step. u is the final command, SI: {rod 0–1 control rod lever demand (manual only; undefined: the
 // rods stay where they are); heat W fixed net heat into the water (a test hook: if it is a number the
@@ -295,7 +295,7 @@ const fault=s=>{
 };
 // the condensate pump suction pressure the page reads for the shutoff-head message
 const PC=PCD;
-const API=10;
+const API=11;
 export {CST,UAS,UAL,TDW,INCH,IZ,LV,toIn,fromIn,TAUF,MPOOL,APOOL,TP0,UAP,TSW,TPMAX,PLIM,poolLevel};
 export {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,cwTarget,TAUCW,motiveP};
 export {PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMINF as WMIN,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
@@ -305,4 +305,4 @@ export {API,V,H,A,Z,QR,PR,TFR,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKM
   ETA,ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,turbinePower,condense,condSteady,
   WTR,fwFlow,fwValve,heater,heaterT,heatBalance,subF,wSRV,decayFrac,init,step,scram,reset,fault,rpsSignals,setMode,manualScram,SP,MODES,TRIPS,GROUP,inHgVac,rpsActive,RWMAX,
   DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,steamLine,cvPos,
-  QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,VDC,voids,voidVol,rodRho,rodFor,WDR,HPR,HS,KPP,MGRATE,NMIN,TCD};
+  NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,VDC,voids,voidVol,rodRho,rodFor,WDR,HPR,HS,KPP,MGRATE,NMIN,TCD};

@@ -182,7 +182,7 @@ page's notes in step with its limitations.
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
-BWR page: see docs/bwr.md, "Not modelled" (one point-kinetics node and one rod lever, one recirculation loop,
+BWR page: see docs/bwr.md, "Not modelled" (point kinetics with a quasi-static axial shape only and one rod lever, one recirculation loop,
 saturated steam only, no air in the dome, uniform-area level, one steel node, turbine stub, two heater stages,
 one pump of each kind, protection on one logic channel without RCIC/HPCI/ECCS, cleanup as a reject placeholder,
 no containment pressure).

@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { B, K, near, runPlant, run, rated, RATED_U, RATED_C, Q0, P0, QL0 } from './bwr-helpers.mjs';
+const WCR0 = B.WCR;
 // rated command and settings with the kinetics in charge (no fixed heat), rods where init made it critical
 const KU = s => { const u = { ...RATED_U, rod: s.core.x }; delete u.heat; return u; };
 const KC = s => { const c = { ...RATED_C(), rod: s.core.x * 100 }; delete c.heat; return c; };
@@ -55,9 +56,38 @@ test('colder feedwater raises the power (inlet subcooling, fewer voids); the con
   for (const dt of [0.25, 2]) {
     const s = rated(), c = KC(s), k = K.init(c);
     run(s, k, c, 60, dt); c.ext = 20; c.exl = 100; run(s, k, c, 600, dt); // HP extraction throttled
-    assert.ok(s.f.Tfw - 273.15 < 180, `feed colder ${s.f.Tfw - 273.15}`);
-    assert.ok(s.f.Pth > 1.08 * Q0 && s.f.Pth < 1.45 * Q0, `power up ${s.f.Pth / Q0} dt=${dt}`);
+    assert.ok(s.f.Tfw - 273.15 < 190, `feed colder ${s.f.Tfw - 273.15}`);
+    // about 34 K colder: +11 % (a real BWR/4 gains roughly 0.3 % per K of feedwater temperature)
+    assert.ok(s.f.Pth > 1.06 * Q0 && s.f.Pth < 1.16 * Q0, `power up ${s.f.Pth / Q0} dt=${dt}`);
     assert.equal(B.fault(s), '');
+  }
+});
+
+test('axial shape: bottom-skewed at rated, top-peaked with no voids, k = 1 at hot zero power', () => {
+  const C = B.RATED, pk = B.peak(C.s);
+  near(pk.pk, 1.5, 0.08, 'rated axial peaking'); assert.ok(pk.zpk < 0.5, `rated peak in the lower half: ${pk.zpk}`);
+  const s = rated(); near(s.core.pk, pk.pk, 0.01, 'init lands on the rated shape'); near(s.f.pk, s.core.pk, 1e-12, 'reported');
+  const h = B.peak(C.hzp); assert.ok(h.zpk > 0.5, `no voids: the flux moves up ${h.zpk}`);
+  const z = B.steady(0, WCR0, 0, P0); near(z.fb, 0, 1e-6, 'no feedback at hot zero power');
+  // the rated feedback reactivity includes the shape change from hot zero power, so it is larger than the
+  // flux²-weighted local feedback over the rated shape alone
+  const f = B.localFb(C.v.a, C.v.hs, B.fuelT(Q0, B.TREF), B.TREF, C.s);
+  let num = 0, den = 0; for (let i = 0; i < B.NZ; i++) { const w = B.GZ[i] * C.s[i] ** 2; num += w * f[i]; den += w; }
+  assert.ok(C.fb < num / den && C.fb > 1.6 * num / den, `ρ_fb ${C.fb} vs weighted ${num / den}`);
+});
+
+test('loss of feedwater heating (HP drain valve fails shut) with protection on: about +17 %, no scram', () => {
+  // generic BWR/4 safety analyses: about 55 K colder feed raises the power some 15–20 % and stays under the
+  // 120 % APRM trip. Before the axial shape the point model gained about +33 % and scrammed.
+  for (const dt of [0.5, 2]) {
+    const s = B.init({ P: P0, L: 14.3, gen: B.WR, cv: B.cvPos(B.WR, P0), fv: B.fwValve(B.WR, 1, P0), n: 1, tfw: 216, rps: true }), c = KC(s), k = K.init(c);
+    run(s, k, c, 30, dt); B.fail(s, 'hdv', true); let pmax = 0;
+    run(s, k, c, 900, dt, x => { pmax = Math.max(pmax, x.f.nf * (1 + B.DSUM)); return true; });
+    assert.ok(s.f.Tfw - 273.15 < 170, `feed colder ${s.f.Tfw - 273.15} dt=${dt}`);
+    assert.ok(s.f.Pth > 1.12 * Q0 && s.f.Pth < 1.2 * Q0, `power ${s.f.Pth / Q0} dt=${dt}`);
+    assert.ok(pmax < 1.2 * Q0, `neutron power peak ${pmax / Q0} under the APRM trip dt=${dt}`);
+    assert.ok(!s.scram, `no scram dt=${dt}`);
+    assert.ok(s.f.pk > B.peak(B.RATED.s).pk + 0.03 && s.f.zpk <= B.peak(B.RATED.s).zpk, `the shape moves down: ${s.f.pk} at ${s.f.zpk}`);
   }
 });
 
