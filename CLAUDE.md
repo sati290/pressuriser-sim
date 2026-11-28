@@ -173,7 +173,7 @@ page's notes in step with its limitations.
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
-BWR page: see docs/bwr.md, "Not modelled" (no neutronics or scram, no recirculation, one well-mixed
+BWR page: see docs/bwr.md, "Not modelled" (no neutronics, scram on the operator button only (nothing trips it), no recirculation, one well-mixed
 water region, saturated steam only, no air in the dome, uniform-area level, no vessel heat capacity).
 
 ## Publishing
@@ -192,7 +192,7 @@ pushing a branch is publishing it.
 The old claude.ai artifact is no longer the live version; don't republish there.
 
 **Version:** every change you push bumps the last number of `VERSION` in `version.js` by one (0.1.0 →
-0.1.1 → …), once per push, whatever files changed. Mention the new version in your reply. The owner
+0.1.1 → …), once per push, whatever files changed. Keep `version` in package.json equal to it. Mention the new version in your reply. The owner
 uses the footer to check that the browser isn't showing a cached copy.
 
 **When you finish a task that changed `index.html` or any of the scripts, commit and push it, then end your reply with
