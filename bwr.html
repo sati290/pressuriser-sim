@@ -742,14 +742,14 @@ const drawVessel=dtReal=>{
   // of the riser xr, heater on the riser, feed valve on the run into the vessel at the sparger elevation
   // the hotwell is the bottom of the condenser shell (hwX0…hwX1 under the LP turbine); the feed pump at the
   // foot of the riser xr, the heater on the riser, its extraction xe from the HP turbine
-  const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB0=yb-8,hwT0=hwB0-0.7*(hwB0-Y(4.4)),ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
+  const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB0=yb-8,hwT0=hwB0-0.7*(hwB0-Y(4.4)),ysu=Hc-64,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
   // condensate train along the bottom (step 5): condensate pump xcp, polisher xpo, LP heater xlh; LP extraction
   // down xle from the LP turbine; min-flow line ymf from the feed pump discharge into the condenser shell
   const xT0=W-96,xT1=W-18,yT0=hwT0-14,yMu=hwB0-16,xmu0=hwX1+24,xmuv=(hwX1+24+W-96)/2,xrj0=W*0.675-30,yRj=Hc-7;
-  const xcp=W*0.675,xpo=W*0.622,xlh=W*0.575,xle=W*0.692,yle=ysu-68,ymf=hwT0-16,xmf=W*0.63;
+  const xcp=W*0.675,xpo=W*0.622,xlh=W*0.575,xle=W*0.692,yle=ysu-56,ymf=hwT0-16,xmf=W*0.63;
   // heater drains (step 6): HP drain xhd down from the HP heater to the LP heater, its valve at yhdv; LP drain
-  // up from the LP heater to the drain tank xdt, drain pump xdpp, its valve xdv, into the condensate line at xj
-  const xhd=xlh-6,yhdv=(yh1+ymf)/2+4,ydt=ysu-40,xdt=W*0.542,xdpp=W*0.52,xdv=W*0.503,xj=xr+20,xld=xlh-24;
+  // down from the LP heater to the drain tank xdt at the bottom, drain pump xdpp, its valve xdv, into the condensate line at xj
+  const xhd=xlh-6,yhdv=(yh1+ymf)/2+4,ydt=Hc-26,xdt=W*0.542,xdpp=W*0.52,xdv=W*0.503,xj=xr+20,xld=xlh-24;
   // SRVs: a branch off the dome to the left, down into the pool
   const xs=44,yst=Y(18.2),poolT=Y(7.0),poolB=yb,poolX0=14,poolX1=x0-58;
   // the turbine control valve, just before the HP turbine
@@ -797,12 +797,12 @@ const drawVessel=dtReal=>{
       cx.strokeStyle=col.panel;cx.lineWidth=3;cx.beginPath();cx.moveTo(x-w/2-2.5,y-6);cx.lineTo(x-w/2-2.5,y+6);cx.moveTo(x+w/2+2.5,y-6);cx.lineTo(x+w/2+2.5,y+6);cx.stroke()};
     // the min-flow line crosses the LP extraction
     pipe([xr,ymf,hwX0-16,ymf,hwX0-16,hwT-16,hwX0,hwT-16],5);hopV(xle,ymf,5);
-    // heater drains (step 6): HP drains cascade to the LP heater (crossing the min-flow line); LP drains up to the
+    // heater drains (step 6): HP drains cascade to the LP heater (crossing the min-flow line); LP drains down to the
     // drain tank, then the drain pump and its valve into the condensate line just before the feed pump
     pipe([xr+15,yh1-8,xhd,yh1-8,xhd,ysu-11],4);hopV(xhd,ymf,4);
-    pipe([xld,ysu-11,xld,ydt,xdt,ydt],4);pipe([xdt,ydt,xj,ydt,xj,ysu-5],4);
+    pipe([xld,ysu+11,xld,ydt,xdt,ydt],4);pipe([xdt,ydt,xj,ydt,xj,ysu+5],4);
     if(f.wdh>0.5){cx.strokeStyle=col.water;cx.globalAlpha=.6;cx.lineWidth=2;cx.beginPath();cx.moveTo(xr+15,yh1-8);cx.lineTo(xhd,yh1-8);cx.lineTo(xhd,ysu-11);cx.stroke();cx.globalAlpha=1}
-    if(f.wd>0.5){cx.strokeStyle=col.water;cx.globalAlpha=.6;cx.lineWidth=2;cx.beginPath();cx.moveTo(xld,ysu-11);cx.lineTo(xld,ydt);cx.lineTo(xj,ydt);cx.lineTo(xj,ysu-5);cx.stroke();cx.globalAlpha=1}
+    if(f.wd>0.5){cx.strokeStyle=col.water;cx.globalAlpha=.6;cx.lineWidth=2;cx.beginPath();cx.moveTo(xld,ysu+11);cx.lineTo(xld,ydt);cx.lineTo(xj,ydt);cx.lineTo(xj,ysu+5);cx.stroke();cx.globalAlpha=1}
   }
   // suppression pool
   cx.fillStyle=col.water;cx.globalAlpha=0.85;cx.beginPath();cx.roundRect(poolX0,poolT,poolX1-poolX0,poolB-poolT,10);cx.fill();cx.globalAlpha=1;
@@ -1027,7 +1027,7 @@ const drawVessel=dtReal=>{
       valve(xhd,yhdv,true,s.xdh,f.wdh>0.5);cx.textAlign='right';lbl(f.hdvf?'HP drain failed':'HP drain',xhd-16,yhdv-4,f.hdvf?col.acc:col.mute,f.hdvf);
       lbl(f.wdh>0.5?`${(s.xdh*100).toFixed(0)} % · ${f.wdh.toFixed(0)} kg/s`:`${(s.xdh*100).toFixed(0)} %`,xhd-16,yhdv+14,col.ink,true)}
      // LP extraction valve on the vertical run
-     const yv=(ys+30+yle)/2+40;valve(xle,yv,true,f.exl,f.wsl>0.5);
+     const yv=(ys+30+yle)/2+64;valve(xle,yv,true,f.exl,f.wsl>0.5);
      cx.textAlign='right';lbl('LP extraction',xle-16,yv-4,col.mute);lbl(`${(f.exl*100).toFixed(0)} %`,xle-16,yv+14,col.ink,true);if(f.wsl>0.5)lbl(`${f.wsl.toFixed(0)} kg/s`,xle-16,yv+32,col.mute);
      // min-flow valve
      valve(xmf,ymf,false,s.xr,f.wr>0.5);cx.textAlign='center';lbl('Min-flow',xmf,ymf-30,col.mute);lbl(f.wr>0.5?`${(s.xr*100).toFixed(0)} % · ${f.wr.toFixed(0)} kg/s`:'shut',xmf,ymf-14,f.wr>0.5?col.ink:col.mute,f.wr>0.5);
