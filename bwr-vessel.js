@@ -42,7 +42,7 @@ const solve=o=>{
 };
 // derived quantities the page and the controller read
 const derive=(s,e)=>{
-  const Vb=s.Mb/e.rg,level=Math.min(H,(e.Vl+Vb)/A),q=sat(e.Tl);
+  const Vb=(s.Mb+(s.Mbf||0))/e.rg,level=Math.min(H,(e.Vl+Vb)/A),q=sat(e.Tl);
   return {P:e.P,T:e.T,Tl:e.Tl,sub:e.T-e.Tl,level,collapsed:e.Vl/A,Vb,Vl:e.Vl,Vv:V-e.Vl,Ml:e.Ml,Mv:s.Mv,Mb:s.Mb,rg:e.rg,rl:e.Ml/e.Vl,hf:q.hf};
 };
 // vessel part of a new state from o {P Pa, L m two-phase level, Tl °C water (default saturated), gen kg/s
@@ -56,3 +56,26 @@ const vesselInit=(s,o)=>{
   const e=solve({M:s.M,U:s.U,Mv:s.Mv,T0:T});s.Mv=e.Mv;s.d=derive(s,e);
 };
 export {V,H,A,Z,TAU,at,solve,derive,vesselInit};
+// ---- vessel steel and level instruments (roadmap step 12) ----
+// Vessel and internals steel as one node: heat capacity CST (about 1200 t of steel at 500 J/kg/K:
+// vessel ~800 t plus internals; illustrative), exchanging UAS with the water (time constant CST/UAS =
+// 10 min) and losing UAL·(Ts − TDW) through the insulation to the drywell at a fixed TDW (about 1 MW at
+// rated; the drywell coolers are not modelled). Illustrative numbers, not a fitted plant model.
+const CST=6e8,UAS=1e6,UAL=4200,TDW=50+273.15;
+// one step of the steel node at water temperature Tl: implicit, returns {Ts, Qw heat into the water W,
+// Ql heat lost to the drywell W} (both as the mean over the step)
+const steelStep=(Ts,Tl,dt)=>{
+  // C dTs/dt = −UAS(Ts − Tl) − UAL(Ts − TDW): exponential towards the weighted temperature
+  const U=UAS+UAL,Te=(UAS*Tl+UAL*TDW)/U,T1=Te+(Ts-Te)*Math.exp(-U*dt/CST),Tm=Te+(Ts-Te)*CST/(U*dt)*(1-Math.exp(-U*dt/CST));
+  return {Ts:T1,Qw:UAS*(Tm-Tl),Ql:UAL*(Tm-TDW)}};
+// Level instruments (generic BWR/4, typical values; plants differ): levels are read in inches above
+// instrument zero IZ, 528 in (13.41 m) above the inside bottom (vessel zero). Top of active fuel is then
+// −162 in. Narrow range 0 … +60 in, wide range −150 … +60 in. Setpoints L8 high (turbine and feed pump
+// trip), L7 high alarm, L4 low alarm, L3 low (scram), L2 low-low (isolation, RCIC/HPCI start), L1
+// low-low-low (ECCS, ADS permissive).
+const INCH=0.0254,IZ=528*INCH,LV=Object.freeze({L8:54,L7:39,L4:27,L3:12.5,L2:-38,L1:-129});
+const toIn=z=>(z-IZ)/INCH,fromIn=x=>IZ+x*INCH;
+// time constant (s) for voids from bulk flashing to rise out (a depressurisation flashes water throughout
+// the downcomer and lower plenum, and those bubbles have further to go than the core's); illustrative
+const TAUF=2;
+export {CST,UAS,UAL,TDW,steelStep,INCH,IZ,LV,toIn,fromIn,TAUF};

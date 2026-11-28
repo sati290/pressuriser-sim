@@ -15,6 +15,8 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 | `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam valve, SRVs (`srvStep`), nozzle factor | `mv`, `spr[]` |
 | `bwr-condenser.js` | Turbine stub (`expansion`, `turbinePower`), condenser shell (`condense`, `condSteady`) | `cd {Tc, Ms}` |
 | `bwr-feed.js` | Hotwell (`hotwellMix`), feed pump, heater, feed valve | `Mh`, `Thw`, `n`, `fv`, `Th` |
+| `bwr-vessel.js` (end) | Vessel steel (`steelStep`), level instruments (`IZ`, `LV`, `toIn`, `fromIn`), bulk-flash void clearance `TAUF` | `Ts`, `Mbf` |
+| `bwr-containment.js` | Suppression pool (`poolStep`, `poolLevel`, limits `PLIM`) | `pool {M, T}` |
 
 `step()` runs the systems in this order on the start-of-step state: valves and SRVs, steam flow, feed
 pump and valve, heater and turbine stub, condenser, hotwell, then the vessel mass and energy and the
@@ -39,6 +41,10 @@ pressure solve.
 | `TAU.c` | 10 s | Subcooled water condenses steam towards saturation |
 | `TAU.b` | 0.7 s | Steam bubbles (voids) leave the two-phase mixture; gives ~34 m³ of voids (1.2 m swell) at rated steaming |
 | `TAU.h` | 60 s | Feedwater heater outlet temperature (heater and piping holdup) |
+| `TAUF` | 2 s | Voids from bulk flashing (generation beyond what the heat makes: gen − (Q + Q_steel)/h_fg) rise out more slowly than core boiling voids; state `Mbf`, part of the level. Illustrative |
+| Vessel steel | `CST` 6×10⁸ J/K (≈1200 t at 500 J/kg/K), `UAS` 1 MW/K to the water, `UAL` 4200 W/K to the drywell at `TDW` 50 °C | One node, implicit exponential (`steelStep`), exact energy split: heat to the water Qs and loss Ql are the step means. About 1 MW lost at rated; lags the water ~10 K at 55 °C/h. Illustrative. Init: steady between water and drywell |
+| Level instruments | Instrument zero `IZ` 528 in (13.41 m) above vessel zero; `LV` L8 +54, L7 +39, L4 +27, L3 +12.5, L2 −38, L1 −129 in | Typical BWR/4 (TAF = −162 in, normal ≈ +35 in). `toIn(z)`, `fromIn(in)`. `s.f.lin` the level in inches. No reference-leg or density errors: the instrument reads the model level |
+| Suppression pool | `MPOOL` 3.8×10⁶ kg at `TP0` 32 °C, surface `APOOL` 1100 m²; cooler `UAP` 1.5 MW/K against `TSW` 30 °C when `u.pc`; stop at `TPMAX` 100 °C | Mark I-type, generic. SRV steam condenses completely (mass and h″ into the pool). Limits `PLIM`: 35 °C normal, 43.3 °C (110 °F) scram, 48.9 °C (120 °F) depressurise (typical BWR/4 technical specifications); shown on the page, no automatic action. Cooler is a placeholder for RHR pool cooling (deferred). Fault `'pool'` |
 
 ## Scram
 
@@ -156,7 +162,7 @@ hydraulics, main steam drains to the condenser, generator output and grid breake
 
 Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
 subcooling separate from the core, steam superheat, air in the dome (below 100 °C the pressure goes
-sub-atmospheric), vessel and internals heat capacity, turbine (a stub: one expansion line), air in the condenser, circulating water as a system (fixed flow and inlet), moisture separator reheaters, separate heater stages and drain coolers (one throttled extraction line stands for the train; real extraction lines have only isolation and non-return valves), pump trips (no
+sub-atmospheric), separate vessel and internals temperatures (one steel node), turbine (a stub: one expansion line), air in the condenser, circulating water as a system (fixed flow and inlet), moisture separator reheaters, separate heater stages and drain coolers (one throttled extraction line stands for the train; real extraction lines have only isolation and non-return valves), pump trips (no
 level-8 or low-suction trip; suction loss is a flow taper), pump minimum-flow recirculation, startup
-low-flow valve, condensate and feed water inventory in the pipes, cleanup reject flow, suppression-pool heat-up. Void clearance uses one time constant at every power and pressure,
-so swell from bulk flashing during a depressurisation is underestimated.
+low-flow valve, condensate and feed water inventory in the pipes, cleanup reject flow, containment pressure and drywell (the pool has no air space; its heat-up is modelled), RHR (pool cooling is a fixed placeholder cooler). Core void clearance uses one time constant at every power and pressure; bulk-flash voids a second
+one (2 s), both illustrative.

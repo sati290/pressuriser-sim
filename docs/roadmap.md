@@ -212,6 +212,7 @@ item 9) is natural here.
 **Open:** sourced BWR/4 trip setpoints (level instrument zero, L1–L8 in inches above instrument zero).
 
 ### 12. Vessel and containment details (any time)
+**Done** (this branch): steel node (`steelStep`), level in inches above instrument zero with BWR/4 setpoints, bulk-flash voids clearing with their own 2 s time constant, suppression pool heat-up with a placeholder cooler. Guesses: steel mass and UA, the setpoints (typical, plants differ), pool cooler size.
 - **Vessel and internals heat capacity** (B10): one steel node with UA to the water.
 - **Level by real geometry** (B11): instrument span and zero, swell from bulk flashing slower on
   depressurisation.
