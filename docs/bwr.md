@@ -12,7 +12,7 @@ properties). Tests: `tests/bwr.test.mjs`.
 | `Z` | BAF 5.6, TAF 9.3, SHR 11.5, FW 13.0, NWL 14.3, MSL 16.5 m | Elevations above the inside bottom: active fuel, top of shroud, feedwater sparger, normal water level, main steam nozzle |
 | Net heat | −100 … +3400 MW (page) | Into the water: core or decay heat minus cleanup/shutdown cooling and losses. Rated 3293 MW |
 | Main steam valve | 2000 kg/s full open at 7.0 MPa (`WMS`, `PR`), ∝ P × subsonic factor ψ(PC/P)/ψ* (κ = 1.3), condenser PC = 0.01 MPa | Stands for MSIVs + turbine control and bypass valves. Travel ≤ 20 %/s (`RATE`, full stroke 5 s). `s.mv` is the position, `u.mv` the demand |
-| SRVs | `NV` = 11 × 113 kg/s at 7.8 MPa, ∝ P × subsonic factor to the pool at 0.1 MPa | Relief mode commanded as a count (`u.srv`); safety mode (plant) opens all above 8.5 MPa, recloses below 8.1 MPa |
+| SRVs | `SRV` = 11 valves `{p, w}`: 4 × 1090 psig (7.617 MPa abs) rated 800,000 lb/h (100.8 kg/s), 4 × 1100 psig (7.686 MPa) 808,000 lb/h (101.8 kg/s), 3 × 1110 psig (7.755 MPa) 815,000 lb/h (102.7 kg/s); flow w·P/p × subsonic factor to the pool at 0.1 MPa | From a GE BWR/4 training lesson plan (NRC-hosted; group counts partly illegible in the OCR, read so that capacity ∝ set pressure, which it is for one valve model). Each valve: spring opens it fully above p, recloses below p − `BD` (0.25 MPa, illustrative; not in the source), latch `s.spr[i]`; or opened by hand, `u.srv[i]` true. Open = spring or hand. No automatic relief logic, low-low set or ADS |
 | Feedwater | 0–2500 kg/s (`FWMAX`), 20–230 °C, enthalpy `hLiq(T, P)` | Pumps deliver at any vessel pressure |
 | `TAU.c` | 10 s | Subcooled water condenses steam towards saturation |
 | `TAU.b` | 0.7 s | Steam bubbles (voids) leave the two-phase mixture; gives ~34 m³ of voids (1.2 m swell) at rated steaming |
@@ -30,10 +30,10 @@ continues from that value.
 ## State and step
 
 State: total mass `M`, total internal energy `U`, steam mass `Mv` (dome + voids, always saturated), void
-steam `Mb` (part of `Mv`), valve position `mv`, safety-mode latch `sv`.
+steam `Mb` (part of `Mv`), valve position `mv`, SRV spring latches `spr[]`.
 
 Each step (`step(s, u, dt)`):
-1. Valve moves toward its demand at `RATE`; SRV safety latch from P.
+1. Valve moves toward its demand at `RATE`; each SRV spring latch from P; an SRV is open if its spring or `u.srv[i]` holds it.
 2. Flows at the start-of-step pressure: steam out (main steam + SRVs) at h″, feedwater in at h(T_fw, P),
    heat Q. `M` and `U` updated; `Mv` loses the steam that left.
 3. If the water (U − Mv·u″)/(M − Mv) is below u′, it condenses steam: Ml·(u′ − u)/(u″ − u′)·(1 − e^(−dt/τc)).
@@ -56,8 +56,8 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 - Feedwater, three-element: demand = main steam flow + KL·(lset − level) + I, KL = 800 kg/s per m, integral
   time 60 s, 0 … 2500 kg/s. SRV flow is not in the steam signal, so after a valve closure the level term
   alone has to call for feedwater: about 3 m low asks for full flow.
-- SRV relief mode: groups of 4, 4, 3 valves opening at relSet, +0.07, +0.14 MPa, each reclosing 0.35 MPa
-  below its opening pressure.
+- SRVs: no automatic logic in the controller; `u.srv` passes the operator's per-valve hand openings
+  through. The springs act in the plant.
 - In M an actuator's integral holds the operator's value (for feedwater, net of the steam-flow
   feedforward), so the demand — the notch — is the operator's value plus the proportional correction for
   the present error. At balance the notch sits on the slider; switching to A starts from the notch.
@@ -65,7 +65,10 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 ## Validation numbers (tests/bwr.test.mjs)
 
 - Rated heat balance (3293 MW, 216 °C feed, 7.0 MPa → 1788 kg/s) stays steady at dt 0.25 and 2 s.
-- Valve closure at rated heat: level shrinks > 0.4 m in 6 s (void collapse), pressure > 7.4 MPa.
+- Valve closure at rated heat: level shrinks > 0.4 m in 6 s (void collapse), pressure > 7.4 MPa. With no scram,
+  pressure levels off near 13 MPa where all eleven SRVs pass the steam; with a scram, only the 1090 psig bank
+  lifts and pressure peaks just above 7.6 MPa. Isolation at 200 MW: the lowest bank cycles 7.36–7.62 MPa,
+  about one lift per 40 s.
 - Cold feedwater (100 kg/s at 50 °C, no heat): pressure falls ~0.35 MPa/min, subcooling < 1 K.
 - Startup 30 MW from 100 °C, valve shut: 60–110 K/h, level up > 0.8 m in an hour from expansion.
 - Load step 3293 → 2000 MW with both controllers in A: pressure and level back to setpoint within 20 min.

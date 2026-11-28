@@ -120,6 +120,13 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 button#scram{border-color:var(--warn);color:var(--warn);font-weight:600}
 button#scram[aria-pressed=true]{background:var(--warn);color:var(--bg);border-color:var(--warn)}
 button:disabled{opacity:.45;cursor:not-allowed}
+/* SRVs: one toggle per valve in a single row; filled = opened by hand, orange ring = open on its spring */
+.srvh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.srvh output{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.srvs{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px}
+.srvs button{min-height:34px;padding:0;border-radius:6px;font-size:13px;font-variant-numeric:tabular-nums}
+.srvs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.srvs button.spr{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--acc)}
 .lower{grid-template-columns:minmax(260px,1fr) minmax(0,2.4fr)}
 .lower .fig{min-height:360px}
 @media(max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}}
@@ -156,7 +163,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <button id="scRated">Rated power<br>3293 MW, 7.0 MPa</button>
         <button id="scIso">Isolation at 200 MW<br>valve closing</button>
       </div>
-      <p>Each scenario starts the plant afresh.</p>
     </div>
     <div class="grp">
       <h2>Events</h2>
@@ -180,8 +186,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <div class="row"><label for="mv">Steam valve <output id="mvo"></output></label><input id="mv" type="range" min="0" max="100" step="0.01" value="0"></div>
     </div>
     <div class="grp">
-      <h2>Safety/relief valves</h2>
-      <div class="row"><label for="srv">Open in relief mode <output id="srvo"></output></label><input id="srv" type="range" min="0" max="11" step="1" value="0"></div>
+      <h2 class="srvh">Safety/relief valves <output id="srvo"></output></h2>
+      <div class="srvs" id="srvs" role="group" aria-label="Safety/relief valves: press to open by hand"></div>
     </div>
   </div>
 
@@ -198,7 +204,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <section class="band wrap" style="padding-top:0;padding-bottom:0">
   <div class="card assists">
     <div class="chead"><h2>Automatic control</h2>
-      <p>Feedwater flow, the steam valve and the safety/relief valves each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. Net heat and feedwater temperature are always manual. Nothing switches between M and A by itself.</p></div>
+      <p>Feedwater flow and the steam valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. Net heat, feedwater temperature and the safety/relief valves are always manual; the valves' springs open them on pressure whatever you do. Nothing switches between M and A by itself.</p></div>
     <div class="agrid">
       <div class="grp">
         <h3>Pressure regulator (steam valve)</h3>
@@ -209,11 +215,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <h3>Feedwater level control</h3>
         <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="12" max="16" step="0.05" value="14.3"></div>
         <p>Three-element: feedwater follows the main steam flow, plus a proportional-integral term on the level error (800 kg/s per metre, integral 60 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it: after the steam valve closes, about 3 m below the setpoint calls for the full 2500 kg/s.</p>
-      </div>
-      <div class="grp">
-        <h3>Safety/relief valves</h3>
-        <div class="row"><label for="relSet">Relief opening pressure <output id="relSeto"></output></label><input id="relSet" type="range" min="6" max="8" step="0.01" value="7.7"></div>
-        <p>In A, eleven valves in three groups (4, 4 and 3) open at this pressure, 0.07 MPa and 0.14 MPa above it, and each group recloses 0.35 MPa below its opening pressure. Safety mode, the spring, opens every valve above 8.5 MPa and recloses below 8.1 MPa, always armed.</p>
       </div>
     </div>
     <p class="astat" id="astat" role="status"></p>
@@ -226,8 +227,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <ol>
         <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level low at 11.5 m, every valve shut and 30 MW of heat. The water heats at about 80 °C per hour, faster than the usual 55 °C/h limit, so turn the heat down to stay inside it. Pressure follows the saturation curve, and the level rises as the water expands: about 3 m on the way to 7 MPa. When pressure nears 7 MPa, switch the steam valve to A to hold it.</li>
         <li><b>Rated power.</b> Every control starts in M, balanced. Switch feedwater and the steam valve to A, then change the net heat. Less heat means less steam made in the core, fewer voids and a lower level (shrink); the feedwater controller sees the level fall and the steam flow drop at the same time.</li>
-        <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: at 8.5 MPa the eleven valves pass about 1300 kg/s, less than the 1790 kg/s the core makes, so pressure climbs until their flow catches up, near 11.8 MPa, far above any real plant's limit. All that steam is lost to the pool: with feedwater in A the level drops about 1.3 m and the controller runs feed up to replace it, since the steam-flow signal sees none of it; with feedwater in M the core uncovers in about 90 s. Press <b>Scram</b> to drop the heat to decay heat: pressure then peaks around the relief setpoints and the relief valves cycle, as in a real isolation.</li>
-        <li><b>Isolation at 200 MW</b> (about 6 % of rated, decay heat shortly after a scram). The valve closes, the relief valves lift in groups and cycle. Each lift drops the pressure 0.35 MPa and blows inventory to the suppression pool. Feedwater in A keeps the level. Put the relief valves in M and hold one or two open to depressurise steadily, as for a cooldown.</li>
+        <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: with all eleven safety/relief valves open on their springs at 7.75 MPa they pass about 1130 kg/s, less than the 1790 kg/s the core makes, so pressure climbs until their flow catches up, near 13 MPa, far above any real plant's limit. All that steam is lost to the pool: with feedwater in A the level drops about 1.3 m and the controller runs feed up to replace it, since the steam-flow signal sees none of it; with feedwater in M the core uncovers in about 90 s. Press <b>Scram</b> as the valve closes: only the lowest bank of four lifts, pressure peaks just above 7.6 MPa, and they cycle as in a real isolation.</li>
+        <li><b>Isolation at 200 MW</b> (about 6 % of rated, decay heat shortly after a scram). The valve closes, and the four valves set lowest (7.62 MPa) lift on their springs and cycle, about once every 40 s. Each lift drops the pressure 0.25 MPa and blows inventory to the suppression pool. Feedwater in A keeps the level. Open one or two valves by hand to depressurise steadily, as for a cooldown: one valve at 20 MW takes the vessel from 7 to about 1.6 MPa in half an hour.</li>
         <li><b>Lose feedwater heating</b> at rated power with feedwater and the steam valve in A. Colder feedwater takes more heat to bring to saturation, so about 12 % less steam is made, the voids shrink and the level dips briefly while the controllers follow. With everything in M the valve passes the old steam flow, so pressure falls, and the feedwater, no longer matched, fills the vessel. In a real BWR the colder water also raises reactor power through void feedback; here the heat is what you set.</li>
         <li><b>Depressurise.</b> At hot standby open the steam valve wide by hand. The water flashes as the pressure falls, the voids grow and the level rises at first, before the lost inventory brings it down.</li>
       </ol></div>
@@ -242,7 +243,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
         <li>Level is the volume of water and voids over a uniform cross-section of 28.6 m², from the inside bottom of the vessel: top of active fuel 9.3 m, normal level 14.3 m, main steam nozzle 16.5 m. Real vessels measure level in the downcomer, against a reference leg. The model stops if the level falls to the top of the fuel or reaches the steam nozzle.</li>
         <li>The main steam valve stands for the main steam isolation valves together with the turbine control and bypass valves: 2000 kg/s fully open at 7.0 MPa, in proportion to pressure (choked), into a condenser at 0.01 MPa. It strokes at most 20 % per second. Turbine, condenser and reheat are not modelled.</li>
-        <li>Safety/relief valves: eleven, 113 kg/s each at 7.8 MPa, in proportion to pressure, into a suppression pool at 0.1 MPa that does not heat up. Rough sizing figures, not a valve model.</li>
+        <li>Safety/relief valves: eleven, each with a spring set pressure and a rated capacity from a GE BWR/4 training lesson plan: four at 1090 psig (7.62 MPa abs) rated 800,000 lb/h (101 kg/s), four at 1100 psig (7.69 MPa) 808,000 lb/h, three at 1110 psig (7.75 MPa) 815,000 lb/h. Hover a valve's button for its figures. A spring opens its valve fully above the set pressure and recloses it 0.25 MPa lower; that blowdown is an illustrative figure, not from the source. Flow scales in proportion to pressure from the rated capacity, into a suppression pool at 0.1 MPa that does not heat up. Opening by hand stands for the valve's relief (pneumatic) mode; there is no automatic relief logic, no low-low set and no automatic depressurisation system.</li>
         <li>Feedwater pumps can deliver up to 2500 kg/s at any vessel pressure; pump head, feedwater heaters and the cleanup (reject) flow are not modelled, so there is no way to drain water during heat-up other than the valves.</li>
         <li>No vessel or internals heat capacity: the steel would slow heat-up and pressure changes. Generic numbers for a large BWR (about 3300 MW thermal); not any specific plant. All pressures are absolute.</li>
       </ul></div>
@@ -265,23 +266,24 @@ import {sat,Tsat,clamp,hLiq} from './common.js';
 import * as BWRSim from './bwr-sim.js';
 import * as Ctl from './bwr-control.js';
 import {VERSION} from './version.js';
-const {init,step,fault,Z,H,NV,WMS}=BWRSim;
+const {init,step,fault,Z,H,NV,WMS,SRV,BD}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
-const SIM_API=2,simStale=BWRSim.API!==SIM_API;
+const SIM_API=3,simStale=BWRSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
-const ids=['heat','fw','tfw','mv','srv','pset','lset','relSet'];
+const ids=['heat','fw','tfw','mv','pset','lset'];
 // sliders with an M/A switch → key in ctl.auto
-const AK={fw:'fw',mv:'mv',srv:'srv'},auto={fw:false,mv:false,srv:true};
-const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',fw:v=>Math.round(v)+' kg/s',tfw:v=>Math.round(v)+' °C',mv:v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut',srv:v=>Math.round(v)+' of '+NV,
-  pset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m',relSet:v=>(+v).toFixed(2)+' MPa'};
-const ctl={};
+const AK={fw:'fw',mv:'mv'},auto={fw:false,mv:false};
+const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',fw:v=>Math.round(v)+' kg/s',tfw:v=>Math.round(v)+' °C',mv:v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut',
+  pset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m'};
+// SRVs opened by hand (ctl.srv, passed through to the plant); the springs act in the plant
+const srvMan=Array(NV).fill(false),ctl={srv:srvMan};
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
   ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
-  ctl.pset*=1e6;ctl.relSet*=1e6};
+  ctl.pset*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider; each press snaps to the next multiple of the step, hold to repeat
-const bump={heat:5,fw:5,tfw:5,mv:0.5,srv:1,pset:0.1,lset:0.1,relSet:0.05};
+const bump={heat:5,fw:5,tfw:5,mv:0.5,pset:0.1,lset:0.1};
 const nudge=(k,dir)=>{
   const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
   const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
@@ -319,18 +321,25 @@ $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
 const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else $(k).value=o[k]}readCtl()};
 // steam flow that balances heat Q (MW) with feedwater at tfw (°C) at pressure P (Pa)
 const balance=(Q,tfw,P)=>Q*1e6/(sat(Tsat(P)).hg-hLiq(tfw+273.15,P));
-// scenarios set the plant state and put every control in M except the safety/relief valves
-const MAN={auto:{fw:false,mv:false,srv:true},srv:0};
-const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
+// scenarios set the plant state, put every control in M and close every SRV
+const MAN={auto:{fw:false,mv:false}};
+const start=(st,cfg)=>{srvMan.fill(false);setC({...MAN,...cfg});s=init(st);cs=Ctl.init();hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 const atPower=(Q,tfw,cfg)=>{const W=balance(Q,tfw,7e6);
-  start({P:7e6,L:14.3,gen:W,mv:W/WMS},{heat:Q,fw:+W.toFixed(0),tfw,mv:+(W/WMS*100).toFixed(2),pset:7,lset:14.3,relSet:7.7,...cfg})};
-$('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,fw:0,tfw:50,mv:0,pset:7,lset:14.3,relSet:7.7,win:21600});
+  start({P:7e6,L:14.3,gen:W,mv:W/WMS},{heat:Q,fw:+W.toFixed(0),tfw,mv:+(W/WMS*100).toFixed(2),pset:7,lset:14.3,...cfg})};
+$('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,fw:0,tfw:50,mv:0,pset:7,lset:14.3,win:21600});
 $('scHot').onclick=()=>atPower(20,150,{win:3600});
 $('scRated').onclick=()=>atPower(3293,216,{win:600});
-$('scIso').onclick=()=>{atPower(200,150,{win:3600,mv:0});setC({auto:{fw:true,mv:false,srv:true}})};
+$('scIso').onclick=()=>{atPower(200,150,{win:3600,mv:0});setC({auto:{fw:true,mv:false}})};
 $('scram').onclick=()=>{if(s&&!halted){BWRSim.scram(s,ctl.heat*1e6);syncAuto()}}; // the heat being commanded, also before the first step
 $('rst').onclick=()=>{if(s){BWRSim.reset(s);syncAuto()}};
 $('scClose').onclick=()=>{setC({auto:{mv:false},mv:0})};
+// one toggle per SRV: press to open by hand, again to release (the spring may still hold it open)
+const MPa2=p=>(p/1e6).toFixed(3),psigOf=p=>Math.round(p/6894.757-14.696);
+const srvB=SRV.map((v,i)=>{const b=document.createElement('button');b.type='button';b.textContent=i+1;b.setAttribute('aria-pressed','false');
+  b.onclick=()=>{srvMan[i]=!srvMan[i];if(s)syncAuto()};$('srvs').append(b);return b});
+const srvTitle=(i,open,spr)=>{const v=SRV[i];
+  return `SRV ${i+1}: spring opens at ${MPa2(v.p)} MPa (${psigOf(v.p)} psig) and recloses at ${MPa2(v.p-BD)} MPa; capacity ${v.w.toFixed(1)} kg/s (${(Math.round(v.w/1.25998e-4/1000)*1000).toLocaleString('en-US')} lb/h) at its set pressure. `+
+    (srvMan[i]?(spr?'Open by hand and on its spring.':'Open by hand.')+' Press to release.':spr?'Open on its spring. Press to also hold it open by hand.':'Closed. Press to open by hand.')};
 $('scFwh').onclick=()=>{setC({tfw:Math.max(20,ctl.tfw-55)})};
 
 const FAULT={'':'',range:'The vessel state left the range of the model.',
@@ -356,7 +365,7 @@ const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[his
 const fmtT=t=>t<120?`${t.toFixed(0)} s`:t<7200?`${(t/60).toFixed(0)} min`:`${(t/3600).toFixed(1)} h`;
 const syncAuto=()=>{
   const d=s.d,A=ctl.auto,D=cs.dem;
-  const dv={fw:D.fw,mv:D.mv*100,srv:D.srv},dtx={fw:v=>v.toFixed(0),mv:v=>v.toFixed(1),srv:v=>Math.round(v)};
+  const dv={fw:D.fw,mv:D.mv*100},dtx={fw:v=>v.toFixed(0),mv:v=>v.toFixed(1)};
   for(const k in AK){
     const on=A[AK[k]],el=$(k),v=dv[k],m=$(k+'m');
     el.disabled=$(k+'Dn').disabled=$(k+'Up').disabled=on;
@@ -369,9 +378,13 @@ const syncAuto=()=>{
     $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc;
     if(sc&&s.t>s.scram.t){const v=Math.round(s.f.Q/1e6);el.value=v;ctl.heat=v;$('heato').textContent=fmt.heat(v)}
   }
+  // SRV toggles: pressed = opened by hand, ring = open on its spring; tooltip gives set pressure and capacity
+  {const f=s.f;srvB.forEach((b,i)=>{const spr=!!(f.spr&&f.spr[i]);b.setAttribute('aria-pressed',String(srvMan[i]));b.classList.toggle('spr',spr);
+    const t=srvTitle(i,f.open&&f.open[i],spr);if(b.title!==t)b.title=t});
+   $('srvo').textContent=f.nsrv?`${f.nsrv} open · ${f.wsrv.toFixed(0)} kg/s`:'all shut'}
   let m='',bad=false;
-  if(s.sv){m='Safety mode: every safety/relief valve is open on its spring until pressure falls below 8.1 MPa.';bad=true}
-  else if(!A.srv){m='Safety/relief valves in M: only the safety mode at 8.5 MPa limits pressure.';bad=true}
+  const nspr=(s.f.spr||[]).filter(x=>x).length;
+  if(nspr){m=`${nspr} safety/relief valve${nspr>1?'s':''} open on ${nspr>1?'their springs':'its spring'}; each recloses ${(BD/1e6).toFixed(2)} MPa below its set pressure.`;bad=true}
   else if(A.mv&&d.P<ctl.pset-0.05e6&&s.mv<0.001)m='Pressure is below the regulator setpoint, so the regulator keeps the steam valve shut.';
   else if(d.P<0.101e6)m='Below atmospheric pressure. A real vessel would have its head vent open here; the model has no air in the dome.';
   else if(A.fw&&d.level-d.collapsed>0.3)m=`Voids add ${(d.level-d.collapsed).toFixed(2)} m to the level. A sudden pressure rise or less heat collapses them, and the level drops without any water leaving.`;
@@ -385,11 +398,12 @@ const updText=()=>{
   $('gL').textContent=d.level.toFixed(2);$('gLs').textContent=`${(d.level-Z.TAF).toFixed(2)} m above fuel`;
   $('gW').textContent=f.wst.toFixed(0);$('gF').textContent=`feed ${f.fw.toFixed(0)}`;
   const h=Math.floor(s.t/3600),mn=Math.floor(s.t%3600/60),rT=rate('T');
-  const sv=s.sv?'safety mode, all open':f.nsrv?`${f.nsrv} of ${NV} open (${ctl.auto.srv?'A':'by hand'})`:'closed';
+  const nspr=f.spr.filter(x=>x).length,nman=f.open.filter((o,i)=>o&&!f.spr[i]).length;
+  const sv=f.nsrv?`${f.nsrv} of ${NV} open (${[nspr?nspr+' on spring':'',nman?nman+' by hand':''].filter(x=>x).join(', ')})`:'closed';
   const fwLoad=f.fw*(sat(d.T).hf-f.hfw);
   const rows=[['State',d.sub<0.05?(f.gen>0.5?'boiling':'saturated'):'water subcooled'],['Water heat-up rate',(Math.abs(rT)<0.5?'0':(rT>0?'+':'−')+Math.abs(rT).toFixed(0))+' °C/h',Math.abs(rT)>55],
     ['Reactor',s.scram?`scrammed ${fmtT(s.t-s.scram.t)} ago, ${(f.Q/Math.max(1,s.scram.P0)*100).toFixed(1)} % of ${(s.scram.P0/1e6).toFixed(0)} MW`:'at the net heat set',!!s.scram],['Net heat to water',(f.Q/1e6).toFixed(f.Q!==0&&Math.abs(f.Q)<1e8?1:0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
-    ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,s.sv||f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
+    ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
     ['Feedwater',`${f.fw.toFixed(0)} kg/s at ${(f.Tfw-273.15).toFixed(0)} °C`],['Heat to bring feed to saturation',(fwLoad/1e6).toFixed(0)+' MW'],
     ['Voids',d.Vb.toFixed(1)+' m³'],['Swell (level − collapsed)',(d.level-d.collapsed).toFixed(2)+' m'],['Collapsed level',d.collapsed.toFixed(2)+' m'],
     ['Water mass',(d.Ml/1000).toFixed(1)+' t'],['Steam mass',(d.Mv/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(mn).padStart(2,'0')+' min']];
@@ -521,7 +535,7 @@ const drawVessel=dtReal=>{
   if(wst>0.5){cx.fillStyle=col.acc;const ax=(xv+W)/2+(narrow?0:30);cx.beginPath();cx.moveTo(ax+8,ys);cx.lineTo(ax-4,ys-7);cx.lineTo(ax-4,ys+7);cx.fill()}
   cx.textAlign='left';
   lbl(narrow?'SRVs':'Safety/relief valves',xs+16,yvs-4,col.mute);
-  lbl(s.sv?(narrow?'all open':'all open (spring)'):f.nsrv?(narrow?`${f.nsrv} open`:`${f.nsrv} of ${NV} · ${f.wsrv.toFixed(0)} kg/s`):'shut',xs+16,yvs+14,f.nsrv?col.ink:col.mute,f.nsrv>0);
+  lbl(f.nsrv?(narrow?`${f.nsrv} open`:`${f.nsrv} of ${NV} · ${f.wsrv.toFixed(0)} kg/s`):'shut',xs+16,yvs+14,f.nsrv?col.ink:col.mute,f.nsrv>0);
   lbl(narrow?'Pool':'Suppression pool',poolX0+(narrow?8:12),poolT+22,'rgba(255,255,255,.92)');
   // relief discharge: bubbles in the pool under the pipe end
   if(f.nsrv>0){cx.fillStyle='rgba(255,255,255,.75)';const tt=performance.now()/250;for(let i=0;i<6;i++){const ph=(tt+i/6)%1;cx.globalAlpha=(1-ph)*clamp(f.nsrv/4,0.35,1);cx.beginPath();cx.arc(xs+(i%3-1)*8,poolT+20+(1-ph)*28,2+ph*4,0,7);cx.fill()}cx.globalAlpha=1}

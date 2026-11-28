@@ -16,10 +16,17 @@ const V=600,H=21,A=V/H,Z={BAF:5.6,TAF:9.3,SHR:11.5,FW:13.0,NWL:14.3,MSL:16.5};
 // Full open passes WMS kg/s at PR; flow ∝ P while choked, subsonic factor near the condenser pressure PC.
 // The valve travels at most RATE of its stroke per second (full stroke in 5 s).
 const WMS=2000,PR=7.0e6,PC=0.01e6,RATE=0.2;
-// safety/relief valves (SRVs): NV valves, WV kg/s each at PV, discharging to the suppression pool at PB.
-// Relief mode is commanded (operator or bwr-control.js); safety mode (spring) opens every valve above
-// PSV and recloses below PSVR, whoever commands.
-const NV=11,WV=113,PV=7.8e6,PB=0.1e6,PSV=8.5e6,PSVR=8.1e6;
+// safety/relief valves (SRVs), discharging to the suppression pool at PB. Each valve has a spring
+// that opens it fully above its set pressure p (Pa abs) and recloses it BD below, and can also be
+// opened by hand (relief mode, a command from the operator). Capacity w (kg/s) is rated at its set
+// pressure; the flow scales ∝ P (choked) with the subsonic factor near PB. Values from a GE BWR/4
+// training lesson plan: 4 valves at 1090 psig rated 800,000 lb/h, 4 at 1100 psig 808,000 lb/h,
+// 3 at 1110 psig 815,000 lb/h (the same valve model; capacity ∝ set pressure). Blowdown BD is
+// illustrative (about 3 %); the source gives none.
+const psig=x=>(x+14.696)*6894.757,lbh=x=>x*1.25998e-4;
+const SRV=Object.freeze([[1090,800e3],[1090,800e3],[1090,800e3],[1090,800e3],[1100,808e3],[1100,808e3],[1100,808e3],[1100,808e3],[1110,815e3],[1110,815e3],[1110,815e3]]
+  .map(([p,w])=>Object.freeze({p:psig(p),w:lbh(w)})));
+const NV=SRV.length,PB=0.1e6,BD=0.25e6;
 // feedwater pump limit, kg/s; net heat range is the page's business
 const FWMAX=2500;
 // Scram: the rods go in and core heat falls to the fission tail plus decay heat, a fraction of the
@@ -37,7 +44,7 @@ const KAP=1.3,RCR=(2/(KAP+1))**(KAP/(KAP-1));
 const psi=r=>Math.sqrt(Math.max(0,r**(2/KAP)-r**((KAP+1)/KAP))),PSI=psi(RCR);
 const subF=(P,pb)=>{if(P<=pb)return 0;const r=pb/P;return r<=RCR?1:psi(r)/PSI};
 const wMS=(a,P)=>a*WMS*P/PR*subF(P,PC);
-const wSRV=(n,P)=>n*WV*P/PV*subF(P,PB);
+const wSRV=(i,P)=>SRV[i].w*P/SRV[i].p*subF(P,PB);
 // State at trial steam (saturation) temperature T, from the totals M, U and the steam mass Mv carried
 // in: if the water, after giving the steam its saturated energy, is above saturation it flashes to
 // equilibrium; otherwise the steam stays as it is and the water is subcooled.
@@ -72,28 +79,30 @@ const derive=(s,e)=>{
 // o: {P Pa, L m two-phase level, Tl °C water temperature (default saturated), gen kg/s steaming the
 // voids start in equilibrium with, mv valve position 0–1, tau overrides}
 const init=o=>{
-  const s={t:0,mv:o.mv||0,sv:false,scram:null,tau:{...TAU,...o.tau}};
+  const s={t:0,mv:o.mv||0,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
   const T=Tsat(o.P);
   const q=sat(T),rg=q.rg,ug=q.ug,uf=q.uf,Tl=o.Tl!=null?Math.min(T,o.Tl+273.15):T;
   s.Mb=(o.gen||0)*s.tau.b;
   const Vl=o.L*A-s.Mb/rg,Ml=Vl*liqRho(Tl,o.P),ul=Tl<T?sat(Tl).uf:uf;
   s.Mv=(V-Vl)*rg;s.M=Ml+s.Mv;s.U=Ml*ul+s.Mv*ug;
   const e=solve({M:s.M,U:s.U,Mv:s.Mv,T0:T});s.Mv=e.Mv;s.d=derive(s,e);
-  s.f={Q:0,fw:0,Tfw:0,hfw:0,hg:0,wst:0,wsrv:0,nsrv:0,gen:o.gen||0,cond:0,mv:s.mv};
+  s.f={Q:0,fw:0,Tfw:0,hfw:0,hg:0,wst:0,wsrv:0,nsrv:0,open:Array(NV).fill(false),spr:Array(NV).fill(false),gen:o.gen||0,cond:0,mv:s.mv};
   return s;
 };
 // One step. u is the final command, SI: {heat W net heat into the water; fw kg/s feedwater, tfw K its
-// temperature; mv 0–1 main steam valve demand; srv SRVs open in relief mode (rounded)}.
+// temperature; mv 0–1 main steam valve demand; srv array, true for each SRV opened by hand}.
 // After scram(s) the core heat is the decay curve and u.heat is ignored until reset(s).
-// Each command is clamped to its range; the valve moves toward its demand at RATE; the SRV safety mode
-// acts on top of the command.
+// Each command is clamped to its range; the valve moves toward its demand at RATE; each SRV's spring
+// opens it on pressure whatever the command.
 const step=(s,u,dt)=>{
   const d=s.d,P=d.P,tau=s.tau;
   const q=sat(d.T),hg=q.hg,ug=q.ug,uf=q.uf; // sat() reuses one object: copy fields first
   const a=clamp(u.mv||0,0,1);s.mv+=clamp(a-s.mv,-RATE*dt,RATE*dt);
-  if(P>PSV)s.sv=true;else if(P<PSVR)s.sv=false;
-  const nsrv=s.sv?NV:Math.round(clamp(u.srv||0,0,NV)),fw=clamp(u.fw||0,0,FWMAX),Tfw=clamp(u.tfw||T0,T0,THI),Q=s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat||0;
-  const wst=wMS(s.mv,P),wsrv=wSRV(nsrv,P),hfw=hLiq(Tfw,P);
+  // SRVs: spring on pressure (with blowdown), or opened by hand
+  const man=u.srv||[],open=SRV.map((v,i)=>{if(P>v.p)s.spr[i]=true;else if(P<v.p-BD)s.spr[i]=false;return s.spr[i]||!!man[i]});
+  let wsrv=0,nsrv=0;open.forEach((o,i)=>{if(o){wsrv+=wSRV(i,P);nsrv++}});
+  const fw=clamp(u.fw||0,0,FWMAX),Tfw=clamp(u.tfw||T0,T0,THI),Q=s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat||0;
+  const wst=wMS(s.mv,P),hfw=hLiq(Tfw,P);
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
   const mo=Math.min((wst+wsrv)*dt,0.5*s.M);
   let M=s.M+fw*dt-mo,U=s.U+fw*dt*hfw-mo*hg+Q*dt,Mv=Math.max(0,s.Mv-mo);
@@ -107,7 +116,7 @@ const step=(s,u,dt)=>{
   s.Mb=Math.min(g+(s.Mb-g)*Math.exp(-dt/tau.b),0.9*e.Mv);
   Object.assign(s,{M,U,Mv:e.Mv});s.t+=dt;
   s.d=derive(s,e);
-  s.f={Q,fw,Tfw,hfw,hg,wst,wsrv,nsrv,gen,cond:mc/dt,mv:s.mv};
+  s.f={Q,fw,Tfw,hfw,hg,wst,wsrv,nsrv,open,spr:s.spr.slice(),gen,cond:mc/dt,mv:s.mv};
 };
 // scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
 // a second scram keeps the first; reset hands the heat back to the command
@@ -122,5 +131,5 @@ const fault=s=>{
   if(d.P>21.5e6)return 'critical';
   return '';
 };
-const API=2;
-export {API,V,H,A,Z,WMS,PR,PC,RATE,NV,WV,PV,PB,PSV,PSVR,FWMAX,TAU,subF,wMS,wSRV,decayFrac,init,step,scram,reset,fault};
+const API=3;
+export {API,V,H,A,Z,WMS,PR,PC,RATE,SRV,NV,PB,BD,FWMAX,TAU,subF,wMS,wSRV,decayFrac,init,step,scram,reset,fault};
