@@ -108,6 +108,7 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
 .notes ol,.notes ul{padding-left:20px;margin:0}
 code{font-size:14px;overflow-wrap:anywhere}
+a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 @media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
@@ -117,7 +118,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 <header class="band"><div class="wrap">
   <div>
     <h1>Steam pressuriser simulator</h1>
-    <p>A pressuriser coupled to the reactor coolant system. Start cold, water-solid or on a nitrogen cushion, draw the steam bubble, heat up to hot standby, then cool down again.</p>
+    <p>A pressuriser coupled to the reactor coolant system. Start cold, water-solid or on a nitrogen cushion, draw the steam bubble, heat up to hot standby, then cool down again. <a class="nav" href="bwr.html">BWR reactor vessel simulator</a></p>
   </div>
   <div class="bar">
     <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>

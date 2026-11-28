@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BWR reactor vessel simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same stylesheet as index.html (keep the two in step), plus the BWR rules at the end.
+   VOICE work: an engineer's instrument, precise and quiet
+   IDEA a control-room panel: vessel mimic, big gauges, chart recorder, control knobs
+   PICTURE live cross-section of the reactor vessel beside the recorder
+   COLOUR aluminium ground, black ink, water blue, orange pointer for the live value
+   TYPE Geist throughout, weights doing the contrast
+   LAYOUT laptop: vessel | gauges + recorder + P–T chart | controls; 720px: vessel + gauges, controls below; phone: sticky gauges, vessel, charts, controls */
+:root{color-scheme:light dark;--bg:light-dark(#e9eaec,#141517);--panel:light-dark(#f6f6f7,#1d1f22);--ink:light-dark(#111214,#ecedef);--mute:light-dark(#5b5f66,#9aa0a8);--rule:light-dark(#c9ccd1,#33363b);--acc:#ff4f00;--water:light-dark(#1f63c6,#4f8fec);--water2:light-dark(#0f3f8a,#1d4f9e);--steam:light-dark(#ffffff,#2a2d32);--metal:light-dark(#9ea3ab,#5d636b);--warn:light-dark(#b3261e,#ff6b5e)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:clip}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
+.wrap{max-width:1680px;margin:0 auto}
+header .wrap{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:end;justify-content:space-between}
+h1{font-size:clamp(30px,4vw,44px);line-height:1.05;letter-spacing:-.02em;margin:0;font-weight:700;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--mute);max-width:62ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:inherit;font-size:16px;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:8px;min-height:44px;padding:0 14px}
+button{cursor:pointer;font-weight:500}
+button:hover{border-color:var(--ink)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.seg{display:flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;margin-left:-1px;min-height:38px;padding:0 7px;font-size:14px;font-variant-numeric:tabular-nums;position:relative}
+.seg button:first-child{border-radius:6px;margin:0 6px 0 0;padding:0 10px}
+.seg button:nth-child(2){border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}
+.seg button:hover,.seg button:focus-visible{z-index:1}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink);z-index:1}
+.seg button.sel{border-color:var(--ink);z-index:1}
+/* desktop-first: mimic wide in the left column, controls beside it, charts in a row below */
+.main{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(300px,350px);grid-template-areas:"gauges controls" "vessel controls" "lower lower";grid-template-rows:auto 1fr auto;align-items:start}
+.main>.gauges{grid-area:gauges}.main>.vessel{grid-area:vessel}.main>.controls{grid-area:controls}.lower{grid-area:lower;display:grid;gap:16px;grid-template-columns:minmax(250px,.9fr) minmax(0,1.7fr) minmax(0,1.3fr);align-items:start}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:16px}
+.vessel{position:relative;min-height:clamp(520px,calc(100vh - 260px),760px);align-self:stretch;padding:0;overflow:hidden}
+.vessel canvas{position:absolute;inset:0;width:100%;height:100%}
+.gauges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.g{background:var(--panel);padding:10px 14px}
+.g span{display:block;color:var(--mute);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g b{display:block;font-size:clamp(22px,2.4vw,36px);font-weight:600;letter-spacing:-.02em;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
+.g.p b{color:var(--acc)}
+.gv{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:10px}
+.gv small{color:var(--mute);font-size:clamp(13px,1vw,16px);font-variant-numeric:tabular-nums;white-space:nowrap}
+.g.r b{color:var(--water)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(14.5em,1fr));gap:4px 20px;font-size:14px}
+.stats div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--rule);padding:4px 0}
+.stats dt{color:var(--mute)}
+.stats dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats dd.bad{color:var(--warn)}
+dl{margin:0}
+.fig{position:relative;min-height:320px}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.fig.sat{min-height:280px}
+.chead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.chead h2,.controls h2{font-size:17px;margin:0;font-weight:600}
+.chead select{min-height:36px;font-size:14px;padding:0 8px}
+.key{display:flex;gap:14px;font-size:13px;color:var(--mute);flex-wrap:wrap}
+.key i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+svg text{font:13px Geist,system-ui,sans-serif;fill:var(--mute);paint-order:stroke;stroke:var(--panel);stroke-width:4px}
+svg .now{fill:var(--ink);font-weight:600}
+.controls{display:grid;gap:14px;align-content:start}
+.grp{display:grid;gap:10px;align-content:start;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.grp:last-child{border:0;padding-bottom:0}
+.grp p{margin:0;font-size:13px;color:var(--mute)}
+.row label{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:var(--mute)}
+.row label output{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row label .dem{margin-left:auto;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* M/A switch beside each actuator; the active half is filled */
+.rhead{display:flex;align-items:center;gap:10px}.rhead label{flex:1}
+button.am{display:inline-flex;flex:none;min-height:0;height:24px;padding:2px;gap:2px;border-radius:6px;font-size:12px;font-weight:600;line-height:1}
+button.am span{display:grid;place-items:center;width:20px;border-radius:4px;color:var(--mute)}
+button.am[aria-checked=false] span:first-child,button.am[aria-checked=true] span:last-child{background:var(--ink);color:var(--bg)}
+
+/* demand notch on a manual slider: marks where the automatic logic would put it */
+.trk{position:relative}
+.cmd{position:absolute;top:0;bottom:0;left:calc(8px + var(--f,0) * (100% - 16px));width:0;pointer-events:none}
+.cmd::before,.cmd::after{content:"";position:absolute;left:-5px;border:5px solid transparent}
+.cmd::before{top:-1px;border-top:7px solid var(--ink)}.cmd::after{bottom:-1px;border-bottom:7px solid var(--ink)}
+.cmd[hidden]{display:none}
+input[type=range]{width:100%;height:32px;accent-color:var(--acc);margin:2px 0 0;cursor:pointer}
+input[type=range]:disabled{opacity:.45;cursor:not-allowed}
+.ctl{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;gap:8px;align-items:center}
+.ctl button{min-height:40px;height:40px;padding:0;font-size:20px;line-height:1;font-variant-numeric:tabular-nums;touch-action:manipulation}
+.ctl button:disabled{opacity:.45;cursor:not-allowed;border-color:var(--rule)}
+.check{display:flex;align-items:center;gap:10px;font-size:15px;min-height:32px;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--acc);flex:none}
+.btns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.btns button{font-size:14px;padding:4px 8px;line-height:1.25}.btns button:last-child:nth-child(odd){grid-column:1/-1}
+.alert{display:none;margin-top:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--warn);color:var(--warn);font-weight:500}
+.alert.on{display:block}
+.assists .chead{flex-direction:column;align-items:start;gap:4px;margin-bottom:14px}
+.assists .chead p{margin:0;font-size:14px;color:var(--mute);max-width:70ch}
+.agrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px 40px}
+.agrid .grp{border:0;padding:0}
+.agrid h3{font-size:15px;margin:0;font-weight:600}
+.astat{margin:14px 0 0;font-size:14px;color:var(--mute);min-height:1.5em}
+.astat.bad{color:var(--warn)}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px 40px}
+.notes h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
+.notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
+.notes ol,.notes ul{padding-left:20px;margin:0}
+code{font-size:14px;overflow-wrap:anywhere}
+a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
+@media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
+@media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
+/* BWR page: stats and a wide recorder under the mimic */
+.lower{grid-template-columns:minmax(260px,1fr) minmax(0,2.4fr)}
+.lower .fig{min-height:360px}
+@media(max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<header class="band"><div class="wrap">
+  <div>
+    <h1>BWR reactor vessel simulator</h1>
+    <p>A boiling-water reactor pressure vessel with its main steam line, safety/relief valves and feedwater. Heat it up from 100 °C, run it at power, isolate it, and watch pressure, level and the core voids interact. <a class="nav" href="index.html">PWR pressuriser simulator</a></p>
+  </div>
+  <div class="bar">
+    <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
+  </div>
+</div>
+<div class="wrap"><div id="alert" class="alert" role="status"></div></div>
+</header>
+
+<main class="band main wrap" style="padding-top:0">
+  <div class="gauges">
+    <div class="g p"><span>Dome pressure, MPa abs</span><div class="gv"><b id="gP">–</b><small id="gS" title="Saturation temperature at this pressure: the steam temperature"></small></div></div>
+    <div class="g"><span>Water, °C</span><div class="gv"><b id="gT">–</b><small id="gD" title="Saturation temperature minus water temperature. Zero while the water boils; positive after cold feedwater or cooling."></small></div></div>
+    <div class="g r"><span>Level, m</span><div class="gv"><b id="gL">–</b><small id="gLs" title="Level above the top of active fuel"></small></div></div>
+    <div class="g"><span>Main steam flow, kg/s</span><div class="gv"><b id="gW">–</b><small id="gF" title="Feedwater flow"></small></div></div>
+  </div>
+  <div class="card vessel" aria-label="Reactor vessel, main steam line, safety/relief valves and feedwater mimic"><canvas id="cv"></canvas></div>
+
+  <div class="card controls">
+    <div class="grp">
+      <h2>Scenarios</h2>
+      <div class="btns">
+        <button id="scStart">Startup<br>100 °C, 30 MW</button>
+        <button id="scHot">Hot standby<br>7.0 MPa, 20 MW</button>
+        <button id="scRated">Rated power<br>3293 MW, 7.0 MPa</button>
+        <button id="scIso">Isolation at 200 MW<br>valve closing</button>
+        <button id="scClose">Close main steam valve</button>
+        <button id="scFwh">Lose feedwater heating: −55 K</button>
+      </div>
+    </div>
+    <div class="grp">
+      <h2>Reactor</h2>
+      <div class="row"><label for="heat">Net heat to water <output id="heato"></output></label><input id="heat" type="range" min="-100" max="3400" step="1" value="0"></div>
+    </div>
+    <div class="grp">
+      <h2>Feedwater</h2>
+      <div class="row"><label for="fw">Flow <output id="fwo"></output></label><input id="fw" type="range" min="0" max="2500" step="1" value="0"></div>
+      <div class="row"><label for="tfw">Temperature <output id="tfwo"></output></label><input id="tfw" type="range" min="20" max="230" step="1" value="150"></div>
+    </div>
+    <div class="grp">
+      <h2>Main steam line</h2>
+      <div class="row"><label for="mv">Steam valve <output id="mvo"></output></label><input id="mv" type="range" min="0" max="100" step="0.01" value="0"></div>
+    </div>
+    <div class="grp">
+      <h2>Safety/relief valves</h2>
+      <div class="row"><label for="srv">Open in relief mode <output id="srvo"></output></label><input id="srv" type="range" min="0" max="11" step="1" value="0"></div>
+    </div>
+  </div>
+
+  <div class="lower">
+    <dl class="stats card" id="stats"></dl>
+    <div class="card chartcard">
+      <div class="chead"><h2>Recorder</h2>
+        <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600" selected>Last 10 min</option><option value="3600">Last hour</option><option value="21600">Last 6 hours</option></select></div>
+      <div class="fig"><svg id="rec"></svg></div>
+    </div>
+  </div>
+</main>
+
+<section class="band wrap" style="padding-top:0;padding-bottom:0">
+  <div class="card assists">
+    <div class="chead"><h2>Automatic control</h2>
+      <p>Feedwater flow, the steam valve and the safety/relief valves each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand, so you can match it before switching to A. Net heat and feedwater temperature are always manual. Nothing switches between M and A by itself.</p></div>
+    <div class="agrid">
+      <div class="grp">
+        <h3>Pressure regulator (steam valve)</h3>
+        <div class="row"><label for="pset">Pressure setpoint <output id="pseto"></output></label><input id="pset" type="range" min="0.2" max="7.5" step="0.01" value="7"></div>
+        <p>Proportional-integral on dome pressure: 0.1 MPa above the setpoint opens the valve a further 30 %, and the integral (30 s) removes the offset. Below the setpoint it closes the valve, so with little heat the pressure rises to the setpoint and then holds there.</p>
+      </div>
+      <div class="grp">
+        <h3>Feedwater level control</h3>
+        <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="12" max="16" step="0.05" value="14.3"></div>
+        <p>Three-element: feedwater follows the main steam flow, plus a proportional-integral term on the level error (150 kg/s per metre, integral 120 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it.</p>
+      </div>
+      <div class="grp">
+        <h3>Safety/relief valves</h3>
+        <div class="row"><label for="relSet">Relief opening pressure <output id="relSeto"></output></label><input id="relSet" type="range" min="6" max="8" step="0.01" value="7.7"></div>
+        <p>In A, eleven valves in three groups (4, 4 and 3) open at this pressure, 0.07 MPa and 0.14 MPa above it, and each group recloses 0.35 MPa below its opening pressure. Safety mode, the spring, opens every valve above 8.5 MPa and recloses below 8.1 MPa, always armed.</p>
+      </div>
+    </div>
+    <p class="astat" id="astat" role="status"></p>
+  </div>
+</section>
+
+<section class="band wrap" style="padding-top:16px">
+  <div class="notes card">
+    <div><h2>Things to try</h2>
+      <ol>
+        <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level low at 11.5 m, every valve shut and 30 MW of heat. The water heats at about 80 °C per hour, faster than the usual 55 °C/h limit, so turn the heat down to stay inside it. Pressure follows the saturation curve, and the level rises as the water expands: about 3 m on the way to 7 MPa. When pressure nears 7 MPa, switch the steam valve to A to hold it.</li>
+        <li><b>Rated power.</b> Every control starts in M, balanced. Switch feedwater and the steam valve to A, then change the net heat. Less heat means less steam made in the core, fewer voids and a lower level (shrink); the feedwater controller sees the level fall and the steam flow drop at the same time.</li>
+        <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: eleven relief valves pass about 1300 kg/s, less than the 1790 kg/s the core makes, so pressure keeps rising. Turn the heat down to decay-heat levels by hand.</li>
+        <li><b>Isolation at 200 MW</b> (about 6 % of rated, decay heat shortly after a scram). The valve closes, the relief valves lift in groups and cycle. Each lift drops the pressure 0.35 MPa and blows inventory to the suppression pool. Feedwater in A keeps the level. Put the relief valves in M and hold one or two open to depressurise steadily, as for a cooldown.</li>
+        <li><b>Lose feedwater heating</b> at rated power with feedwater and the steam valve in A. Colder feedwater takes more heat to bring to saturation, so about 12 % less steam is made, the voids shrink and the level dips briefly while the controllers follow. With everything in M the valve passes the old steam flow, so pressure falls, and the feedwater, no longer matched, fills the vessel. In a real BWR the colder water also raises reactor power through void feedback; here the heat is what you set.</li>
+        <li><b>Depressurise.</b> At hot standby open the steam valve wide by hand. The water flashes as the pressure falls, the voids grow and the level rises at first, before the lost inventory brings it down.</li>
+      </ol></div>
+    <div><h2>What the model solves</h2>
+      <p>The vessel (600 m³ of free volume, 21 m tall) holds water and steam at one pressure. It tracks the total mass and energy, and the steam mass. Each step it finds the pressure at which the water and the saturated steam exactly fill the vessel. Water hotter than saturation at that pressure flashes at once, so a falling pressure makes steam throughout the water. Water below saturation, after cold feedwater or cooling, condenses steam at a finite rate (10 s time constant), so pressure drops after a cold-water injection.</p>
+      <p>The steam the water makes passes through it as bubbles before it reaches the dome. These voids take up volume inside the two-phase mixture, so they raise the level without changing the pressure. They clear with a 0.7 s time constant, sized to give about 35 m³ of voids, about 1.2 m of swell, at rated power. The level shown is the height of water plus voids over the vessel's mean cross-section; the recorder also shows the collapsed level, water alone.</p>
+      <p>Net heat goes into the water: core power or decay heat minus cleanup and shutdown cooling, with the vessel's own heat losses included. Steam leaves through the main steam line and the safety/relief valves at saturated-steam enthalpy; feedwater enters as compressed liquid at the temperature you set.</p></div>
+    <div><h2>Assumptions and limits</h2>
+      <ul>
+        <li>No neutronics: power is the net heat you set and does not respond to voids, pressure or feedwater temperature. No scram, no recirculation pumps or flow control, no jet pumps. The voids clear at the same rate at every power and pressure; in a real core they depend on recirculation flow, and the bubbles from bulk flashing in a depressurisation rise more slowly, so swell on depressurisation is underestimated.</li>
+        <li>The water is one well-mixed region: downcomer, core and lower plenum share one temperature. In a real BWR the downcomer is a few kelvin subcooled at power and the core still boils; here the water is saturated whenever it boils.</li>
+        <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
+        <li>Level is the volume of water and voids over a uniform cross-section of 28.6 m², from the inside bottom of the vessel: top of active fuel 9.3 m, normal level 14.3 m, main steam nozzle 16.5 m. Real vessels measure level in the downcomer, against a reference leg. The model stops if the level falls to the top of the fuel or reaches the steam nozzle.</li>
+        <li>The main steam valve stands for the main steam isolation valves together with the turbine control and bypass valves: 2000 kg/s fully open at 7.0 MPa, in proportion to pressure (choked), into a condenser at 0.01 MPa. It strokes at most 20 % per second. Turbine, condenser and reheat are not modelled.</li>
+        <li>Safety/relief valves: eleven, 113 kg/s each at 7.8 MPa, in proportion to pressure, into a suppression pool at 0.1 MPa that does not heat up. Rough sizing figures, not a valve model.</li>
+        <li>Feedwater pumps can deliver up to 2500 kg/s at any vessel pressure; pump head, feedwater heaters and the cleanup (reject) flow are not modelled, so there is no way to drain water during heat-up other than the valves.</li>
+        <li>No vessel or internals heat capacity: the steel would slow heat-up and pressure changes. Generic numbers for a large BWR (about 3300 MW thermal); not any specific plant. All pressures are absolute.</li>
+      </ul></div>
+  </div>
+</section>
+
+<script src="common.js"></script>
+<script src="bwr-sim.js"></script>
+<script src="bwr-control.js"></script>
+<script>
+{
+// steam tables in common.js; plant in bwr-sim.js (pure physics); automatic control in bwr-control.js
+const {sat,Tsat,clamp,hLiq}=PZCommon;
+const {init,step,fault,Z,H,NV,WMS}=BWRSim;
+const Ctl=BWRCtl;
+// bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
+const SIM_API=1,simStale=BWRSim.API!==SIM_API;
+
+const $=id=>document.getElementById(id);
+const ids=['heat','fw','tfw','mv','srv','pset','lset','relSet'];
+// sliders with an M/A switch → key in ctl.auto
+const AK={fw:'fw',mv:'mv',srv:'srv'},auto={fw:false,mv:false,srv:true};
+const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',fw:v=>Math.round(v)+' kg/s',tfw:v=>Math.round(v)+' °C',mv:v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut',srv:v=>Math.round(v)+' of '+NV,
+  pset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m',relSet:v=>(+v).toFixed(2)+' MPa'};
+const ctl={};
+const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
+  ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
+  ctl.pset*=1e6;ctl.relSet*=1e6};
+for(const k of ids)$(k).addEventListener('input',readCtl);
+// − / + buttons beside each slider; each press snaps to the next multiple of the step, hold to repeat
+const bump={heat:5,fw:5,tfw:5,mv:0.5,srv:1,pset:0.1,lset:0.1,relSet:0.05};
+const nudge=(k,dir)=>{
+  const el=$(k);if(el.disabled)return false;const st=bump[k],n=+el.value/st,lo=+el.min,hi=+el.max;
+  const v=clamp((dir>0?Math.floor(n+1e-6)+1:Math.ceil(n-1e-6)-1)*st,lo,hi);
+  el.value=+v.toFixed(6);el.dispatchEvent(new Event('input'));
+};
+for(const k of ids){
+  const el=$(k),lab=el.labels[0],name=lab.firstChild.textContent.trim(),box=document.createElement('div');box.className='ctl';el.replaceWith(box);
+  const mk=(dir,txt)=>{const b=document.createElement('button');b.type='button';b.textContent=txt;b.id=k+(dir>0?'Up':'Dn');
+    b.setAttribute('aria-label',(dir>0?'Increase ':'Decrease ')+name+' by '+bump[k]);
+    let t=null;const stop=()=>{clearTimeout(t);t=null};
+    b.addEventListener('pointerdown',e=>{if(e.button)return;nudge(k,dir);const rep=d=>{t=setTimeout(()=>{nudge(k,dir);rep(80)},d)};rep(400)});
+    for(const ev of ['pointerup','pointerleave','pointercancel'])b.addEventListener(ev,stop);
+    b.addEventListener('click',e=>{if(e.detail===0)nudge(k,dir)});
+    return b};
+  const trk=document.createElement('div');trk.className='trk';trk.append(el);box.append(mk(-1,'−'),trk,mk(1,'+'));
+  if(!(k in AK))continue;
+  const head=document.createElement('div');head.className='rhead';lab.replaceWith(head);
+  const sw=document.createElement('button');sw.type='button';sw.className='am';sw.id=k+'Am';sw.setAttribute('role','switch');
+  sw.setAttribute('aria-label',name+' automatic');sw.title='M manual / A automatic';sw.innerHTML='<span>M</span><span>A</span>';
+  sw.onclick=()=>{auto[AK[k]]=!auto[AK[k]];readCtl();if(s)syncAuto()};head.append(lab,sw);
+  const dem=document.createElement('span');dem.className='dem';dem.id=k+'d';lab.insertBefore(dem,lab.querySelector('output'));
+  const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);
+}
+
+// s: plant state (bwr-sim.js); cs: controller memory (bwr-control.js)
+let s,cs,hist=[],running=true,halted='',lastS=0;
+const setAlert=m=>{m=m||(simStale?'bwr-sim.js is an older version than this page, probably a cached copy. Reload in a few minutes, or open the page by commit.':'');$('alert').textContent=m;$('alert').classList.toggle('on',!!m)};
+let speed=1;const SPEEDS=[1,2,5,10,20,50,100,200,500,1000];
+for(const v of SPEEDS){const b=document.createElement('button');b.textContent=v+'×';b.dataset.speed=v;b.setAttribute('aria-pressed','false');
+  b.onclick=()=>{speed=v;if(!running&&!halted)running=true;showSpeed()};$('speed').append(b)}
+const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
+  for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
+const toggle=()=>{running=!running;showSpeed()};
+$('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
+const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else $(k).value=o[k]}readCtl()};
+// steam flow that balances heat Q (MW) with feedwater at tfw (°C) at pressure P (Pa)
+const balance=(Q,tfw,P)=>Q*1e6/(sat(Tsat(P)).hg-hLiq(tfw+273.15,P));
+// scenarios set the plant state and put every control in M except the safety/relief valves
+const MAN={auto:{fw:false,mv:false,srv:true},srv:0};
+const start=(st,cfg)=>{setC({...MAN,...cfg});s=init(st);cs=Ctl.init();hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
+const atPower=(Q,tfw,cfg)=>{const W=balance(Q,tfw,7e6);
+  start({P:7e6,L:14.3,gen:W,mv:W/WMS},{heat:Q,fw:+W.toFixed(0),tfw,mv:+(W/WMS*100).toFixed(2),pset:7,lset:14.3,relSet:7.7,...cfg})};
+$('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,fw:0,tfw:50,mv:0,pset:7,lset:14.3,relSet:7.7,win:21600});
+$('scHot').onclick=()=>atPower(20,150,{win:3600});
+$('scRated').onclick=()=>atPower(3293,216,{win:600});
+$('scIso').onclick=()=>{atPower(200,150,{win:3600,mv:0});setC({auto:{fw:true,mv:false,srv:true}})};
+$('scClose').onclick=()=>{setC({auto:{mv:false},mv:0})};
+$('scFwh').onclick=()=>{setC({tfw:Math.max(20,ctl.tfw-55)})};
+
+const FAULT={'':'',range:'The vessel state left the range of the model.',
+  uncovered:'The level has fallen to the top of the fuel. The model has no fuel temperatures, so it cannot follow a core uncovery.',
+  flooded:'The level has reached the main steam nozzle: water would be carried into the steam lines, which the model does not do.',
+  critical:'Pressure is close to the critical point.'};
+const ctl_dt=()=>speed<=20?0.25:speed<=50?0.5:speed<=200?1:2;
+const physTick=simDt=>{
+  const dt=ctl_dt();let n=Math.round(simDt/dt);
+  while(n-->0&&!halted){
+    step(s,Ctl.update(cs,s,ctl,dt),dt);
+    const d=s.d,msg=FAULT[fault(s)];
+    if(msg){halted=msg;setAlert(msg+' The model stops here; pick a scenario to start again.');if(running)toggle();break}
+    if(s.t-lastS>=2){lastS=s.t;const f=s.f;hist.push({t:s.t,P:d.P,L:d.level,C:d.collapsed,W:f.wst,F:f.fw,R:f.wsrv,T:d.Tl-273.15});if(hist.length>12000)hist.shift()}
+  }
+};
+
+// ---------- readouts ----------
+const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
+const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
+// rate of change per hour over ~5 real seconds of history (5 s × speed), capped at 300 sim-s
+const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
+const syncAuto=()=>{
+  const d=s.d,A=ctl.auto,D=cs.dem;
+  const dv={fw:D.fw,mv:D.mv*100,srv:D.srv},dtx={fw:v=>v.toFixed(0),mv:v=>v.toFixed(1),srv:v=>Math.round(v)};
+  for(const k in AK){
+    const on=A[AK[k]],el=$(k),v=dv[k],m=$(k+'m');
+    el.disabled=$(k+'Dn').disabled=$(k+'Up').disabled=on;
+    if(on&&s.t>0){el.value=v;ctl[k]=v;$(k+'o').textContent=fmt[k](v)}
+    $(k+'d').textContent=on?'':'auto '+dtx[k](v);
+    m.hidden=on;m.style.setProperty('--f',clamp((v-el.min)/(el.max-el.min),0,1));
+  }
+  let m='',bad=false;
+  if(s.sv){m='Safety mode: every safety/relief valve is open on its spring until pressure falls below 8.1 MPa.';bad=true}
+  else if(!A.srv){m='Safety/relief valves in M: only the safety mode at 8.5 MPa limits pressure.';bad=true}
+  else if(A.mv&&d.P<ctl.pset-0.05e6&&s.mv<0.001)m='Pressure is below the regulator setpoint, so the regulator keeps the steam valve shut.';
+  else if(d.P<0.101e6)m='Below atmospheric pressure. A real vessel would have its head vent open here; the model has no air in the dome.';
+  else if(A.fw&&d.level-d.collapsed>0.3)m=`Voids add ${(d.level-d.collapsed).toFixed(2)} m to the level. A sudden pressure rise or less heat collapses them, and the level drops without any water leaving.`;
+  else m=(A.fw||A.mv?'':'Feedwater and the steam valve are in M; the notches show the automatic demand. ')+(d.sub>0.05?`Water subcooled by ${d.sub.toFixed(1)} K: steam is condensing.`:'Water saturated.');
+  $('astat').textContent=m;$('astat').classList.toggle('bad',bad);
+};
+const updText=()=>{
+  const d=s.d;if(d.err)return;const f=s.f,P=d.P;
+  $('gP').textContent=(P/1e6).toFixed(3);$('gS').textContent=`sat. ${(d.T-273.15).toFixed(1)} °C`;
+  $('gT').textContent=(d.Tl-273.15).toFixed(1);$('gD').textContent=d.sub<0.05?'saturated':`subcooled ${d.sub.toFixed(1)} K`;
+  $('gL').textContent=d.level.toFixed(2);$('gLs').textContent=`${(d.level-Z.TAF).toFixed(2)} m above fuel`;
+  $('gW').textContent=f.wst.toFixed(0);$('gF').textContent=`feed ${f.fw.toFixed(0)}`;
+  const h=Math.floor(s.t/3600),mn=Math.floor(s.t%3600/60),rT=rate('T');
+  const sv=s.sv?'safety mode, all open':f.nsrv?`${f.nsrv} of ${NV} open (${ctl.auto.srv?'A':'by hand'})`:'closed';
+  const fwLoad=f.fw*(sat(d.T).hf-f.hfw);
+  const rows=[['State',d.sub<0.05?(f.gen>0.5?'boiling':'saturated'):'water subcooled'],['Water heat-up rate',(Math.abs(rT)<0.5?'0':(rT>0?'+':'−')+Math.abs(rT).toFixed(0))+' °C/h',Math.abs(rT)>55],
+    ['Net heat to water',(f.Q/1e6).toFixed(0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
+    ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,s.sv||f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
+    ['Feedwater',`${f.fw.toFixed(0)} kg/s at ${(f.Tfw-273.15).toFixed(0)} °C`],['Heat to bring feed to saturation',(fwLoad/1e6).toFixed(0)+' MW'],
+    ['Voids',d.Vb.toFixed(1)+' m³'],['Swell (level − collapsed)',(d.level-d.collapsed).toFixed(2)+' m'],['Collapsed level',d.collapsed.toFixed(2)+' m'],
+    ['Water mass',(d.Ml/1000).toFixed(1)+' t'],['Steam mass',(d.Mv/1000).toFixed(2)+' t'],['Sim time',h+' h '+String(mn).padStart(2,'0')+' min']];
+  $('stats').innerHTML=rows.map(r=>`<div><dt>${r[0]}</dt><dd${r[2]?' class="bad"':''}>${r[1]}</dd></div>`).join('');
+};
+
+// ---------- recorder ----------
+const rec=$('rec');
+const drawRec=()=>{
+  const W=rec.clientWidth,Hh=rec.clientHeight;if(!W||!s)return;
+  const win=+$('win').value,t1=s.t,t0=t1-win,pts=hist.filter(h=>h.t>=t0);
+  const L=56,R=W<520?50:64,top=4,bot=22,gap=14,ph=(Hh-top-bot-2*gap)/3;
+  const ser=[[['P','var(--acc)']],'Pressure, MPa',v=>(v/1e6).toFixed(W<520?2:3),0.1e6,
+    [['L','var(--water)'],['C','var(--mute)']],'Level, m (with voids, collapsed)',v=>v.toFixed(2),0.2,
+    [['W','var(--acc)'],['F','var(--water)'],['R','var(--ink)']],'Flow, kg/s (steam, feedwater, relief)',v=>v.toFixed(0),20];
+  let out='';const X=t=>L+(t-t0)/win*(W-L-R);
+  for(let i=0;i<3;i++){
+    const keys=ser[i*4],name=ser[i*4+1],f=ser[i*4+2],minSpan=ser[i*4+3],y0=top+i*(ph+gap);
+    let lo=Infinity,hi=-Infinity;for(const p of pts)for(const[k]of keys){lo=Math.min(lo,p[k]);hi=Math.max(hi,p[k])}
+    if(!pts.length||lo>hi){lo=0;hi=1}
+    if(hi-lo<minSpan){const m=(hi+lo)/2;lo=m-minSpan/2;hi=m+minSpan/2}
+    const pad=(hi-lo)*0.08;lo-=pad;hi+=pad;const Y=v=>y0+ph-(v-lo)/(hi-lo)*ph;
+    out+=`<rect x="${L}" y="${y0}" width="${W-L-R}" height="${ph}" fill="none" stroke="var(--rule)"/><text x="${L-6}" y="${y0+12}" text-anchor="end">${f(hi)}</text><text x="${L-6}" y="${y0+ph}" text-anchor="end">${f(lo)}</text><text x="${L+6}" y="${y0+15}">${W<520?name.replace(/ \(.*\)/,''):name}</text>`;
+    // level marks: top of fuel and normal level when in range
+    if(i===1)for(const[z,t]of [[Z.TAF,'top of fuel'],[Z.NWL,'normal'],[Z.MSL,'steam nozzle']])if(z>lo&&z<hi)out+=`<line x1="${L}" x2="${W-R}" y1="${Y(z)}" y2="${Y(z)}" stroke="var(--rule)" stroke-dasharray="4 3"/><text x="${W-R-6}" y="${Y(z)-4}" text-anchor="end">${t}</text>`;
+    if(pts.length>1)for(const[k,col]of keys){
+      const st=Math.max(1,Math.floor(pts.length/(W-L-R)));let dd='';
+      for(let j=0;j<pts.length;j+=st)dd+=(dd?'L':'M')+X(pts[j].t).toFixed(1)+','+Y(pts[j][k]).toFixed(1);
+      const lp=pts[pts.length-1];dd+='L'+X(lp.t).toFixed(1)+','+Y(lp[k]).toFixed(1);
+      out+=`<path d="${dd}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"${k==='C'||k==='R'?' stroke-dasharray="5 3"':''}/>`;
+      out+=`<circle cx="${X(lp.t)}" cy="${Y(lp[k])}" r="3.5" fill="${col}"/>`;
+      if(k!=='R'||lp.R>0)out+=`<text class="now" x="${W-R+6}" y="${Y(lp[k])+4}">${f(lp[k])}</text>`;
+    }
+  }
+  const lab={120:['−2 min','−1 min'],600:['−10 min','−5 min'],3600:['−60 min','−30 min'],21600:['−6 h','−3 h']}[win];
+  out+=`<text x="${L}" y="${Hh-4}">${lab[0]}</text><text x="${(L+W-R)/2}" y="${Hh-4}" text-anchor="middle">${lab[1]}</text><text x="${W-R}" y="${Hh-4}" text-anchor="end">now</text>`;
+  rec.innerHTML=out;
+};
+
+// ---------- mimic ----------
+const cv=$('cv'),cx=cv.getContext('2d'),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let parts=[],seed=7;const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+const drawVessel=dtReal=>{
+  if(!s||s.d.err)return;
+  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,Hc=r.height;if(!W)return;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(Hc*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(Hc*dpr)}
+  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,Hc);
+  const col={ink:css('--ink'),mute:css('--mute'),water:css('--water'),water2:css('--water2'),steam:css('--steam'),metal:css('--metal'),acc:'#ff4f00',rule:css('--rule'),panel:css('--panel')};
+  const d=s.d,f=s.f,narrow=W<600,degC=T=>(T-273.15).toFixed(1)+' °C';
+  // vessel: elevations to scale vertically (z = 0 … H m), width schematic
+  const yt=36,yb=Hc-40,Y=z=>yb-z/H*(yb-yt),vh=yb-yt;
+  const vw=narrow?clamp(W*0.3,100,150):clamp(vh*0.36,110,280),x0=narrow?76:Math.max(190,W*0.22),x1=x0+vw,rad=Math.min(vw*0.32,vh*0.12);
+  const shape=()=>{cx.beginPath();cx.roundRect(x0,yt,vw,vh,[rad,rad,rad,rad])};
+  const pipe=(pts,w)=>{cx.strokeStyle=col.metal;cx.lineWidth=w;cx.lineJoin='round';cx.lineCap='butt';cx.beginPath();cx.moveTo(pts[0],pts[1]);for(let i=2;i<pts.length;i+=2)cx.lineTo(pts[i],pts[i+1]);cx.stroke()};
+  const lbl=(t,x,y,c,b)=>{cx.font=(b?'600 15px':'13px')+' Geist,system-ui,sans-serif';cx.fillStyle=c;cx.fillText(t,x,y)};
+  // valve symbol (bow tie) at x,y; vertical when v; open fraction a fills it hollow (open) to solid (shut)
+  const valve=(x,y,v,a,flow)=>{const w=12,h=9;cx.beginPath();
+    if(v){cx.moveTo(x-h,y-w);cx.lineTo(x+h,y-w);cx.lineTo(x-h,y+w);cx.lineTo(x+h,y+w)}else{cx.moveTo(x-w,y-h);cx.lineTo(x+w,y+h);cx.lineTo(x+w,y-h);cx.lineTo(x-w,y+h)}
+    cx.closePath();cx.fillStyle=a>0.001?col.panel:col.ink;cx.fill();cx.lineWidth=2;cx.lineJoin='miter';cx.strokeStyle=flow?col.acc:col.ink;cx.stroke();
+    if(a>0.001&&a<0.999){cx.globalAlpha=1-a;cx.fillStyle=col.ink;cx.fill();cx.globalAlpha=1}};
+  const ys=Y(Z.MSL),yf=Y(Z.FW),lev=clamp(d.level,0,H),ly=Y(lev),lc=Y(clamp(d.collapsed,0,H));
+  // pipes first, the vessel drawn over their ends
+  const xv=narrow?x1+(W-x1)*0.68:x1+Math.max(90,(W-x1)*0.55),xs=narrow?x1+(W-x1)*0.28:x1+Math.max(44,(W-x1)*0.22),poolT=Y(4.2),poolX0=narrow?xs-24:xs-40,poolX1=Math.min(W-8,xs+Math.max(narrow?60:120,(W-x1)*0.45));
+  pipe([x1-6,ys,W,ys],14);
+  pipe([xs,ys,xs,poolT+20],8);
+  pipe([0,yf,x0+6,yf],10);
+  // suppression pool
+  cx.fillStyle=col.water;cx.globalAlpha=0.85;cx.beginPath();cx.roundRect(poolX0,poolT,poolX1-poolX0,yb-poolT,10);cx.fill();cx.globalAlpha=1;
+  cx.lineWidth=2;cx.strokeStyle=col.ink;cx.beginPath();cx.roundRect(poolX0,poolT-14,poolX1-poolX0,yb-poolT+14,10);cx.stroke();
+  // vessel interior
+  cx.save();shape();cx.clip();
+  const gs=cx.createLinearGradient(x0,0,x1,0);gs.addColorStop(0,col.steam);gs.addColorStop(1,col.rule);cx.fillStyle=gs;cx.fillRect(x0,yt,vw,vh);
+  const gw=cx.createLinearGradient(0,ly,0,yb);gw.addColorStop(0,col.water);gw.addColorStop(1,col.water2);cx.fillStyle=gw;cx.fillRect(x0,ly,vw,yb-ly);
+  // shroud, core, separators, dryer
+  const sx0=x0+vw*0.16,sx1=x1-vw*0.16,ysh=Y(Z.SHR),yc0=Y(Z.BAF),yc1=Y(Z.TAF);
+  const hq=clamp(f.Q/3293e6,-1,1);
+  cx.fillStyle=col.metal;cx.globalAlpha=0.6;cx.fillRect(sx0+6,yc1,sx1-sx0-12,yc0-yc1);cx.globalAlpha=1;
+  if(hq>0.002){cx.fillStyle=`rgba(255,79,0,${0.2+0.65*Math.sqrt(hq)})`;cx.fillRect(sx0+6,yc1,sx1-sx0-12,yc0-yc1)}
+  cx.strokeStyle='rgba(255,255,255,.55)';cx.lineWidth=1;for(let i=1;i<8;i++){const xx=sx0+6+(sx1-sx0-12)*i/8;cx.beginPath();cx.moveTo(xx,yc1+3);cx.lineTo(xx,yc0-3);cx.stroke()}
+  // void haze above the core inside the shroud, as dense as the voids are large
+  const vf=clamp(d.Vb/50,0,1);if(vf>0.01&&ly<yc1){cx.fillStyle=`rgba(255,255,255,${0.35*vf})`;const top=Math.max(ly,Y(14.6));cx.fillRect(sx0,top,sx1-sx0,yc1-top)}
+  cx.strokeStyle=col.ink;cx.lineWidth=2;cx.beginPath();cx.moveTo(sx0,Y(4.2));cx.lineTo(sx0,ysh);cx.lineTo(sx1,ysh);cx.lineTo(sx1,Y(4.2));cx.stroke();
+  const nsep=narrow?3:5;for(let i=0;i<nsep;i++){const xx=sx0+(sx1-sx0)*(i+0.5)/nsep;cx.strokeRect(xx-4,Y(14.6),8,ysh-Y(14.6))}
+  cx.fillStyle=col.metal;cx.globalAlpha=0.5;cx.fillRect(sx0,Y(17.6),sx1-sx0,Y(15.6)-Y(17.6));cx.globalAlpha=1;
+  cx.strokeStyle=col.ink;cx.lineWidth=1.5;cx.strokeRect(sx0,Y(17.6),sx1-sx0,Y(15.6)-Y(17.6));
+  for(let xx=sx0+6;xx<sx1-4;xx+=8){cx.beginPath();cx.moveTo(xx,Y(15.6));cx.lineTo(xx+6,Y(17.6));cx.stroke()}
+  // feedwater sparger in the downcomer
+  cx.fillStyle=col.ink;cx.fillRect(x0+4,yf-3,sx0-x0-6,6);
+  // bubbles rising from the core through the chimney to the level (about 90/s at rated steaming)
+  if(!reduce){
+    const sp=Math.min(dtReal,100)/1000;let nb=90*clamp(f.gen/1800,0,1.5)**0.6*sp;
+    while(nb>0){if(rnd()<nb)parts.push({x:sx0+8+rnd()*(sx1-sx0-16),y:yc0-rnd()*(yc0-yc1),v:90+rnd()*80});nb--}
+    for(const p of parts)p.y-=p.v*sp;parts=parts.filter(p=>p.y>Math.max(ly,Y(14.6)));
+    cx.strokeStyle='rgba(255,255,255,.8)';cx.lineWidth=1.2;for(const p of parts){cx.beginPath();cx.arc(p.x,p.y,2.2,0,7);cx.stroke()}
+  }else parts=[];
+  // level line, and the collapsed level (water alone) dashed
+  cx.strokeStyle='rgba(255,255,255,.85)';cx.lineWidth=1.5;cx.beginPath();cx.moveTo(x0,ly);cx.lineTo(x1,ly);cx.stroke();
+  if(ly<lc-2){cx.setLineDash([5,4]);cx.strokeStyle='rgba(255,255,255,.7)';cx.beginPath();cx.moveTo(x0,lc);cx.lineTo(x1,lc);cx.stroke();cx.setLineDash([])}
+  cx.restore();
+  shape();cx.lineWidth=3;cx.strokeStyle=col.ink;cx.stroke();
+  // elevation marks left of the vessel
+  cx.textAlign='right';
+  for(const[z,t,ts]of [[Z.MSL,'Steam nozzle','MSL'],[Z.NWL,'Normal level','NWL'],[Z.TAF,'Top of fuel','TAF']]){const y=Y(z);
+    cx.strokeStyle=col.mute;cx.lineWidth=1;cx.beginPath();cx.moveTo(x0-14,y);cx.lineTo(x0-2,y);cx.stroke();lbl(narrow?`${ts} ${z.toFixed(1)}`:`${t} ${z.toFixed(1)} m`,x0-18,y+4,col.mute)}
+  // level marker right of the vessel
+  cx.textAlign='left';
+  cx.fillStyle=col.acc;cx.beginPath();cx.moveTo(x1+4,ly);cx.lineTo(x1+14,ly-7);cx.lineTo(x1+14,ly+7);cx.fill();
+  // the value only where there is room beside the vessel (on phones the sticky gauge shows it)
+  if(!narrow){const lyT=Math.abs(ly-ys)<22?(ly>ys?ys+26:ys-14):ly+5;lbl(d.level.toFixed(2)+' m',x1+18,lyT,col.ink,true)}
+  // labels inside: dome and lower plenum
+  const tx=x0+Math.max(10,vw*0.1);
+  lbl('Steam dome',tx,Y(19.4),col.mute);lbl(degC(d.T),tx,Y(19.4)+19,col.ink,true);
+  {const rT=rate('T'),ar=Math.abs(rT)<0.5?0:Math.sign(rT),yw=Y(2.6);
+   lbl('Water',tx,yw,'rgba(255,255,255,.9)');lbl(degC(d.Tl),tx,yw+19,'#fff',true);
+   const t=(d.sub>=0.05?`subcooled ${d.sub.toFixed(1)} K · `:'')+(ar?`${ar>0?'+':'−'}${Math.abs(rT).toFixed(0)} °C/h`:'steady');
+   const warn=Math.abs(rT)>55;cx.font='13px Geist,system-ui,sans-serif';
+   if(warn){const tw=cx.measureText(t).width;cx.fillStyle=col.acc;cx.beginPath();cx.roundRect(tx-5,yw+25,tw+10,16,8);cx.fill()}
+   lbl(t,tx,yw+37,warn?'#fff':'rgba(255,255,255,.85)')}
+  cx.textAlign='center';lbl(`${narrow?'':'Core '}${f.Q>=0?'+':'−'}${Math.abs(f.Q/1e6).toFixed(0)} MW`,(sx0+sx1)/2,(yc0+yc1)/2+5,'#fff',!narrow);
+  // steam line: SRV on the branch, main steam valve on the run
+  const vopen=s.mv,wst=f.wst;
+  valve(xv,ys,false,vopen,wst>0.5);
+  const yvs=ys+Math.max(40,(poolT-ys)*0.35);valve(xs,yvs,true,f.nsrv/NV,f.nsrv>0);
+  cx.textAlign='left';
+  if(!narrow)lbl('Main steam line',x1+18,ys-16,col.mute);
+  cx.textAlign='center';lbl(`${narrow?'':'Valve '}${(vopen*100).toFixed(vopen<0.1&&vopen>0?1:0)} %`,xv,ys+32,col.ink,true);
+  cx.textAlign='right';
+  if(narrow)lbl(`${wst.toFixed(0)} kg/s`,W-8,ys-14,col.ink,true);else{lbl('To turbine / condenser',W-12,ys-16,col.mute);lbl(`${wst.toFixed(0)} kg/s`,W-12,ys+32,col.ink,true)}
+  if(wst>0.5){cx.fillStyle=col.acc;const ax=(xv+W)/2+(narrow?0:30);cx.beginPath();cx.moveTo(ax+8,ys);cx.lineTo(ax-4,ys-7);cx.lineTo(ax-4,ys+7);cx.fill()}
+  cx.textAlign='left';
+  lbl(narrow?'SRVs':'Safety/relief valves',xs+16,yvs-4,col.mute);
+  lbl(s.sv?(narrow?'all open':'all open (spring)'):f.nsrv?(narrow?`${f.nsrv} open`:`${f.nsrv} of ${NV} · ${f.wsrv.toFixed(0)} kg/s`):'shut',xs+16,yvs+14,f.nsrv?col.ink:col.mute,f.nsrv>0);
+  lbl(narrow?'Pool':'Suppression pool',poolX0+(narrow?8:12),poolT+22,'rgba(255,255,255,.92)');
+  // relief discharge: bubbles in the pool under the pipe end
+  if(f.nsrv>0){cx.fillStyle='rgba(255,255,255,.75)';const tt=performance.now()/250;for(let i=0;i<6;i++){const ph=(tt+i/6)%1;cx.globalAlpha=(1-ph)*clamp(f.nsrv/4,0.35,1);cx.beginPath();cx.arc(xs+(i%3-1)*8,poolT+20+(1-ph)*28,2+ph*4,0,7);cx.fill()}cx.globalAlpha=1}
+  // feedwater
+  cx.textAlign='left';
+  if(narrow){lbl('Feed',6,yf+22,col.mute);lbl(`${f.fw.toFixed(0)} kg/s`,6,yf+40,col.ink)}
+  else{lbl('Feedwater',12,yf-24,col.mute);lbl(`${f.fw.toFixed(0)} kg/s · ${(f.Tfw-273.15).toFixed(0)} °C`,12,yf-8,col.ink,true)}
+  if(f.fw>0.5){cx.fillStyle=col.acc;const ax=Math.max(30,x0-40);cx.beginPath();cx.moveTo(ax+8,yf);cx.lineTo(ax-4,yf-7);cx.lineTo(ax-4,yf+7);cx.fill()}
+  // pressure under the dome label
+  cx.textAlign='left';if(!narrow)lbl(`${(d.P/1e6).toFixed(3)} MPa`,tx,Y(19.4)+38,col.acc,true);
+};
+
+// ---------- loop ----------
+let last=performance.now(),acc=0,lastChart=0;
+const frame=now=>{
+  const dtr=Math.min(100,now-last);last=now;
+  if(running&&!halted){acc+=dtr/1000*speed;const dt=ctl_dt(),n=Math.floor(acc/dt)*dt;if(n>0){physTick(Math.min(n,dt*1200));acc=Math.min(acc-n,dt)}}
+  drawVessel(running?dtr:0);
+  if(now-lastChart>150){lastChart=now;syncAuto();updText();drawRec()}
+  requestAnimationFrame(frame);
+};
+readCtl();$('scHot').click();
+const ro=new ResizeObserver(()=>drawRec());ro.observe(rec);
+$('win').addEventListener('change',drawRec);
+requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

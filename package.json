@@ -5,7 +5,7 @@
   "description": "Single-file interactive PWR pressuriser + RCS simulator (equilibrium steam-table model)",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/physics.test.mjs",
+    "test": "node --test tests/physics.test.mjs tests/bwr.test.mjs",
     "shots": "node tools/screenshot.mjs",
     "serve": "node tools/serve.mjs"
   },

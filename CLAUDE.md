@@ -13,12 +13,17 @@ Physical correctness and honest labelling of limitations matter more than featur
 | Path | What |
 |---|---|
 | `index.html` | Presentation: CSS, markup, UI wiring, renderers. Loads `common.js`, `sim.js`, `control.js` (in that order) with plain relative `<script src>`; nothing else external except Google Fonts. |
-| `common.js` | What both plant and controller need: steam tables, `clamp`, actuator limits `LIM`. Defines `globalThis.PZCommon`. |
+| `common.js` | What both plant and controller need, on both pages: steam tables, liquid properties (`kap`, `liqRho`, `hLiq`, `cpL`, `Tuf`, `inv`), `clamp`, actuator limits `LIM`. Defines `globalThis.PZCommon`. |
+| `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater. Loads `common.js`, `bwr-sim.js`, `bwr-control.js`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
+| `bwr-sim.js` | BWR plant: pure physics, `globalThis.BWRSim`. See docs/bwr.md. |
+| `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater, SRV relief groups), `globalThis.BWRCtl`. Needs `common.js`, not `bwr-sim.js`. |
+| `tests/bwr.test.mjs` | BWR regression tests (imports the three BWR-side scripts directly). |
+| `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
 | `sim.js` | The plant: pure physics, no DOM, no automatic control. Defines `globalThis.PZSim`. |
 | `control.js` | Automatic control: demands and the final command for the plant. Defines `globalThis.PZCtl`. Needs `common.js`, not `sim.js`. |
 | `tests/load-physics.mjs` | Imports the three scripts in Node; exposes `PZCommon` as `common`, `PZSim` as `phys`, `PZCtl` as `ctrl`, plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. |
+| `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. |
 | `tools/vapour-table.mjs` | Regenerates the superheated-steam table `VT` in sim.js from IAPWS-IF97 region 2. |
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
@@ -27,13 +32,13 @@ Physical correctness and honest labelling of limitations matter more than featur
 ## Commands
 
 ```bash
-npm test                      # physics regression suite
+npm test                      # physics regression suites (PWR and BWR)
 npm run shots                 # screenshots into shots/ (needs: npm i -D playwright && npx playwright install chromium)
 node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Chrome
 npm run serve                 # http://localhost:8000 — or just open index.html
 ```
 
-Always run `npm test` after touching `common.js`, `sim.js` or `control.js`, and the screenshot
+Always run `npm test` after touching any of the scripts, and the screenshot
 tool after any CSS/markup/drawing change.
 
 ## Code structure
@@ -116,6 +121,17 @@ leak) that destructures what it needs from `PZSim`. Order:
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
 6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s (≤20×, ≤50×, ≤200×, above). Speed buttons (Pause, 1×…1000×) set `speed`/`running`.
 
+### The BWR page (bwr.html, bwr-sim.js, bwr-control.js)
+
+Same split and conventions as the PWR page: the plant never decides M/A, the controller produces
+demands every step and `command` picks demand or operator value per actuator (`fw`, `mv`, `srv` have M/A;
+net heat and feedwater temperature are manual only). The vessel is one rigid volume: totals `M`, `U`,
+saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water
+and steam fill the vessel, flashing water above saturation at once and condensing on subcooled water with
+a time constant. Level includes the voids (swell); `d.collapsed` is water alone. `BWRSim.API` and
+`SIM_API` in bwr.html follow the same versioning rule as `PZSim.API`. Equations in docs/bwr.md; keep the
+page's notes in step with its limitations.
+
 ## Conventions
 
 - SI units internally (K, Pa, kg, J). Convert only at display.
@@ -153,6 +169,9 @@ leak) that destructures what it needs from `PZSim`. Order:
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
+BWR page: see docs/bwr.md, "Not modelled" (no neutronics or scram, no recirculation, one well-mixed
+water region, saturated steam only, no air in the dome, uniform-area level, no vessel heat capacity).
+
 ## Publishing
 
 The repo is public; the page is opened straight from GitHub through raw.githack, which serves
@@ -164,6 +183,7 @@ pushing a branch is publishing it.
   raw.githack caches branch URLs for a few minutes, so a fresh push may take a moment to show.
 - Exact commit: `https://raw.githack.com/sati290/pressuriser-sim/<commit-sha>/index.html`.
 - `main`: `https://raw.githack.com/sati290/pressuriser-sim/main/index.html`.
+- The BWR page is `bwr.html` at the same places (e.g. `.../<branch>/bwr.html`).
 
 The old claude.ai artifact is no longer the live version; don't republish there.
 
