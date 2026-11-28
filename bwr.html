@@ -506,7 +506,7 @@ const drawVessel=dtReal=>{
   // of the riser xr, heater on the riser, feed valve on the run into the vessel at the sparger elevation
   // the hotwell is the bottom of the condenser shell (hwX0…hwX1 under the LP turbine); the feed pump at the
   // foot of the riser xr, the heater on the riser, its extraction xe from the HP turbine
-  const hwW=W*0.22,hwX1=W*0.9,hwX0=hwX1-hwW,xr=W*0.48,hwT=Y(4.4),hwB=yb-8,ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
+  const hwW=W*0.154,hwX1=W*(0.7925+0.077),hwX0=hwX1-hwW,xr=W*0.48,hwB=yb-8,hwT=hwB-0.7*(hwB-Y(4.4)),ysu=Hc-18,yh0=Y(9.0),yh1=Y(6.8),yhm=(yh0+yh1)/2,xe=W*0.64,yev=Y(11.2),xfv=W*0.42;
   // SRVs: a branch off the dome to the left, down into the pool
   const xs=44,yst=Y(18.2),poolT=Y(7.0),poolB=yb,poolX0=14,poolX1=x0-58;
   // the main steam valve is drawn as the turbine control valve, just before the HP turbine
@@ -514,8 +514,8 @@ const drawVessel=dtReal=>{
   // containment wall xc, MSIVs either side, bypass/reheat tee xb, stop valve xsv, HP turbine
   // xh0…xh1 (half-heights hh0→hh1), LP turbine xl0…xl1, generator, condenser top yct, bypass entry yby
   const xc=x1+W*0.06,xm1=x1+W*0.03,xm2=xc+W*0.03,xb=W*0.5,xsv=W*0.527,xh0=W*0.58,xh1=W*0.66,hh0=16,hh1=30,
-    xl0=W*0.71,xl1=W*0.875,xlc=(xl0+xl1)/2,xg0=W*0.9,xg1=W*0.975,yct=ys+64,yby=yct+50,
-    ymr=yt+44,xr0=W*0.63,yA=ys+64+(Y(4.4)-ys-64)*0.18,yV=ys+64+(Y(4.4)-ys-64)*0.42,xr1=W*0.81,hpb=x=>ys+hh0+(hh1-hh0)*(x-xh0)/(xh1-xh0);
+    xl0=W*0.71,xl1=W*0.875,xlc=(xl0+xl1)/2,xg0=W*0.9,xg1=W*0.975,yct=hwB-0.7*(hwB-ys-64),yby=yct+40,
+    ymr=yt+44,xr0=W*0.63,yA=yct+22,yV=yct+86,xr1=W*0.81,hpb=x=>ys+hh0+(hh1-hh0)*(x-xh0)/(xh1-xh0);
   const draft=(fn,fill)=>{cx.save();cx.setLineDash([5,4]);cx.lineWidth=1.5;cx.strokeStyle=col.mute;cx.beginPath();fn();if(fill){cx.fillStyle=col.panel;cx.fill()}cx.stroke();cx.restore()};
   const dpipe=(pts,w)=>{cx.save();cx.globalAlpha=0.45;pipe(pts,w);cx.restore()};
   // pipes first, the vessel drawn over their ends
@@ -613,8 +613,8 @@ const drawVessel=dtReal=>{
      const sx0=x0+vw*0.16;cx.save();shape();cx.clip();cx.setLineDash([5,4]);cx.lineWidth=1.5;cx.strokeStyle='rgba(255,255,255,.75)';cx.strokeRect(x0+vw*0.05,Y(9.0),sx0-3-x0-vw*0.05,Y(3.2)-Y(9.0));cx.restore()}
     // bypass to the condenser: tee before the stop valve, down and across into the condenser upper shell
     {cx.strokeStyle=col.panel;cx.lineWidth=14;cx.beginPath();cx.moveTo(xb,yby);cx.lineTo(hwX0,yby);cx.stroke();
-     dpipe([xb,ys,xb,yby,hwX0+2,yby],8);dv(xb,(ys+yby)/2+6,true);
-     mlbl('Bypass valve',xb-16,(ys+yby)/2+2,'right');mlbl('to condenser',xb-16,(ys+yby)/2+20,'right')}
+     dpipe([xb,ys,xb,yby,hwX0+2,yby],8);dv(xb,ys+56,true);
+     mlbl('Bypass valve',xb-16,ys+52,'right');mlbl('to condenser',xb-16,ys+70,'right')}
     // turbine stop valve (the control valve after it is the functional main steam valve)
     dv(xsv,ys,false);
     // HP turbine: widens towards the exhaust
@@ -634,7 +634,7 @@ const drawVessel=dtReal=>{
     // condenser shell above the hotwell, tube bundle, circulating water, air removal
     draft(()=>{cx.moveTo(hwX0,hwT+2);cx.lineTo(hwX0,yct);cx.lineTo(hwX1,yct);cx.lineTo(hwX1,hwT+2)},false);
     mlbl('Condenser',hwX0+10,yct+22,'left');mlbl('not modelled: ideal for now',hwX0+10,yct+40,'left');
-    {const by0=yct+110,by1=hwT-20,bx0=hwX0+18,bx1=hwX1-18;draft(()=>cx.roundRect(bx0,by0,bx1-bx0,by1-by0,24),false);
+    {const by0=yct+(hwT-yct)*0.32,by1=hwT-20,bx0=hwX0+18,bx1=hwX1-18;draft(()=>cx.roundRect(bx0,by0,bx1-bx0,by1-by0,24),false);
      cx.fillStyle=col.mute;for(let yy=by0+12;yy<by1-6;yy+=12)for(let xx=bx0+14;xx<bx1-8;xx+=14){cx.beginPath();cx.arc(xx+((yy/12)%2)*7,yy,1.6,0,7);cx.fill()}
      mlbl('tube bundle',(bx0+bx1)/2,by0-8)}
     mlbl('CW out',W-6,hwT-78,'right');mlbl('CW in',W-6,hwT-44,'right');
