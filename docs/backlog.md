@@ -37,14 +37,17 @@ nitrogen compression (see docs/physics.md). Follow-ups:
 
 ## BWR page (bwr.html)
 
-Roadmap order: the feedwater system first (in progress), then a simple condenser to close the loop.
+Roadmap order: the feedwater system (done), then a simple condenser to close the loop.
 The rest is roughly in order of value. See docs/bwr.md, "Not modelled", for what each one replaces.
 
 ### Steam–feedwater loop
-B1. **Feedwater system** (in progress) — condenser hotwell as the suction source, feedwater pump,
+B1. **Feedwater system** (done, 0.1.6) — condenser hotwell as the suction source, feedwater pump,
     feedwater heater, feed valve, so feed flow and temperature follow from the train instead of being set.
 B2. **Simple condenser** — closes the loop: main steam (and later bypass) condenses into the hotwell
     that feeds B1; cooling-water heat sink, condenser pressure from the steam load, hotwell level.
+    Replaces `condensate()` in bwr-sim.js (today: the main steam flow back at once at 45.8 °C); the steam
+    valve's back pressure `PC` would then follow the condenser. On the mimic it goes at the turbine end of
+    the steam line, above the hotwell, where the dashed condensate line is now.
 B3. **Turbine and bypass valves** — turbine control valves and a steam bypass to the condenser, so a
     load rejection has somewhere to send steam besides the SRVs.
 
