@@ -12,6 +12,14 @@ from that class.
 Ground rules carried over from the project: one of each component (no redundant trains); realistic
 arrangements, control schemes and sourced numbers, with placeholders labelled as such; manual control
 primary, every new actuator gets M/A and a demand notch; emergency core cooling is out of scope for now.
+
+**Controls (Attila, 2026-11-28): realistic but simple.** The operator moves what a real operator moves:
+valve positions, pump start/stop and speed, breaker and switch positions, not flows or heat rates; flows
+follow from the plant. Keep each control simple: one valve or one lever where the real plant has a
+system of them (for example no full control rod setup for now, one reactivity lever until step 13). The
+present flow-valued inputs (hotwell makeup in kg/s, net heat in MW) are converted to valves or levers as
+the steps that touch them land.
+
 Priority from the owner: **turbine and MSR are low priority**, so the turbine island stays a lumped stub
 until late (step 15). **Control rods and RWCU (steps 13, 14) are deprioritised** as well: until
 then reactivity is a single control (step 8) and cleanup stays inside net heat.
@@ -72,11 +80,12 @@ whether to model hotwell subcooling or keep saturated condensate.
 
 ### 2. Circulating water
 **Models:** the circulating water as an in/out pipe through the condenser (decided: no river, cooling
-tower or pump model for now), with the flow and inlet temperature as operator inputs, so loss of
+tower or pump model for now), with a circulating water valve (or pump on/off) and the inlet temperature as
+operator inputs, so loss of
 circulating water and a warm inlet are things the operator can cause and see.
 
-**Approach:** flow (0 … rated, a manual valve or pump on/off as one setting) and inlet temperature are
-inputs; condenser outlet temperature from the step 1 heat balance. Tube transit delay optional. Small
+**Approach:** flow from the valve position against a fixed system head (not a flow setpoint); inlet
+temperature an input; condenser outlet temperature from the step 1 heat balance. Tube transit delay optional. Small
 enough to ship together with step 1. A pump curve and a heat sink (river or cooling tower) can come later
 if scenarios need them.
 
@@ -146,8 +155,8 @@ temperature slightly and keeps the heat out of the condenser.
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the
 suction source for RCIC/HPCI and CRD.
 
-**Approach:** one mass and temperature state; makeup and reject valves by gravity/head as the present
-±100 kg/s makeup. Trivial on its own; good to ship with or right after step 5.
+**Approach:** one mass and temperature state; makeup and reject become valves (position, flow from the
+head between tank and condenser vacuum) in place of today's ±100 kg/s flow input. Trivial on its own; good to ship with or right after step 5.
 
 ## Reactor
 
@@ -263,6 +272,8 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 ## Decisions (Attila, 2026-11-28)
 
 - Generic BWR/4-class plant, not one named plant.
+- Controls realistic but simple: valve positions and pump/breaker switches, not flows; one lever where
+  the plant has many (no full rod setup for now).
 - Turbine stub until step 15 is fine.
 - Control rods/CRD (13) and RWCU (14) deprioritised, done with the turbine island.
 - Circulating water is an in/out pipe for now.
