@@ -3,13 +3,14 @@
 // per-system modules, each with pure functions and its own part of the state:
 //   bwr-vessel.js    reactor vessel geometry and the water–steam solve
 //   bwr-steam.js     rated conditions, main steam valve, safety/relief valves
-//   bwr-condenser.js turbine stub and main condenser
+//   bwr-condenser.js turbine stub, main condenser, circulating water, condenser air removal
 //   bwr-feed.js      hotwell, feed pump, feedwater heater, feed valve
 // Equations and constants are described in docs/bwr.md.
 import {sat,clamp,hLiq} from './common.js';
 import {V,H,A,Z,TAU,solve,derive,vesselInit} from './bwr-vessel.js';
 import {QR,PR,TFR,WR,WMS,RATE,SRV,NV,PB,BD,subF,wMS,wSRV,srvStep} from './bwr-steam.js';
 import {ETA,ETAG,expansion,turbinePower,VC,WCW,TCW,CPW,UA,PCMAX,condense,condSteady} from './bwr-condenser.js';
+import {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,VBRATE,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,airFlows,cwStep,cwTarget,TAUCW} from './bwr-condenser.js';
 import {H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValve,heater,heaterT,heatBalance,hotwellMix} from './bwr-feed.js';
 // Scram: the rods go in and core heat falls to the fission tail plus decay heat, a fraction of the
 // power at the scram P0 after t seconds. Fission (93.5 % of steady power): prompt drop as the rods
@@ -19,28 +20,43 @@ import {H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValv
 const decayFrac=t=>{t=Math.max(0,t);return 0.935*(0.93*Math.exp(-t/2)+0.06*Math.exp(-t/10)+0.01*Math.exp(-t/80))+0.065*(1+t)**-0.2};
 // hotwell makeup water enthalpy
 const HMK=sat(TMK).hf;
+// SJAE motive steam supply pressure: the main steam header. For now the dome pressure; when the steam
+// line gets its own node, read it here.
+const motiveP=s=>s.d.P;
 // o: {P Pa, L m two-phase level, Tl °C water temperature (default saturated), gen kg/s steaming the
 // voids start in equilibrium with, mv valve position 0–1, fv feed valve position 0–1, n pump speed 0–1, tfw °C heater
 // outlet (default the hotwell temperature), hw hotwell fraction full (default 0.5), ext 0–1 extraction valve the
-// condenser starts steady with (default 1), tau overrides}
+// condenser starts steady with (default 1), vac false for a condenser open to atmosphere (full of air at
+// 0.1 MPa; default: under vacuum, air at its steady value with the SJAE in service), tau overrides}
 const init=o=>{
-  const s={t:0,mv:o.mv||0,fv:o.fv||0,n:o.n||0,Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
+  const s={t:0,wcw:WCW,vb:0,mv:o.mv||0,fv:o.fv||0,n:o.n||0,Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
   vesselInit(s,o);
   // condenser and hotwell start steady for the initial steam flow (turbine exhaust plus heater drains)
   const P=s.d.P,hg=sat(s.d.T).hg,line=expansion(P,hg),w0=wMS(s.mv,P,PCD);let Tc=TCW+0.1,ht={ws:0,hd:0};
-  for(let i=0;i<4;i++){const pc=sat(Tc).p;ht=heater(w0,o.ext??1,w0,Tc,line);const ws=Math.min(ht.ws,w0);
-    Tc=w0>0?condSteady([[w0-ws,line(pc)],[ws,ht.hd]]):TCW+0.1}
-  s.cd={Tc,Ms:sat(Tc).rg*VC};s.Thw=Tc;
+  // air: steady against the SJAE in service (in-leakage plus radiolytic gas, taken ∝ the initial steam
+  // flow), or (vac false) a shell open to atmosphere, full of air at the circulating water temperature
+  const vac=o.vac!==false,wsj0=vac?sjSteam(P,0):0;
+  const MaV=T=>{const c=sjCap(P,sat(T).p+PA0);return c>0?(WLK+WRAD*Math.min(1,w0/WR))*VC/(VSJ*c):0};
+  for(let i=0;i<4;i++){const pa=pAir(MaV(Tc),Tc),pc=sat(Tc).p+pa;ht=heater(w0,o.ext??1,w0,Tc,line);const ws=Math.min(ht.ws,w0);
+    Tc=w0>0||wsj0>0?condSteady([[w0-ws,line(pc)],[ws,ht.hd],[wsj0,hg]],undefined,pa):TCW+0.1}
+  if(!vac)Tc=TCW;
+  const Ma=vac?MaV(Tc):(PATM-sat(Tc).p)*VC/(RA*Tc);
+  s.cd={Tc,Ms:sat(Tc).rg*VC,Ma};s.Thw=Tc;
   s.Th=o.tfw!=null?o.tfw+273.15:Tc;
-  const Pc=sat(Tc).p;
+  const pa0=pAir(Ma,Tc),Pc=sat(Tc).p+pa0;
   s.f={Q:0,fw:0,Tfw:s.Th,hfw:0,hg:0,wst:0,wsrv:0,nsrv:0,open:Array(NV).fill(false),spr:Array(NV).fill(false),gen:o.gen||0,cond:0,mv:s.mv,
     n:s.n,fv:s.fv,ext:0,Tt:s.Th,pe:0,ps:0,ws:0,Pd:Pc,ret:0,Tret:Tc,mk:0,Mh:s.Mh,hw:s.Mh/HWM,Thw:Tc,
-    Pc,Tc,wc:0,Qc:0,Tcw:TCW,wcw:WCW,Pgen:0,wx:0,hx:0};
+    Pc,Tc,wc:0,Qc:0,Tcw:TCW,wcw:WCW,Pgen:0,wx:0,hx:0,
+    Tcwi:TCW,cwp:true,cwv:1,pa:pa0,ya:pa0/Pc,Ma,wsj:0,sj:vac,vp:false,vb:0,sjc:0,vpc:0,wlk:0,wrad:0,wvb:0,wain:0,waout:0,Vsj:0,Vvp:0};
   return s;
 };
 // One step. u is the final command, SI: {heat W net heat into the water; n 0–1 feed pump speed;
 // fv 0–1 feed valve demand; ext 0–1 heater extraction valve; mk kg/s hotwell makeup (negative: reject);
-// mv 0–1 main steam valve demand; srv array, true for each SRV opened by hand}.
+// mv 0–1 main steam valve demand; srv array, true for each SRV opened by hand; circulating water and
+// condenser air removal: cwp CW pump running, cwv 0–1 CW valve, tcw K CW inlet temperature, sj SJAE motive
+// steam valve open, vp mechanical vacuum pump running, vb vacuum breaker open (booleans)}. An absent cwp,
+// cwv, tcw or sj means the normal running line-up (pump on, valve open, 20 °C, SJAE in service); absent vp
+// and vb mean off and shut. These are also the hooks for protection: a CW pump trip is cwp false.
 // After scram(s) the core heat is the decay curve and u.heat is ignored until reset(s).
 // Each command is clamped to its range; the valves move toward their demands at RATE and FRATE; each
 // SRV's spring opens it on pressure whatever the command. Feed flow follows from the pump, the valve and
@@ -59,12 +75,22 @@ const step=(s,u,dt)=>{
   s.fv+=clamp(clamp(u.fv||0,0,1)-s.fv,-FRATE*dt,FRATE*dt);
   const Tfw=s.Th,hfw=hLiq(Tfw,P);
   const fw=Math.min(fwFlow(n,s.fv,P,s.Mh,pc0),Math.max(0,s.Mh/dt)),Pd=pc0+Math.max(0,n*n*H0-KPU*fw*fw);
+  // circulating water (flow lags the pump and valve) and condenser air: in-leakage, radiolytic gas with the
+  // main steam, vacuum breaker; removal by the SJAE and the mechanical vacuum pump. The SJAE motive steam is
+  // tapped off the main steam flow ahead of the turbine (the tap is downstream of the MSIVs, which the one
+  // main steam valve includes, so a shut valve leaves the SJAE without steam); it reaches the condenser
+  // at its supply enthalpy, and the turbine gets the rest, wt (the extraction pressure still follows the
+  // main steam flow wst, as bwr-feed.js defines it; the difference is 0.14 % at rated).
+  const cwp=u.cwp??true,cwv=clamp(u.cwv??1,0,1),Tcwi=u.tcw??TCW;s.wcw=cwStep(s.wcw,cwp,cwv,dt);
+  s.vb+=clamp((u.vb?1:0)-s.vb,-VBRATE*dt,VBRATE*dt);
+  const Pm=motiveP(s),sj=u.sj??true,vp=!!u.vp,wsjD=sj?sjSteam(Pm,pc0):0,wsj=Math.min(wsjD,wst),fsj=wsjD>0?wsj/wsjD:0,wt=wst-wsj;
+  const af=airFlows(pc0,s.cd.Tc,{Q,share:wst+wsrv>0?wst/(wst+wsrv):0,sj:fsj,Pm,vp,vb:s.vb,dt});
   // turbine stub: extraction to the heater, the rest to the condenser along the expansion line
-  const line=expansion(P,hg),ht=heater(wst,ext,fw,s.Thw,line),Tt=ht.T,ws=Math.min(ht.ws,wst);
+  const line=expansion(P,hg),ht=heater(wst,ext,fw,s.Thw,line),Tt=ht.T,ws=Math.min(ht.ws,wt);
   s.Th=Tt+(s.Th-Tt)*Math.exp(-dt/tau.h);
-  const wx=wst-ws,hx=wx>0?line(pc0):0,Pgen=wst>0?turbinePower(wst,hg,[{w:ws,h:ht.hx}],hx):0;
-  // condenser: exhaust steam and heater drains in, condensate down to the hotwell
-  const cd=condense(s.cd,[[wx,hx],[ws,ht.hd]],dt);
+  const wx=wt-ws,hx=wx>0?line(pc0):0,Pgen=wt>0?turbinePower(wt,hg,[{w:ws,h:ht.hx}],hx):0;
+  // condenser: exhaust steam, heater drains and SJAE steam in, condensate down to the hotwell
+  const cd=condense(s.cd,[[wx,hx],[ws,ht.hd],[wsj,hg]],dt,{w:s.wcw,T:Tcwi},af);
   const hw=hotwellMix({M:s.Mh,T:s.Thw},[[cd.wl,sat(cd.Tc).hf],[mk,HMK],[-fw,0]],dt);
   s.Mh=hw.M;s.Thw=hw.T;
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
@@ -82,7 +108,9 @@ const step=(s,u,dt)=>{
   s.d=derive(s,e);
   s.f={Q,fw,Tfw,hfw,hg,wst,wsrv,nsrv,open,spr:s.spr.slice(),gen,cond:mc/dt,mv:s.mv,
     n,fv:s.fv,ext,Tt,pe:ht.pe,ps:ht.ps,ws,Pd,ret:cd.wl,Tret:cd.Tc,mk,Mh:s.Mh,hw:s.Mh/HWM,Thw:s.Thw,
-    Pc:cd.Pc,Tc:cd.Tc,wc:cd.wc,Qc:cd.Q,Tcw:cd.Tout,wcw:WCW,Pgen,wx,hx};
+    Pc:cd.Pc,Tc:cd.Tc,wc:cd.wc,Qc:cd.Q,Tcw:cd.Tout,wcw:s.wcw,Pgen,wx,hx,
+    Tcwi,cwp,cwv,pa:cd.pa,ya:cd.ya,Ma:s.cd.Ma,wsj,sj,vp,vb:s.vb,sjc:fsj*sjCap(Pm,pc0),vpc:vp?vpCap(pc0):0,
+    wlk:af.wlk,wrad:af.wrad,wvb:af.wvb,wain:af.wi,waout:cd.wout,Vsj:af.Vsj,Vvp:af.Vvp};
 };
 // scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
 // a second scram keeps the first; reset hands the heat back to the command
@@ -103,5 +131,6 @@ const fault=s=>{
 const PC=PCD;
 const API=6;
 export {API,V,H,A,Z,QR,PR,TFR,WMS,RATE,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PC,PCD,TTD,WR,PE,KXT,
-  ETA,ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,turbinePower,condense,condSteady,
+  ETA,ETAG,VC,WCW,TCW,CPW,UA,PCMAX,expansion,
+  UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,cwTarget,TAUCW,motiveP,turbinePower,condense,condSteady,
   fwFlow,fwValve,heater,heaterT,heatBalance,subF,wMS,wSRV,decayFrac,init,step,scram,reset,fault};

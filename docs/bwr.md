@@ -13,11 +13,11 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 |---|---|---|
 | `bwr-vessel.js` | Vessel geometry, water–steam solve (`at`, `solve`, `derive`, `vesselInit`) | `M`, `U`, `Mv`, `Mb`, `d` |
 | `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam valve, SRVs (`srvStep`), nozzle factor | `mv`, `spr[]` |
-| `bwr-condenser.js` | Turbine stub (`expansion`, `turbinePower`), condenser shell (`condense`, `condSteady`) | `cd {Tc, Ms}` |
+| `bwr-condenser.js` | Turbine stub (`expansion`, `turbinePower`), condenser shell (`condense`, `condSteady`), circulating water (`cwTarget`, `cwStep`), condenser air (`airFlows`, `airStep`, `sjSteam`, `sjCap`, `vpCap`, `blanket`) | `cd {Tc, Ms, Ma}`, `wcw`, `vb` |
 | `bwr-feed.js` | Hotwell (`hotwellMix`), feed pump, heater, feed valve | `Mh`, `Thw`, `n`, `fv`, `Th` |
 
 `step()` runs the systems in this order on the start-of-step state: valves and SRVs, steam flow, feed
-pump and valve, heater and turbine stub, condenser, hotwell, then the vessel mass and energy and the
+pump and valve, circulating water and condenser air flows, heater and turbine stub, condenser, hotwell, then the vessel mass and energy and the
 pressure solve.
 
 ## Geometry and constants
@@ -30,7 +30,12 @@ pressure solve.
 | Main steam valve | 2000 kg/s full open at 7.0 MPa (`WMS`, `PR`), ∝ P × subsonic factor ψ(PC/P)/ψ* (κ = 1.3), condenser pressure from the condenser model | Stands for MSIVs + turbine control and bypass valves. Travel ≤ 20 %/s (`RATE`, full stroke 5 s). `s.mv` is the position, `u.mv` the demand |
 | SRVs | `SRV` = 11 valves `{p, w}`: 4 × 1090 psig (7.617 MPa abs) rated 800,000 lb/h (100.8 kg/s), 4 × 1100 psig (7.686 MPa) 808,000 lb/h (101.8 kg/s), 3 × 1110 psig (7.755 MPa) 815,000 lb/h (102.7 kg/s); flow w·P/p × subsonic factor to the pool at 0.1 MPa | From a GE BWR/4 training lesson plan (NRC-hosted; group counts partly illegible in the OCR, read so that capacity ∝ set pressure, which it is for one valve model). Each valve: spring opens it fully above p, recloses below p − `BD` (0.25 MPa, illustrative; not in the source), latch `s.spr[i]`; or opened by hand, `u.srv[i]` true. Open = spring or hand. No automatic relief logic, low-low set or ADS |
 | Turbine stub | `ETA` 0.85 isentropic along one expansion line from the throttle (dome, saturated) to the condenser pressure; generator `ETAG` 0.985 | `expansion(p0, h0)` → h(p): h0 − η·(h0 − h_s(p)), h_s from the throttle entropy (`satS` in common.js, IAPWS supplementary release). Extraction leaves at h(pe); the rest exhausts wet at h(Pc). `turbinePower(wt, h0, ext, hx)`. Rated: exhaust h 1950 kJ/kg (x ≈ 0.76), about 920 MWe gross with the one 2.4 MPa heater stage (a real BWR/4 with several stages and reheat makes about 1100 MWe; step 5 adds the LP stage) |
-| Condenser | Steam space `VC` 4000 m³; circulating water `WCW` 38,000 kg/s at `TCW` 20 °C (fixed until the circulating water step); `UA` 2.4×10⁸ W/K; `PCMAX` 0.135 MPa | Saturated at Tc. Inflows `[w, h]` split into vapour w·(h − h′)/h_fg at Tc and liquid. Bundle: Q = m·c_p·(Tc − T_in)·(1 − e^(−UA/(m c_p))), w_c = Q/h_fg. Implicit each step: bisection on Tc for ρ″(Tc)·VC = Ms + (vapour − w_c)·dt. Liquid to the hotwell = inflow − storage change, at h′(Tc). Rated: 7.05 kPa, 39.1 °C, 2370 MW, CW out 34.9 °C. Illustrative numbers (38 m³/s and ~7 kPa are typical of an 1100 MWe unit; UA chosen to give them). `condSteady(ins, cw)` the steady Tc. Fault `'condenser'` above PCMAX (LP exhaust rupture diaphragms) |
+| Condenser | Shell `VC` 4000 m³ of steam and air at one temperature Tc: Pc = p_sat(Tc) + Ma·R·Tc/VC (Dalton, R = 287); design circulating water `WCW` 38,000 kg/s at `TCW` 20 °C; bundle `UA0` 2.70×10⁸ W/K clean, `UAD` (`UA`) 2.4×10⁸ W/K at the rated air fraction; blanketing UA = UA0/(1 + (ya/`YA`)²), ya = pa/Pc, YA = 0.1; `PCMAX` 0.135 MPa | Steam saturated at Tc. Inflows `[w, h]` split into vapour w·(h − h′)/h_fg at Tc and liquid. Bundle: Q = m·c_p·(Tc − T_in)·(1 − e^(−UA/(m c_p))), w_c = Q/h_fg. Implicit each step: bisection on Tc for ρ″(Tc)·VC = Ms + (vapour − w_c)·dt, the air mass (updated first) held fixed over the solve, so the solve stays one-dimensional; UA follows ya(Tc) inside it. Liquid to the hotwell = inflow − storage change, at h′(Tc). Rated: 7.32 kPa (7.06 kPa steam + 0.26 kPa air), 39.2 °C, 2374 MW, CW out 34.9 °C. Illustrative numbers (38 m³/s and ~7 kPa are typical of an 1100 MWe unit; UA chosen to give them). `condSteady(ins, cw, pa)` the steady Tc with air partial pressure pa at the tubes (default `PA0`). Condensate leaves at Tc, i.e. subcooled against Pc when there is air. Fault `'condenser'` above PCMAX (LP exhaust rupture diaphragms) |
+| Circulating water | One pump (`u.cwp` on/off) against a fixed system: w = √(`HCW`/(`KSYS` + `KCV`/x²)), HCW 0.15 MPa flat (no pump curve), 10 % of it across the open valve, so x = 1 passes WCW; x = 0.5 passes 33.3 t/s, 0.3 passes 26.8 t/s. First-order lag `TAUCW` 12 s (run-up and coast-down). Inlet temperature `u.tcw`, an operator input | In/out pipe only (decided): no river, cooling tower or pump curve. Butterfly valve `u.cwv` 0–1, no stroke limit (the flow lag covers it). Illustrative numbers. State `s.wcw` |
+| Air in-leakage | `WLK` 0.009 kg/s (≈ 15 scfm) × nozzle factor from `PATM` 0.101325 MPa (constant at vacuum, zero at atmospheric); radiolytic gas `WRAD` 0.02 kg/s × Q/QR × main steam share of the steam leaving the vessel | Illustrative. The radiolytic H₂/O₂ is counted as air (R = 287) and is not taken out of the vessel inventory (10⁻⁵ of the steam flow). State `s.cd.Ma` |
+| Steam jet air ejector | Removes `VSJ` 10 m³/s of shell-average gas (VSJ·Ma/VC kg/s of air) × clamp((Pm − 0.7 MPa)/0.5 MPa) × clamp((35 kPa − Pc)/10 kPa); motive steam `WSJ` 2.5 kg/s × clamp(Pm/1.2 MPa, 0, 1) | `u.sj` motive steam valve. Pm = `motiveP(s)`, for now the dome pressure (one helper, so the steam-line node can replace it). The motive steam is taken off the main steam flow ahead of the turbine (the tap is downstream of the MSIVs, which `mv` includes): at most wst, the turbine gets wst − wsj; with the valve shut the SJAE has no steam. It goes to the condenser at h″. The heater's extraction pressure still follows wst (0.14 % off at rated). VSJ is an effective volume: a real ejector draws air-rich gas from the air-cooling section through a much smaller suction. Rated air partial pressure `PA0` = (WLK + WRAD)·R·T/VSJ = 260 Pa |
+| Mechanical vacuum pump | `VVP` 2.2 m³/s × clamp((Pc − 7 kPa)/23 kPa, 0, 1) | `u.vp` on/off. From atmosphere (empty condenser, 20 °C water) to 39 kPa in 30 min, 19 kPa in 1 h, 12 kPa in 2 h, ~9 kPa in 5 h |
+| Vacuum breaker | `WVB` 20 kg/s × opening × nozzle factor from atmosphere, never filling past atmospheric within a step; strokes in 20 s (`VBRATE`) | `u.vb` open/shut, manual. From rated vacuum to atmospheric in about 5 min. No reverse flow when the shell is above atmospheric |
 | Hotwell | `HWM` 600 t capacity, normal half full; its own mass `Mh` and temperature `Thw` | Mixes the condensate (at Tc), makeup at `TMK` 30 °C, and the feed drawn off. Design temperature `THW` 39.1 °C (the condenser at rated; the extraction constant is computed with it). Makeup from / reject to the condensate storage tank `u.mk`, ±100 kg/s (`MKMAX`) |
 | Feed pump | ΔP = n²·`H0` − `KPU`·w², H0 = 10 MPa, KPU = 0.24 Pa/(kg/s)²; suction at the condenser pressure | Condensate, booster and feed pumps lumped. Speed `u.n` 0–1 (affinity), state `s.n`, changes at most 10 %/s (`NRATE`). Shutoff 10.01 MPa at full speed, 6.4 MPa at 80 %. Loses suction below 5 % hotwell: flow × Mh/(0.05·HWM) |
 | Heater + piping drop | `KLN`·w², KLN = 0.094 Pa/(kg/s)² | 0.3 MPa at rated flow |
@@ -72,13 +77,19 @@ Each step (`step(s, u, dt)`):
 Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are conserved exactly
 (the vessel is rigid, so there is no external work; the tests check both).
 
+Air balance each step (`airStep`): dMa/dt = w_in − V_r·Ma/VC with w_in (leakage, radiolytic, breaker) and V_r (SJAE + vacuum pump, their capacity factors at the start-of-step Pc) held over the step, integrated exactly: Ma' = Me + (Ma − Me)·e^(−V_r·dt/VC), Me = w_in·VC/V_r. `s.f.wain` and `s.f.waout` are the air flows in and out; their integral closes the air mass exactly.
+
 `fault(s)`: `'uncovered'` level below TAF, `'flooded'` level at the steam nozzle, `'critical'` above
 21.5 MPa, `'hotwell'` hotwell over capacity (condenser flooding), `'range'` if the solve fails.
 
 Command `u` = {heat W, n 0–1 pump speed, fv 0–1 feed valve demand, ext 0–1 heater extraction, mk kg/s
-makeup (negative: reject), mv 0–1 steam valve demand, srv[]}. `s.f` records what was applied, with the feed
+makeup (negative: reject), mv 0–1 steam valve demand, srv[], cwp CW pump on, cwv 0–1 CW valve, tcw K CW
+inlet, sj SJAE motive steam open, vp vacuum pump on, vb vacuum breaker open}. Absent cwp, cwv, tcw, sj mean the
+normal running line-up (on, open, 20 °C, in service); absent vp, vb mean off and shut. A protection trip
+(step 11) can act through the same fields (cwp false is a CW pump trip). `s.f` records what was applied, with the feed
 train's fw, Tfw, Pd (pump discharge), pe (extraction pressure), Tt (heater target), ret (condensate
-return), mk, Mh, hw (hotwell fraction).
+return), mk, Mh, hw (hotwell fraction); condenser: Pc, Tc, pa (air partial pressure), ya, Ma, wcw, Tcwi
+(inlet), Tcw (outlet), wsj (motive steam), sjc and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s).
 
 ## Control (bwr-control.js)
 
@@ -96,6 +107,9 @@ return), mk, Mh, hw (hotwell fraction).
   discharge 2.2 MPa (default) above the dome, as turbine-driven feed pumps are run, so the feed valve keeps a
   steady drop at any vessel pressure.
 - Heater extraction valve: manual only.
+- Circulating water (pump, valve, inlet temperature), SJAE motive steam, vacuum pump and vacuum breaker:
+  manual only, passed through by `command()` (no controller: the CW valve is set open and left there in
+  normal operation, so an M/A would have nothing to do).
 - `init(c)` preloads the integrators from the operator's settings, so an actuator that starts in A starts
   from its slider.
 - SRVs: no automatic logic in the controller; `u.srv` passes the operator's per-valve hand openings
@@ -124,6 +138,14 @@ return), mk, Mh, hw (hotwell fraction).
 - Startup 30 MW from 100 °C, valve shut: 60–110 K/h, level up > 0.8 m in an hour from expansion.
 - Load step 3293 → 2000 MW with both controllers in A: pressure and level back to setpoint within 20 min.
 
+- Circulating water and air (tests/bwr-cw.test.mjs, tests/bwr-air.test.mjs): loss of the CW pump at rated
+  takes the condenser to 0.135 MPa in about 28 s (15 kPa at 10 s); CW inlet 10/20/30/35 °C gives 4.6/7.3/11.9/15.1
+  kPa at rated; CW valve 50 %/30 % gives 7.9/9.3 kPa. SJAE holds 260 Pa of air (11.6 kg) at rated, removing the
+  104 kg/h that leaks and arrives with the steam; without its motive steam the air builds at 104 kg/h and the
+  back pressure reaches 19 kPa in 1 h, 52 kPa in 4 h. Vacuum pump pull-down above; startup: after an hour on
+  the vacuum pump, 30 kg/s of steam with the SJAE in service brings the shell to < 4 kPa within 30 min.
+  The air mass integral closes exactly at dt 0.25 and 2 s.
+
 ## Plant layout (draft)
 
 The mimic draws the whole plant, one of each component (no redundant trains). It spans the page width with
@@ -140,7 +162,8 @@ use landscape). There is no separate phone layout. Solid parts are modelled; das
   LP turbine (double flow, exhausts down into the condenser) → generator on the same shaft.
 - Condenser: shell, tube bundle with circulating water in/out, air removal to the steam jet air ejector
   (off-gas; its motive steam comes from the main steam header over the turbine hall) and the mechanical
-  vacuum pump (startup), hotwell at the bottom (the model's hotwell).
+  vacuum pump (startup), vacuum breaker on the exhaust hood, hotwell at the bottom (the model's hotwell).
+  All modelled (solid).
 - Condensate and feed: hotwell → condensate pump → polisher → LP heater → feed pump → HP heater (the
   model's one heater, its extraction now drawn from the HP turbine casing) → feed valve → containment.
 
@@ -156,7 +179,9 @@ hydraulics, main steam drains to the condenser, generator output and grid breake
 
 Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
 subcooling separate from the core, steam superheat, air in the dome (below 100 °C the pressure goes
-sub-atmospheric), vessel and internals heat capacity, turbine (a stub: one expansion line), air in the condenser, circulating water as a system (fixed flow and inlet), moisture separator reheaters, separate heater stages and drain coolers (one throttled extraction line stands for the train; real extraction lines have only isolation and non-return valves), pump trips (no
+sub-atmospheric), vessel and internals heat capacity, turbine (a stub: one expansion line), circulating water pump curve, river or cooling tower (an in/out pipe with a set inlet temperature), air
+distribution in the condenser (one shell-average air fraction; no air-cooling section), SJAE stages and
+inter/after-condensers, off-gas train, low-vacuum turbine trip, moisture separator reheaters, separate heater stages and drain coolers (one throttled extraction line stands for the train; real extraction lines have only isolation and non-return valves), pump trips (no
 level-8 or low-suction trip; suction loss is a flow taper), pump minimum-flow recirculation, startup
 low-flow valve, condensate and feed water inventory in the pipes, cleanup reject flow, suppression-pool heat-up. Void clearance uses one time constant at every power and pressure,
 so swell from bulk flashing during a depressurisation is underestimated.
