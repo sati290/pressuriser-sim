@@ -243,7 +243,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
         <li>Level is the volume of water and voids over a uniform cross-section of 28.6 m², from the inside bottom of the vessel: top of active fuel 9.3 m, normal level 14.3 m, main steam nozzle 16.5 m. Real vessels measure level in the downcomer, against a reference leg. The model stops if the level falls to the top of the fuel or reaches the steam nozzle.</li>
         <li>The main steam valve stands for the main steam isolation valves together with the turbine control and bypass valves: 2000 kg/s fully open at 7.0 MPa, in proportion to pressure (choked), into a condenser at 0.01 MPa. It strokes at most 20 % per second. Turbine, condenser and reheat are not modelled.</li>
-        <li>Safety/relief valves: eleven, each with a spring set pressure and a rated capacity from a GE BWR/4 training lesson plan: four at 1090 psig (7.62 MPa abs) rated 800,000 lb/h (101 kg/s), four at 1100 psig (7.69 MPa) 808,000 lb/h, three at 1110 psig (7.75 MPa) 815,000 lb/h. Hover a valve's button for its figures. A spring opens its valve fully above the set pressure and recloses it 0.25 MPa lower; that blowdown is an illustrative figure, not from the source. Flow scales in proportion to pressure from the rated capacity, into a suppression pool at 0.1 MPa that does not heat up. Opening by hand stands for the valve's relief (pneumatic) mode; there is no automatic relief logic, no low-low set and no automatic depressurisation system.</li>
+        <li>Safety/relief valves: eleven, each with a spring set pressure and a rated capacity from a GE BWR/4 training lesson plan: four at 1090 psig (7.62 MPa abs) rated 800,000 lb/h (101 kg/s), four at 1100 psig (7.69 MPa) 808,000 lb/h, three at 1110 psig (7.75 MPa) 815,000 lb/h. Hover a valve's button for its opening pressure and capacity. A spring opens its valve fully above the set pressure and recloses it 0.25 MPa lower; that blowdown is an illustrative figure, not from the source. Flow scales in proportion to pressure from the rated capacity, into a suppression pool at 0.1 MPa that does not heat up. Opening by hand stands for the valve's relief (pneumatic) mode; there is no automatic relief logic, no low-low set and no automatic depressurisation system.</li>
         <li>Feedwater pumps can deliver up to 2500 kg/s at any vessel pressure; pump head, feedwater heaters and the cleanup (reject) flow are not modelled, so there is no way to drain water during heat-up other than the valves.</li>
         <li>No vessel or internals heat capacity: the steel would slow heat-up and pressure changes. Generic numbers for a large BWR (about 3300 MW thermal); not any specific plant. All pressures are absolute.</li>
       </ul></div>
@@ -334,12 +334,10 @@ $('scram').onclick=()=>{if(s&&!halted){BWRSim.scram(s,ctl.heat*1e6);syncAuto()}}
 $('rst').onclick=()=>{if(s){BWRSim.reset(s);syncAuto()}};
 $('scClose').onclick=()=>{setC({auto:{mv:false},mv:0})};
 // one toggle per SRV: press to open by hand, again to release (the spring may still hold it open)
-const MPa2=p=>(p/1e6).toFixed(3),psigOf=p=>Math.round(p/6894.757-14.696);
-const srvB=SRV.map((v,i)=>{const b=document.createElement('button');b.type='button';b.textContent=i+1;b.setAttribute('aria-pressed','false');
+const MPa2=p=>(p/1e6).toFixed(3);
+const srvTitle=i=>`SRV ${i+1}: opens at ${MPa2(SRV[i].p)} MPa, ${SRV[i].w.toFixed(1)} kg/s`;
+const srvB=SRV.map((v,i)=>{const b=document.createElement('button');b.type='button';b.textContent=i+1;b.setAttribute('aria-pressed','false');b.title=srvTitle(i);
   b.onclick=()=>{srvMan[i]=!srvMan[i];if(s)syncAuto()};$('srvs').append(b);return b});
-const srvTitle=(i,open,spr)=>{const v=SRV[i];
-  return `SRV ${i+1}: spring opens at ${MPa2(v.p)} MPa (${psigOf(v.p)} psig) and recloses at ${MPa2(v.p-BD)} MPa; capacity ${v.w.toFixed(1)} kg/s (${(Math.round(v.w/1.25998e-4/1000)*1000).toLocaleString('en-US')} lb/h) at its set pressure. `+
-    (srvMan[i]?(spr?'Open by hand and on its spring.':'Open by hand.')+' Press to release.':spr?'Open on its spring. Press to also hold it open by hand.':'Closed. Press to open by hand.')};
 $('scFwh').onclick=()=>{setC({tfw:Math.max(20,ctl.tfw-55)})};
 
 const FAULT={'':'',range:'The vessel state left the range of the model.',
@@ -378,9 +376,8 @@ const syncAuto=()=>{
     $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc;
     if(sc&&s.t>s.scram.t){const v=Math.round(s.f.Q/1e6);el.value=v;ctl.heat=v;$('heato').textContent=fmt.heat(v)}
   }
-  // SRV toggles: pressed = opened by hand, ring = open on its spring; tooltip gives set pressure and capacity
-  {const f=s.f;srvB.forEach((b,i)=>{const spr=!!(f.spr&&f.spr[i]);b.setAttribute('aria-pressed',String(srvMan[i]));b.classList.toggle('spr',spr);
-    const t=srvTitle(i,f.open&&f.open[i],spr);if(b.title!==t)b.title=t});
+  // SRV toggles: pressed = opened by hand, ring = open on its spring
+  {const f=s.f;srvB.forEach((b,i)=>{const spr=!!(f.spr&&f.spr[i]);b.setAttribute('aria-pressed',String(srvMan[i]));b.classList.toggle('spr',spr);});
    $('srvo').textContent=f.nsrv?`${f.nsrv} open · ${f.wsrv.toFixed(0)} kg/s`:'all shut'}
   let m='',bad=false;
   const nspr=(s.f.spr||[]).filter(x=>x).length;
