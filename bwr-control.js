@@ -37,6 +37,12 @@ const cvFlow=x=>KT*PL0*fcv(x)/WR,cvLift=D=>fcvInv(D*WR/(KT*PL0));
 // steam-flow signal: after a main steam valve closure the steam leaves through the SRVs, which the
 // steam-flow signal does not see, and the level term alone has to call for the feedwater.
 const KL=800,TIL=60;
+// scram level setpoint setdown (as in GE feedwater level control): after a scram the level setpoint drops
+// by SDL, so the controller does not refill the vessel on the shrink and overshoot to L8 (the feed would then
+// trip); after SDT seconds it ramps back over SDR seconds (cold feed brought in fast collapses the pressure).
+// Illustrative: 0.45 m (about 18 in), held 10 min, back over 20 min.
+const SDL=0.45,SDT=600,SDR=1200;
+const setdown=(s,t)=>s.scram?SDL*clamp(1-(s.t-s.scram.t-SDT)/SDR,0,1):0;
 // The feed flow demand goes to a flow controller on the feed valve (cascade): PI, 0.0001 of stroke per
 // kg/s of flow error, integral time 4 s. The valve's own stroke limit (10 %/s) is in the plant.
 const KX=1e-4,TIX=4;
@@ -86,7 +92,7 @@ const demands=(k,s,c,dt)=>{
   // feedwater level, three-element: steam flow measured in the main steam line only (SRV discharge
   // is not). Its output is the flow demand F for the flow controller. In M the integral holds the
   // measured feed flow net of the feedforward, so F is the present flow plus the level correction.
-  const eL=c.lset-d.level,ff=f.wst,fvA=!!A.fv;
+  const lset=c.lset-setdown(s),eL=lset-d.level,ff=f.wst,fvA=!!A.fv;
   // the flow controller's valve demand before this step's level update, for anti-windup
   const sat1=k.dem.fv>=1&&fvA,sat0=k.dem.fv<=0&&fvA;
   if(!fvA)k.iF=f.fw-ff;
@@ -131,4 +137,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND};
+export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,RDB,RBAND,SDL,SDT,SDR,setdown};

@@ -90,7 +90,8 @@ test('turbine trip with scram: bypass alone holds the pressure, back to the setp
     near(MPa(s.d.P), 7.0, 0.01, `back at the setpoint dt=${dt}`);
     // the cold feed (no extraction steam) comes in bursts that condense steam: average over the last 10 min
     assert.ok(wb / nb > 5 && wb / nb < 60, `bypass passes the decay-heat steam: ${wb / nb} dt=${dt}`);
-    near(s.d.level, 14.3, 0.2, `level dt=${dt}`);
+    // the level setpoint is set down after a scram and is still ramping back
+    near(s.d.level, 14.3 - K.setdown(s), 0.2, `level dt=${dt}`);
     assert.ok(s.f.Pc < 5e3, `condenser easy: ${s.f.Pc} dt=${dt}`);
   }
 });

@@ -143,3 +143,14 @@ test('reactor water cleanup reject: mass and energy go to the condenser, and in 
   assert.ok(!su.rps.lat.L8, 'no L8 trip');
   assert.ok(su.rps.lat.vacT, 'the turbine stays tripped on low vacuum until reset');
 });
+
+test('scram at rated with the kinetics: the level setpoint setdown keeps the level off L8, so the feed pump stays in', () => {
+  for (const dt of [0.25, 2]) {
+    const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true; c.auto.rw = true;
+    const k = K.init(c); runC(s, k, c, 10, dt); BS.manualScram(s); c.rod = 0;
+    let lmax = 0; for (let i = 0; i < 2400 / dt; i++) { BS.step(s, K.update(k, s, c, dt), dt); lmax = Math.max(lmax, s.d.level); }
+    assert.ok(!s.rps.lat.L8, `no L8: max ${lmax} dt=${dt}`);
+    near(s.d.level, 14.3, 0.25, `back near the normal level dt=${dt}`);
+    assert.equal(BS.fault(s), '');
+  }
+});

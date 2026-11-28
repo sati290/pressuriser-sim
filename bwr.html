@@ -431,10 +431,10 @@ const TOG={cwp:true,sj:true,vp:false,vb:false},CDN={...TOG,cwv:100,tcw:20};
 const setTog=(k,v)=>{TOG[k]=ctl[k]=!!v;$(k).setAttribute('aria-pressed',String(!!v))};
 for(const k in TOG){setTog(k,TOG[k]);$(k).onclick=()=>setTog(k,!TOG[k])}
 // scenarios set the plant state, put every control in A and close every SRV
-// scenarios set the plant state, put every control in A (the MG set in M: it holds its speed) and close
+// scenarios set the plant state, put every control in A (at low power the MG set in M: it holds its speed) and close
 // every SRV. The rod lever is set to where init made the core critical; the core flow setpoint to the
 // initial flow.
-const MAN={auto:{mg:false,n:true,fv:true,mk:true,rw:true,cv:true,bp:true},rw:0,ms1:true,ms2:true,sv:true,ll:105};
+const MAN={auto:{mg:true,n:true,fv:true,mk:true,rw:true,cv:true,bp:true},rw:0,ms1:true,ms2:true,sv:true,ll:105};
 let pcool=false;$('pcool').onclick=()=>{pcool=!pcool;$('pcool').setAttribute('aria-pressed',String(pcool))};
 const start=(st,cfg)=>{srvMan.fill(false);ctl.rp=st.rp??true;pcool=false;$('pcool').setAttribute('aria-pressed','false');
   setC({...MAN,...CDN,...cfg,auto:{...MAN.auto,...cfg.auto}});s=init(st);
@@ -454,12 +454,12 @@ const atPower=(Q,mg,cfg,byp)=>{const {W,Tfw}=byp?{W:Q*1e6/(sat(Tsat(7e6)).hg-sat
 // passes the steam once the pressure reaches the setpoint. The condenser starts open to atmosphere, full
 // of air; the vacuum pump runs, the SJAE waits for steam (the turbine is tripped on low vacuum until the
 // vacuum is pulled and the trip reset)
-$('scStart').onclick=()=>start({P:0.1e6,L:14.0,q:0,rod:0,mg:0.2,sv:0,vac:false,mode:'startup'},{mg:20,n:0,fv:0,ext:0,mk:0,cv:0,bp:0,sv:false,pset:7,lset:14.0,dpset:2.2,win:21600,sj:false,vp:true});
+$('scStart').onclick=()=>start({P:0.1e6,L:14.0,q:0,rod:0,mg:0.2,sv:0,vac:false,mode:'startup'},{mg:20,n:0,fv:0,ext:0,mk:0,cv:0,bp:0,sv:false,pset:7,lset:14.0,dpset:2.2,win:21600,sj:false,vp:true,auto:{mg:false}});
 // hot standby: critical at 1.5 % of rated power, pumps at 30 % speed, stop valve shut, the bypass passing the steam
-$('scHot').onclick=()=>atPower(0.015*QC/1e6,30,{win:3600},true);
+$('scHot').onclick=()=>atPower(0.015*QC/1e6,30,{win:3600,auto:{mg:false}},true);
 $('scRated').onclick=()=>atPower(3293,100,{win:600});
 // isolation: critical at 200 MW (rods set for it) when the MSIVs start closing
-$('scIso').onclick=()=>{atPower(200,30,{win:3600});setC({ms1:false,ms2:false})};
+$('scIso').onclick=()=>{atPower(200,30,{win:3600,auto:{mg:false}});setC({ms1:false,ms2:false})};
 // scram: the plant drives the rods in; the lever goes to 0 so that a reset does not pull them again
 $('scram').onclick=()=>{if(s&&!halted){BWRSim.manualScram(s);setC({rod:0});syncAuto()}};
 $('rp').onclick=()=>{ctl.rp=!ctl.rp;if(s)syncAuto()};

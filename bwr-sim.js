@@ -133,7 +133,7 @@ const step=(s,u,dt)=>{
   // The core inlet is downcomer water: inlet subcooling u′ − u_dc, at the downcomer temperature.
   // Recirculation: pump breaker u.rp (true closed; undefined keeps it), MG set speed demand u.mg 0–1
   // (undefined keeps it).
-  const k=s.core,rc=s.rc,fix=Number.isFinite(u.heat),W0=k.W;
+  const k=s.core,rc=s.rc,fix=Number.isFinite(u.heat),W0=k.W,gc0=k.W*k.xe;
   if(u.rp!=null)rc.on=!!u.rp;if(u.mg!=null)rc.dm=clamp(u.mg,0,1);
   k.dh=Math.max(0,uf-Math.min(s.udc,uf));
   const Tin=d.Tdc,lp={rd:liqRho(Tin,P),rc:rf,rg,ac:0,ae:0,xe:0};
@@ -185,7 +185,9 @@ const step=(s,u,dt)=>{
   // steam that flashing makes beyond what the core boils (a depressurisation flashes water throughout
   // the vessel: the downcomer and lower plenum too, and those bubbles have further to go), which rises
   // out with TAUF
-  const gen=(e.Mv-Mv-mc)/dt,g=Math.max(0,gen-k.W*k.xe)*TAUF;
+  // (the core's steaming is taken as the larger of its start- and end-of-step values: after a scram it falls
+  // within a step, while the vessel still boils off the stored heat, which is not flashing)
+  const gen=(e.Mv-Mv-mc)/dt,g=Math.max(0,gen-Math.max(gc0,k.W*k.xe))*TAUF;
   s.Mfl=g+(s.Mfl-g)*Math.exp(-dt/TAUF);
   s.Mb=Math.min(sat(e.T).rg*voidVol(k)+s.Mfl,0.9*e.Mv);
   Object.assign(s,{M,U,Mv:e.Mv});s.t+=dt;
