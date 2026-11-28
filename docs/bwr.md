@@ -12,7 +12,7 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 | Module | System | State it owns |
 |---|---|---|
 | `bwr-vessel.js` | Vessel geometry, water–steam solve with the downcomer region (`at`, `solve`, `derive`, `dcMass`, `vesselInit`) | `M`, `U`, `Mv`, `Mb`, `Mfl`, `udc`, `d` |
-| `bwr-core.js` | Point kinetics, axial shape (`steady`, `localFb`, `peak`, `GZ`, `STGT`), fuel node, decay heat groups, rod lever (`rodRho`, `rodFor`), core voids (`voids`, `voidVol`), `coreInit`, `coreStep` (substeps) | `core {n, c[6], D[7], Tf, x, s[24], a[24], hs[24], fb, pk, zpk, ac, ae, xe, zb, W, dh, rho, per, q, pc}` |
+| `bwr-core.js` | Point kinetics, axial shape (`steady`, `localFb`, `peak`, `GZ`, `STGT`), fuel node, decay heat groups, control rod groups (`rodR`, `cov`, `seq`, `rodsFor`, `shapeAt`), CRD pump flow (`WCRD`), core voids (`voids`, `voidVol`), `coreInit`, `coreStep` (substeps) | `core {n, c[6], D[7], Tf, x, s[24], a[24], hs[24], fb, pk, zpk, ac, ae, xe, zb, W, dh, rho, per, q, pc}` |
 | `bwr-recirc.js` | Recirculation pump and MG set (`mgStep`), jet pump (`jet`), natural circulation head, loop momentum (`resid`, `loopStep`), `recircInit` | `rc {on, ng, dm, Wd, Wc}` |
 | `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam line (`steamLine`, `cvPos`, `valveStep`: MSIVs, stop, control and bypass valves), SRVs (`srvStep`), nozzle factor | `ms[2]`, `sv`, `cv`, `bp`, `Pl`, `spr[]` |
 | `bwr-turbine.js` | Turbine (step 15): expansion lines (`expansion`, `turbineLine`), Stodola stage pressures (`calib`, `stagePs`), turbine work (`work`); shaft and generator (`tgStep`), breaker (`breaker`, `brkTrips`), power–load unbalance and intercept valves (`pluStep`) | `tg {w, brk, lock, iv, PL, plu, trp}` |
@@ -82,31 +82,61 @@ All numbers generic BWR/4 class; illustrative unless stated.
 |---|---|---|
 | `QC`, `PRC`, `WCR` | 3293 MW, 7.0 MPa, 12,900 kg/s | Rated power, dome pressure, core flow (BWR/4 ~102 Mlb/h) |
 | `LAM`, `BF`, `BETA` | λ 0.0124 … 3.01 /s, U-235 group fractions (Keepin), β = 0.0056 | Six delayed groups; β lowered from 0.0065 for a mid-cycle core with Pu. `LAMBDA` 4×10⁻⁵ s is not needed by the prompt-jump form (kept for reference) |
-| `SRC` | 1 W | Source in power units: subcritical power SRC/(β − ρ), ~8 W with the rods in |
+| `SRC` | 1 W | Source in power units: subcritical power SRC/(β − ρ), ~8 W with the rods all in |
 | `AV`, `AD`, `AM` | −1×10⁻³ /% void, −2×10⁻⁵ /K, −2×10⁻⁵ /K | Local void, Doppler (fuel temperature along the shape), moderator (subcooled water). Reference hot zero power, `TREF` = T_sat(7 MPa). GE BWR Technology Manual ch. 1.7 (NRC ML11258A296) gives −1×10⁻³ per % void and −1×10⁻⁵ per °F fuel as typical |
 | `NZ`, `M2`, `DEXT` | 24, 65 cm², 0.1 m | Axial nodes, migration area (one group), extrapolation distance beyond the fuel ends |
-| `BSK`, `STGT`, `GZ` | 0.35, peaking 1.53 at 44 % height | Rated shape: chopped sine × (1 + BSK·(1 − 2z)); G(z) the fixed k∞ profile that gives it at rated, scaled to k = 1 at hot zero power |
+| `BSK`, `STGT`, `GZ` | 0.35, peaking 1.53 at 44 % height | Rated shape: chopped sine × (1 + BSK·(1 − 2z)); G(z) the fixed k∞ profile (fuel zoning) that gives it at rated with all rods out, k = 1 there |
 | `MCF`, `RF` | 5×10⁷ J/K, 1×10⁻⁷ K/W | Fuel node: τ = 5 s, 615 °C average at rated. All heat is deposited in the fuel |
 | `DL`, `DF` | λ 1/1.5 … 1/1.5×10⁶ s; Σf = 0.0693 | Seven decay-heat groups driven by fission power; least-squares fit to 0.065·(1 + t)^−0.2 of the total (within 3 % from 1 s to 3 days) |
 | `AF`, `LC`, `VCH` | 7.5 m², 3.7 m, 30 m³ | Core flow area (764 bundles × ~0.0098 m²), heated length, chimney + standpipes + separators volume at the exit void |
 | `C0`, `VGJ`, `TAUV` | 1.1, 0.25 m/s, 0.7 s | Zuber–Findlay drift flux; voids relax to their targets with TAUV |
-| `X0`, `XR`, `WT` | 60 %, 80 %, 0.255 | Rod lever: ρ_rod = WT·(F(x) − F(X0)), F(x) = x − sin(2πx)/(2π) (sin² differential worth); WT chosen so the rods balance the rated feedback (−0.0659, including the shape change from hot zero power) at XR. All in: −0.177 (31.6 $); all out +0.078 |
-| `RODRATE`, `TSCRAM` | 0.1 %/s, 3 s | Lever travel; scram stroke (placeholder for step 13) |
+| `NG`, `NPOS`, `NOTCH` | 4, 48, 2 | Rod groups; positions 00 (in) … 48 (out) span the active fuel; a notch is 2 positions (6 in) |
+| `GW` | 0.045, 0.045, 0.016, 0.058 | k∞ lost where group g covers a node (its share of the rods × a rodded lattice's loss). Groups in withdrawal order: 1, 2 deep (shutdown margin), 3 startup (critical on it), 4 power. Illustrative |
+| `XRATED` | all out | Rated rod pattern (the calibration point of GZ) |
+| `RODRATE` | a notch per 4 s | Drive speed (x per second: 1/96) |
+| `TSD`, `VSC`, `TSCRAM` | 0.2 s, 1/2.7 per s, 2.9 s | Scram: pilot valve delay, then the accumulators drive every rod in at VSC; all in from fully out by TSCRAM (BWR/4 technical specifications: 90 % in within about 3 s) |
+| `WCRD` | 3.8 kg/s | CRD pump flow (60 gpm) from the storage tank into the vessel while the pump runs (`u.crd` true) |
 
 Kinetics (prompt-jump, precursors in power units c_i = Λλ_iC_i): n = (Σc_i + SRC)/(β − ρ),
 dc_i/dt = λ_i(β_i n − c_i), implicit Euler for c_i solved together with n; ρ ≥ β (or the implicit
 denominator below 1 % of β) latches `core.pc` → fault `'prompt'`. Decay groups dD_j/dt = λ_j(f_j n − D_j).
 Fuel: MCF·dTf/dt = n + ΣD − (Tf − T_sat)/RF, exact per substep; the heat to the coolant is the fuel
-energy balance over the substep. Reactivity ρ = ρ_rod(x) + ρ_fb, the feedback part from the axial shape.
+energy balance over the substep. Reactivity ρ = 1 − 1/k from the axial shape with the feedback and the rods.
 
 Axial shape (quasi-static; the fix for the cold-feed response): one-group diffusion over NZ nodes,
-−M²φ″ + φ = (k∞(z)/k)φ, φ = 0 at DEXT beyond the fuel ends, finite differences. k∞(z) = G(z)·(1 + f(z)),
+−M²φ″ + φ = (k∞(z)/k)φ, φ = 0 at DEXT beyond the fuel ends, finite differences. k∞(z) = G(z)·(1 + f(z))·(1 − R(z)),
 f = AV·100·α(z) + AD·(Tc + (Tf − Tc)·s(z) − TREF) + AM·(Tc − h_sub(z)/c_p − TREF), with the node voids α,
 the node subcooling h_sub and the lumped fuel temperature Tf spread along the shape s. G(z) is computed once:
-G = (A·s*)/(s*·(1 + f_rated)) for the rated target shape s* (STGT), then scaled so that k = 1 with f = 0.
-ρ_fb = 1 − 1/k, k from the Rayleigh quotient of the current shape; each substep two shifted inverse
-(Wielandt, shift 0.003 below 1/k) iterations move the shape towards the new feedback. The fission power
-is n·s(z) and goes into the coolant along s. `steady(Q, W, Δh, P)` solves shape and voids together (init).
+G = (A·s*)/(s*·(1 + f_rated)) for the rated target shape s* (STGT) with all rods out (so k = 1 there).
+R(z) = Σ_g GW_g·c_g(z), c_g the fraction of node z the group covers: the rods enter from the bottom, so a
+group at withdrawn fraction x covers the fuel up to (1 − x)·LC. ρ = 1 − 1/k, k from the Rayleigh quotient of
+the current shape with the rods where they are now; each substep two shifted inverse (Wielandt, shift
+0.003 below 1/k) iterations then move the shape towards the new feedback and rods. The fission power
+is n·s(z) and goes into the coolant along s. `steady(Q, W, Δh, P, x)` solves shape, voids and (without x)
+the critical rods along the withdrawal sequence together (init); `seq(t)` the sequence (groups 1 to 4 one
+after the other), `rodsFor(f, s, ρ)` the sequence point for reactivity ρ with the shape held, `shapeAt(f, x,
+s)` the converged shape and its ρ.
+
+Control rods: four groups that move as gangs (a BWR/4 pulls one rod at a time through a sequence of many
+groups; a group stands for a step of it), bottom entry. Hot zero power: critical with groups 1 and 2 out,
+group 3 near 19, group 4 in; a notch of group 3 there is about 0.2 $ (a period near 30 s). At 100 °C critical
+near 11 (about 0.35 $ a notch). All in −0.12 hot (k ≈ 0.89), all out +0.062 (the rated feedback). Rated:
+all out. With rods in from below and no voids the shape is top-peaked (about 2.4 at 73 % height at hot zero
+power; the old uniform lever gave 2.1 at 65 %, from the fuel zoning alone): bottom-entry rods do not cure
+that, they add to it, as in a real BWR at startup; the voids at power bring it down. Group 4 half in at rated:
+−6 % power, peak moves up. A few notches of group 4 at rated (shallow rods) move the power up, the
+boiling boundary rises and the core-average void falls (0.395 → 0.38 at position 40) enough to cancel their
+worth: +1.6 % power at position 40, +3 % at 32. A real core loses a little power to shallow rods. The same thing makes the scram worth build up slowly at
+first: from rated, −0.13 $ at 0.4 s, −0.8 $ at 1 s, −2 $ at 1.5 s, −35 $ all in (a real BWR/4 scram passes −1 $ in
+well under a second), so pressure transients that scram peak higher than with the old lever. And the
+one-group axial model (M² 65 cm²) is too loosely coupled, so the shape moves too far for a small change in
+k∞. A larger M² (100 cm², closer to a voided lattice) only trims that (+1.2 % at 40), and 150 cm² breaks the
+cold-feed calibration, so M² stays.
+
+CRD hydraulics (minimal): the CRD pump (`u.crd`, absent: stopped, so the other systems' tests run without
+it; the page starts it running) takes `WCRD` from the storage tank into the downcomer at the tank's
+temperature, mixing with the feed. Rods move only while it runs; the scram uses the accumulators (always
+charged) and works either way. The scram moves every rod in after `TSD` at `VSC`, from wherever it is.
 Why: in a point model a colder feed removed voids at the bottom of the boiling length, where α is steepest
 in x, while the extra power went in along the whole height, mostly into the high-quality upper core, so it
 restored few voids: 54 K colder feed gave +33 % (a real BWR/4: some 15–20 %, no scram). A cosine or
@@ -119,11 +149,12 @@ heat so far, x = (Q·∫s − W·Δh_in)/(W·h_fg) (W at least 100 kg/s); boilin
 the core average the mean of the nodes (each relaxes with TAUV). Without s, the steady shape (`steady`).
 Rated: zb 0.239, x_e 0.138, average 39.5 %, exit 67.7 %.
 
-`coreStep(k, inp, dt, flow)` runs ceil(dt/0.05) substeps with P, T_sat, Δh_in and T_in held: rods,
+`coreStep(k, inp, dt, flow)` runs ceil(dt/0.05) substeps with P, T_sat, Δh_in and T_in held: rods (to
+`inp.rods` at the drive speed while `inp.crd`, or the scram),
 kinetics, decay, fuel, then `flow(h, k)` (the recirculation substep) and the void relaxation. Returns the
 mean heat to the coolant. `coreInit(q, Tc, Tin, v, x)`: steady at heat q (decay groups at equilibrium,
-long operation), rods at the critical position unless x is given; q ≤ 0 gives a shut-down core at the
-source level.
+long operation), rods along the sequence where it is critical unless x (array of 4) is given; q ≤ 0 gives
+a shut-down core (rods x, default all in) at the source level.
 
 ## Recirculation (bwr-recirc.js)
 
@@ -151,9 +182,9 @@ stopped loop settles.
 
 ## Scram
 
-`scram(s)` latches `s.scram = {t, P0}`: the rods drive fully in over `TSCRAM` whatever `u.rod` says, and the
+`scram(s)` latches `s.scram = {t, P0}`: the rods drive fully in (`TSD`, `VSC`) whatever `u.rods` says, and the
 kinetics and decay groups give the power (about 5 % at 10 s, 3.3 % at 1 min, within 15 % of `decayFrac`
-from 1 min on). `reset(s)` hands the rods back to `u.rod` (the page puts the lever at 0 on scram). With the
+from 1 min on). `reset(s)` hands the rods back to `u.rods` (the page puts the group sliders at 00 on scram). With the
 fixed-heat test hook, P0 = q (default `s.f.Q`) and the heat is P0·`decayFrac`(t − t_scram) as before. `decayFrac(t)` = 0.935·(0.93·e^(−t/2) +
 0.06·e^(−t/10) + 0.01·e^(−t/80)) + 0.065·(1 + t)^(−0.2): fission power with the rods in (prompt drop,
 then two delayed-neutron tails) plus decay heat in Way–Wigner form for long operation at P0. Gives
@@ -239,7 +270,8 @@ Air balance each step (`airStep`): dMa/dt = w_in − V_r·Ma/VC with w_in (leaka
 `fault(s)`: `'uncovered'` level below TAF, `'flooded'` level at the steam nozzle, `'critical'` above
 21.5 MPa, `'hotwell'` hotwell over capacity (condenser flooding), `'range'` if the solve fails.
 
-Command `u` = {rod 0–1 rod lever (undefined: rods stay), heat W (a number: fixed heat, test hook), rp
+Command `u` = {rods array of 4 group positions 0–1, withdrawn fraction (undefined, or an undefined entry:
+the group stays), crd CRD pump running (absent: stopped; the rods move only with it), heat W (a number: fixed heat, test hook), rp
 recirculation breaker (undefined: keep), mg 0–1 MG set speed demand (undefined: keep), n 0–1 pump speed, fv 0–1
 feed valve demand, ext 0–1 HP heater extraction, exl 0–1 LP heater extraction (absent: = ext), cp, fp pump run
 switches (absent: running), rv 0–1 min-flow valve demand, hdv, ldv 0–1 HP drain valve and drain pump valve
@@ -261,15 +293,15 @@ wdh (HP drains to LP), wd (pumped forward), wduh, wdul (dumps to the condenser),
 inlet), xdh, xdl, hdp, hdvf; CST: wmu, wrj (makeup, reject kg/s), xmu, xrj, Mcst, cst (fraction full), Tcst;
 condenser: Pc, Tc, pa (air partial pressure), ya, Ma, wcw, Tcwi (inlet), Tcw (outlet), wsj (motive steam), sjc
 and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s); core: Pth (fission + decay), nf, rho, per
-(period), Tf, ac, ae, xe, Wc, dhin, rod, pc; recirculation: rp, ng, mg, Wd; wrw, hrw (cleanup reject); trip
+(period), Tf, ac, ae, xe, Wc, dhin, rods (group positions 0–1), pc; crd, wcd (CRD pump flow); recirculation: rp, ng, mg, Wd; wrw, hrw (cleanup reject); trip
 {scram, iso, turb, fwp} (latched protection groups). `fault` adds `'prompt'`, `'pool'` and `'cst'`. `fail(s,
 'hdv', on)` fails the HP drain valve shut. Turbine (step 15): p1, pX, pLi (stage pressures), spd (shaft speed,
 fraction), brk, lock (breaker), iv (intercept valves), plu (fast closure), Pm, Pw (shaft power, windage), Php,
-Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the operator's breaker switch. `API` 12.
+Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the operator's breaker switch. `API` 13.
 
 ## Control (bwr-control.js)
 
-- Rods: manual only (`c.rod` %), as in real BWRs. Recirculation breaker `c.rp`: a plain switch.
+- Rods: manual only (`c.rods`, four group positions 00–48), as in real BWRs; `c.crd` the CRD pump switch. Recirculation breaker `c.rp`: a plain switch.
 - Core flow (MG set speed, M/A `mg`): speed demand = KW·(wset·WCR − Wc) + I, KW = 2.3×10⁻⁵ per kg/s
   (10 % of rated flow → 3 %), integral 5 s, anti-windup 0 … 1. Only when `c.wset` is given. With the pump
   breaker open the integral tracks the MG set's actual speed (no windup while the pump makes no flow).
@@ -351,7 +383,7 @@ Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the op
 
 ## Validation numbers (tests/bwr.test.mjs, bwr-core, bwr-recirc, bwr-downcomer)
 
-- Kinetics at rated: critical with the rods at 80.1 %, fuel 615 °C, void 39.5 %, axial peaking 1.53 at 44 % height; steady at dt 0.25 and 2 s.
+- Kinetics at rated: critical with all rods out (the power settles 0.3 % under the init heat balance), fuel 615 °C, void 39.5 %, axial peaking 1.53 at 44 % height; steady at dt 0.25 and 2 s.
 - Control valve shut at rated, no scram: power peaks 1.50× within 12 s with the other valves fixed (1.62× before the
   axial shape), 1.37× in 5 s with the controllers (1.44×); core void 0.395 → 0.38; pressure past 15 MPa and core uncovered after ~80 s. With scram: level
   13.8 … 15.4 m, pressure peak 7.62 MPa.
@@ -361,16 +393,21 @@ Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the op
   extractions fall, so the heaters lose less than with extraction pressures ∝ flow (then: 52 K / +17 %,
   34 K / +11 %, 63 K / +21 % with an APRM trip after about 2 min). Before the axial shape: +33 % on the drain
   valve failure, +46 % with both valves (scram after ~50 s).
-- Turbine and generator (tests/bwr-turbine.test.mjs): rated 1110 MWe, first stage 5.90 MPa. Load rejection at
+- Turbine and generator (tests/bwr-turbine.test.mjs): rated 1110 MWe, first stage 5.87 MPa (all rods out leaves the power 0.3 % under the heat balance). Load rejection at
   rated in A: fast closure and scram in the same step, speed peaks 105 % (dt 0.25 and 2 s), no overspeed trip,
-  back to 1800 rpm (1793 rpm at dt 2) on the governor; pressure peaks 7.39 MPa (7.48 at dt 2), no SRV lifts.
+  back to 1800 rpm (1793 rpm at dt 2) on the governor; pressure peaks 7.54 MPa, no SRV lifts (7.62 at dt 2, four SRVs
+  lift); with the old uniform rod lever 7.39 / 7.48 MPa (the bottom-entry rods' scram worth builds up more slowly, see "Control rods").
   Turbine trip at rated: the breaker trips at once, the intercept valves shut, no overspeed; the shaft coasts
   down (61 % after 20 min). Load set 800 MWe at rated: output 800 MWe, the bypass 90 % open, HP extraction
   1.79 MPa, feed 200 °C; back to 1200: 1110 MWe. Turbine roll from hot standby at 5 % power: 1800 rpm in
   about 4 min, breaker closes on the sync check.
-- Scram from rated: rods in at 3 s; 5 % at 10 s, 3.3 % at 60 s (decayFrac 3.3 %).
-- Startup: rods in, 8 W; critical near 60 % hot (57.7 % at 100 °C); a positive period.
-- Hot standby 1.5 %: rods 60.6 %, holds within 5 % for 20 min with the pressure regulator.
+- Scram from rated: no motion for 0.2 s, 90 % in by 2.65 s, all in by 2.9 s; 5 % at 10 s, 3.3 % at 60 s (decayFrac 3.3 %).
+- Startup: rods in, 8 W; groups 1, 2 out, group 3 two notches short of critical still subcritical; a notch
+  past critical gives a stable period of about 28 s. Critical near position 19 hot, 11 at 100 °C.
+- Hot standby 1.5 %: groups 1, 2 out, group 3 a few notches above its hot zero power position, group 4 in;
+  holds within 5 % for 20 min with the pressure regulator.
+- Rods at rated: group 4 to 24 → power −6 %, peak from 44 % to about 60 % height; to 40 → +1.6 % (see above).
+- CRD pump: 3.8 kg/s, vessel + tank mass conserved; rods don't move with it stopped, the scram still works.
 - Startup level control (tests/bwr-level.test.mjs): 1 MPa, 200 MW, main three-element: level swing > 0.15 m and feed
   swing > 100 kg/s; on the startup valve < 0.02 m and < 10 kg/s (dt 0.25 and 2 s). Transfer at 300 MW (startup valve
   → main single-element → startup valve closed 2 % per 10 s → three-element): level within 14.22 … 14.38 m, no
@@ -466,15 +503,17 @@ use landscape). There is no separate phone layout. Solid parts are modelled; das
 
 Not on the layout yet, for the steam/feed circuit: MSR drain lines, the MSR/heater non-return
 valves, the off-gas train (recombiner, delay beds, stack), turbine gland
-seal steam and its condenser, circulating water pumps and the cooling tower or river, reactor water cleanup (RWCU), control rod drive
-hydraulics (one rod lever stands for the rods), main steam drains to the condenser, the generator's line to the grid (the breaker state is labelled). Emergency cooling
+seal steam and its condenser, circulating water pumps and the cooling tower or river, reactor water cleanup (RWCU), the CRD pump
+and hydraulic control units (modelled minimally, not drawn), main steam drains to the condenser, the generator's line to the grid (the breaker state is labelled). Emergency cooling
 (RCIC, HPCI, core spray, RHR) is deliberately left for later.
 
 ## Not modelled
 
 Radial and 3-D neutronics (point kinetics for the level, one-group quasi-static axial shape only: no
-radial shape, xenon, burnup or pin peaking; generic feedback coefficients), individual rods and CRD
-hydraulics (one lever, uniform worth: the rods do not shape the flux; 3 s scram placeholder), subcooled
+radial shape, xenon, burnup or pin peaking; generic feedback coefficients), individual rods (four ganged groups with
+illustrative worths; no rod worth minimiser, rod sequence control or rod blocks; shallow rods give back their
+worth through the voids, see "Control rods"), CRD hydraulics beyond the pump flow (accumulators always charged,
+no drive water pressure or flow control, no scram discharge volume), subcooled
 boiling, core bypass flow,
 separate recirculation loops and jet pumps, recirculation pump heat, valves and limits, downcomer
 stratification and steam carry-under, protection beyond the trips listed (no high drywell pressure, no

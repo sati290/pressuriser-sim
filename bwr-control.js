@@ -2,8 +2,9 @@
 // It reads the plant state (s.d, s.f) and the operator's settings, and produces the final command
 // that bwr-sim.js step() takes. An ES module; imports only common.js (not bwr-sim.js). See docs/bwr.md.
 //
-// Settings c are in panel units: rod % control rod lever withdrawn (manual only: BWRs have no automatic
-// rod control); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed
+// Settings c are in panel units: rods array of the control rod group positions, 0 (00, fully in) … 48 (fully
+// out) (manual only: BWRs have no automatic rod control; an undefined entry leaves that group where it is);
+// crd CRD pump run switch (boolean, absent: stopped); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed
 // pump speed; fv % feed valve; ext % heater extraction; mk kg/s net hotwell makeup (older callers, see step 7); cv %
 // turbine control valve; bp % bypass valve; ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop
 // valve switches, true open); ll % load limit (of rated steam flow); srv array, true for each SRV opened by
@@ -12,7 +13,7 @@
 // {n,fv,cv,bp,mk,rw,mg,rv,hdv,ldv,mu,rj} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
 // condenser air removal (manual only). The rods, heater extraction, the MSIV and stop valve switches and the
 // SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {rod 0–1, heat W (undefined unless c.heat is set), rp, mg 0–1 (undefined unless c.mg is set), n 0–1, fv 0–1,
+// {rods array 0–1 (withdrawn fraction), crd, heat W (undefined unless c.heat is set), rp, mg 0–1 (undefined unless c.mg is set), n 0–1, fv 0–1,
 // ext 0–1, ms1, ms2, sv, cv 0–1, bp 0–1, rw 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
 // Condensate and feed train (step 5): exl % LP heater extraction (manual; absent: the same as ext);
 // cp, fp condensate and feed pump run switches (booleans, plain on/off, absent: on); rv % feed pump
@@ -223,7 +224,7 @@ const demands=(k,s,c,dt)=>{
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  const u={heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,sfv:A.sfv?D.sfv:(c.sfv||0)/100,ext:c.ext/100,
+  const u={heat:c.heat!=null?c.heat*1e6:undefined,rods:c.rods?c.rods.map(p=>p==null?undefined:p/48):undefined,crd:!!c.crd,rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,sfv:A.sfv?D.sfv:(c.sfv||0)/100,ext:c.ext/100,
     ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,rw:A.rw?D.rw:(c.rw||0)/100,srv:c.srv||[],
     exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100,
     hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false,

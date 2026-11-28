@@ -1,7 +1,7 @@
 // BWR downcomer tests: feed subcooling carried to the core inlet, mass and energy with the core in charge.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { common, B, K, near, runPlant, run, rated, RATED_U, RATED_C, Q0, P0, TFW } from './bwr-helpers.mjs';
+import { common, B, K, near, runPlant, run, rated, RATED_U, RATED_C, Q0, P0, TFW, rodsC, ALLIN } from './bwr-helpers.mjs';
 
 test('rated: the downcomer is about 9 K subcooled, the core region saturated; inlet subcooling from the feed mixing', () => {
   const s = rated(), q = common.sat(s.d.T), uf = q.uf, ufw = common.hLiq(TFW, P0) - P0 / common.liqRho(TFW, P0);
@@ -31,11 +31,11 @@ test('pressure rise: the downcomer falls further below saturation, the core void
 
 test('mass and energy are conserved with the kinetics, recirculation and downcomer, through a valve closure and scram', () => {
   for (const dt of [0.25, 2]) {
-    const s = rated(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100, rp: true }; delete c.heat; c.auto.mg = true; c.auto.cv = false; c.auto.bp = false;
+    const s = rated(), c = { ...RATED_C(), rods: rodsC(s), mg: 100, wset: 100, rp: true }; delete c.heat; c.auto.mg = true; c.auto.cv = false; c.auto.bp = false;
     const k = K.init(c); let m = s.M, e = s.U;
     const acc = x => { const f = x.f; m += (f.fw - f.wrw - f.wst - f.wsrv) * dt; e += (f.Q + f.Qs + f.fw * f.hfw - f.wrw * f.hrw - (f.wst + f.wsrv) * f.hg) * dt; return true; };
     run(s, k, c, 60, dt, acc); c.cv = 0;
-    run(s, k, c, 2, dt, acc); B.scram(s); c.rod = 0;
+    run(s, k, c, 2, dt, acc); B.scram(s); c.rods = ALLIN();
     run(s, k, c, 300, dt, acc);
     near(s.M, m, 1e-6 * m, `mass dt=${dt}`);
     near(s.U, e, 1e-9 * Math.abs(e), `energy dt=${dt}`);

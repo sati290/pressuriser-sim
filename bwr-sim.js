@@ -9,7 +9,7 @@
 //                    feed valve, heater drains, condensate storage tank
 //   bwr-containment.js suppression pool
 //   bwr-rps.js       reactor protection: scram, isolation, turbine and feed pump trips (latched, logged)
-//   bwr-core.js      point kinetics, fuel, decay heat, control rod lever, core voids
+//   bwr-core.js      point kinetics, fuel, decay heat, control rod groups and drives, core voids
 //   bwr-recirc.js    recirculation pump on its MG set, jet pump, core flow, natural circulation
 // Equations and constants are described in docs/bwr.md.
 import {sat,Tsat,clamp,hLiq,cpL,liqRho} from './common.js';
@@ -22,7 +22,7 @@ import {DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,ste
 import {VC,WCW,TCW,CPW,UA,PCMAX,condense,condSteady} from './bwr-condenser.js';
 import {expansion,turbineLine,stagePs,work,P1R,PXR,PLIR,ETAH,ETAL,NR,HIN,ETAG,PW0F,TRH,IVRATE,PLU,SYNC,TRP,tgInit,tgStep,breaker as tgBreaker,brkTrips,pluStep} from './bwr-turbine.js';
 import {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,VBRATE,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,airFlows,cwStep,cwTarget,TAUCW} from './bwr-condenser.js';
-import {NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,WMIN,voids,voidVol,rodRho,rodFor,coreInit,coreStep} from './bwr-core.js';
+import {NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,NG,NPOS,NOTCH,GW,XRATED,RODRATE,TSD,VSC,TSCRAM,WCRD,DSUM,DL,DF,VCH,AF,LC,WMIN,voids,voidVol,cov,rodR,seq,rodsFor,coreInit,coreStep} from './bwr-core.js';
 import {WDR,HPR,HS,KPP,MGRATE,NMIN,TCD,mgStep,loopStep,recircInit} from './bwr-recirc.js';
 import {WTR,H0,KPU,KLN,KV,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,KXT,fwFlow,fwValve,heater,heaterT,heatBalance,hotwellMix,
   PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN as WMINF,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
@@ -58,7 +58,8 @@ const init=o=>{
     Mh:(o.hw??0.5)*HWM,spr:Array(NV).fill(false),scram:null,tau:{...TAU,...o.tau}};
   // core and recirculation: steady at heat o.q (default: the heat that makes the steam o.gen from feed
   // at o.tfw), pump breaker o.rp (default closed) at MG set speed o.mg (default 1), critical with the
-  // rods at o.rod (0–1; default the critical position init solves for). Core flow and voids are solved
+  // rods at o.rods (array of NG group positions 0–1, withdrawn fraction; default the critical pattern along
+  // the withdrawal sequence that init solves for; with no heat, all in). Core flow and voids are solved
   // together; the voids set the void steam Mb inside the level.
   // The downcomer starts steady too: feed mixed with the separator return, subcooled by fw·(u′ − u_fw)/W.
   let dh0;
@@ -66,7 +67,7 @@ const init=o=>{
    let W=WCR,v,dh,rc;const rp=o.rp??true,mg=o.mg??1;
    for(let i=0;i<8;i++){dh=Math.max(0,fw*(uf-ufw))/Math.max(W,WMIN,fw);v=voids(Q,W,dh,P);
      rc=recircInit(rp,mg,{rd:liqRho(T-dh/cp,P),rc:rf,rg,ac:v.ac,ae:v.ae,xe:v.xe});W=rc.Wc}
-   s.rc=rc;s.core=coreInit(Q,T,T-dh/cp,v,o.rod);s.core.W=W;s.core.dh=dh;s.Mb=rg*voidVol(s.core);s.Mfl=0;dh0=dh}
+   s.rc=rc;s.core=coreInit(Q,T,T-dh/cp,v,o.rods);s.core.W=W;s.core.dh=dh;s.Mb=rg*voidVol(s.core);s.Mfl=0;dh0=dh}
   vesselInit(s,{...o,dh:dh0});
   s.rps=rpsInit(o.mode??(o.P>=6e6?'run':'startup'),o.rps===false);
   s.Ts=o.ts!=null?o.ts+273.15:(UAS*s.d.Tl+UAL*TDW)/(UAS+UAL);s.pool={M:MPOOL,T:o.tpool!=null?o.tpool+273.15:TP0};
@@ -107,7 +108,7 @@ const init=o=>{
     Ts:s.Ts,Qs:0,Ql:0,Tp:s.pool.T,Mp:s.pool.M,Lp:0,Qpc:0,pc:false,lin:toIn(s.d.level),wrw:0,trip:groups(s.rps),
     exl:0,pel:0,psl:0,Tlp:Tc,Ps:Pc,Pcd:Pc,wp:0,wr:0,wcp:0,xr:s.xr,cp:false,fp:false,fpt:false,npsh:0,phi:1,cav:false,
     Tm:s.Tsu,wdh:0,wd:0,wduh:0,wdul:0,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH:1,aL:1,xdh:s.xdh,xdl:s.xdl,hdp:false,hdvf:false,
-    wmu:0,wrj:0,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst};
+    wmu:0,wrj:0,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst,crd:false,wcd:0};
   coreF(s.f,s.core,s.rc);
   return s;
 };
@@ -117,12 +118,15 @@ const init=o=>{
 const tbF=(ps,tg,q,wk)=>({p1:ps.p1,pX:ps.pX,pLi:ps.pLi,spd:tg.w,brk:tg.brk,lock:tg.lock,iv:tg.iv,plu:tg.plu,Pm:q.Pm,Pw:q.Pw,Php:wk.hp,Plp:wk.lp});
 // core readings into s.f: Pth core thermal power (fission + decay, W), nf fission power, rho reactivity,
 // per period (s), Tf fuel temperature, pk axial peaking, zpk its height (fraction of the core), sh the shape, ac core-average void, ae exit void, xe exit quality, Wc core
-// flow, dhin inlet subcooling (J/kg), rod lever position 0–1, pc prompt critical
+// flow, dhin inlet subcooling (J/kg), rods group positions 0–1 (withdrawn fraction), st time since the scram
+// started driving them (null when not scrammed), pc prompt critical
 // recirculation: rp pump breaker closed, ng pump (MG set) speed 0–1, mg speed demand, Wd drive flow
-const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf,ac:k.ac,ae:k.ae,xe:k.xe,Wc:k.W,dhin:k.dh,rod:k.x,pc:k.pc,pk:k.pk,zpk:k.zpk,sh:k.s,
+const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf,ac:k.ac,ae:k.ae,xe:k.xe,Wc:k.W,dhin:k.dh,rods:k.x.slice(),pc:k.pc,pk:k.pk,zpk:k.zpk,sh:k.s,
   rp:r.on,ng:r.ng,mg:r.dm,Wd:r.Wd});
-// One step. u is the final command, SI: {rod 0–1 control rod lever demand (manual only; undefined: the
-// rods stay where they are); heat W fixed net heat into the water (a test hook: if it is a number the
+// One step. u is the final command, SI: {rods array of NG control rod group position demands 0–1 (withdrawn
+// fraction; manual only; undefined, or an undefined entry: the group stays where it is); crd CRD pump run
+// switch (true running; absent or false stopped, so the other systems' tests run without its flow; stopped,
+// the rods can't be moved, the scram still works); heat W fixed net heat into the water (a test hook: if it is a number the
 // core heat is that value and the kinetics stand still); n 0–1 feed pump speed;
 // fv 0–1 feed valve demand; sfv 0–1 startup feed valve demand (absent: shut); ext 0–1 HP heater extraction valve; exl 0–1 LP heater extraction valve
 // (absent: the same as ext); cp, fp condensate and feed pump run switches (absent: running); rv 0–1
@@ -141,7 +145,7 @@ const coreF=(f,k,r)=>Object.assign(f,{Pth:k.q,nf:k.n,rho:k.rho,per:k.per,Tf:k.Tf
 // pump trip fp false (the protection's own L8 feed pump trip stops it too).
 // pc true: suppression pool cooling on. rw 0–1 reactor water cleanup reject to the condenser.
 // rp recirculation pump breaker (true closed; undefined keeps it), mg 0–1 MG set speed demand.
-// After scram(s) the rods drive fully in over TSCRAM and the kinetics follow; with the fixed-heat hook
+// After scram(s) the rods drive fully in (all in TSCRAM from fully out) and the kinetics follow; with the fixed-heat hook
 // the heat is the decay curve and u.heat is ignored until reset(s).
 // Each command is clamped to its range; the valves move toward their demands at their stroke rates; each
 // SRV's spring opens it on pressure whatever the command. Feed flow follows from the pump, the valve and
@@ -205,15 +209,17 @@ const step=(s,u,dt)=>{
   if(u.rp!=null)rc.on=!!u.rp;if(u.mg!=null)rc.dm=clamp(u.mg,0,1);
   k.dh=Math.max(0,uf-Math.min(s.udc,uf));
   const Tin=d.Tdc,lpc={rd:liqRho(Tin,P),rc:rf,rg,ac:0,ae:0,xe:0};
-  const hq=coreStep(k,{P,Tc:d.T,dh:k.dh,Tin,rod:u.rod,scram:!!s.scram,heat:fix?(s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat):undefined},dt,
+  const hq=coreStep(k,{P,Tc:d.T,dh:k.dh,Tin,rods:u.rods,crd:u.crd===true,scram:!!s.scram,heat:fix?(s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat):undefined},dt,
     (h,c)=>{mgStep(rc,h);lpc.ac=c.ac;lpc.ae=c.ae;lpc.xe=c.xe;loopStep(rc,lpc,h);return rc.Wc});
   const Q=hq;
   // downcomer: the feed and the separator return (core-region water) mix into it and the core flow draws
   // it off (exact for the step; when the core flow is below the feed flow the surplus feed spills over
   // into the core region)
+  // The CRD pump's drive and cooling water (from the storage tank, at its temperature) joins the feed there.
+  const crd=u.crd===true,wcd=crd?Math.min(WCRD,s.Mcst/dt):0,hcd=hLiq(s.Tcst,P),ucd=hcd-P/liqRho(s.Tcst,P);
   const Md=dcMass(d.Tdc,P,d.Ml);
-  {const W=Math.max(0,(W0+k.W)/2),Wi=Math.max(W,fw),ufw=hfw-P/liqRho(Tfw,P),ur=sat(d.Tl).uf;
-   if(Wi>0){const ut=(fw*ufw+Math.max(0,W-fw)*ur)/Wi;s.udc=ut+(s.udc-ut)*Math.exp(-Wi*dt/Md)}}
+  {const W=Math.max(0,(W0+k.W)/2),fi=fw+wcd,Wi=Math.max(W,fi),ufw=hfw-P/liqRho(Tfw,P),ur=sat(d.Tl).uf;
+   if(Wi>0){const ut=(fw*ufw+wcd*ucd+Math.max(0,W-fi)*ur)/Wi;s.udc=ut+(s.udc-ut)*Math.exp(-Wi*dt/Md)}}
   // circulating water (flow lags the pump and valve) and condenser air: in-leakage, radiolytic gas with the
   // main steam, vacuum breaker; removal by the SJAE and the mechanical vacuum pump. The SJAE motive steam is
   // tapped off the steam header (downstream of the MSIVs, so isolated with them): it is taken out of the
@@ -248,7 +254,7 @@ const step=(s,u,dt)=>{
   // steam and SJAE steam (both at the dome enthalpy) and the cleanup reject in, condensate down to the hotwell
   const hr=sat(Tm).hf,cd=condense(s.cd,[[wx,hx],[wduh,hdH],[wdul,hdL],[wv,sat(Thf(hdL)).hg],[nw.wr,hr],[wb,hg],[wsj,hg],[wrw,hrw]],dt,{w:s.wcw,T:Tcwi},af);
   const hcst=sat(s.Tcst).hf,hw=hotwellMix({M:s.Mh,T:s.Thw},[[cd.wl,sat(cd.Tc).hf],[wmu,hcst],[-nw.wcp,0]],dt);
-  {const c=hotwellMix({M:s.Mcst,T:s.Tcst},[[nw.wrj,sat(s.Thw).hf],[-wmu,0]],dt);s.Mcst=c.M;s.Tcst=c.T}
+  {const c=hotwellMix({M:s.Mcst,T:s.Tcst},[[nw.wrj,sat(s.Thw).hf],[-wmu-wcd,0]],dt);s.Mcst=c.M;s.Tcst=c.T}
   const mk=wmu-nw.wrj;
   s.Mh=hw.M;s.Thw=hw.T;
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
@@ -257,7 +263,7 @@ const step=(s,u,dt)=>{
   const st=steelStep(s.Ts,d.Tl,dt);s.Ts=st.Ts;
   // suppression pool: the SRV steam condenses in it
   const pl=poolStep(s.pool,wsrv*Math.min(1,mo/((wst+wsrv)*dt||1)),hg,!!u.pc,dt);s.pool={M:pl.M,T:pl.T};
-  let M=s.M+(fw-wrw)*dt-mo,U=s.U+fw*dt*hfw-wrw*dt*hrw-mo*hg+(Q+st.Qw)*dt,Mv=Math.max(0,s.Mv-mo);
+  let M=s.M+(fw+wcd-wrw)*dt-mo,U=s.U+fw*dt*hfw+wcd*dt*hcd-wrw*dt*hrw-mo*hg+(Q+st.Qw)*dt,Mv=Math.max(0,s.Mv-mo);
   // subcooled core-region water condenses steam, relaxing towards saturation at the start-of-step steam
   // temperature (the downcomer's subcooling is carried into the core first)
   let mc=0;{const Ml=M-Mv,ue=Math.min(s.udc,uf),D=(Ml-Md)*uf-(U-Mv*ug-Md*ue);
@@ -285,7 +291,7 @@ const step=(s,u,dt)=>{
     Ts:s.Ts,Qs:st.Qw,Ql:st.Ql,Tp:pl.T,Mp:pl.M,Lp:poolLevel(pl.M),Qpc:pl.Qc,pc:!!u.pc,lin:toIn(s.d.level),wrw,hrw,trip:pr,
     exl,pel:lp.pe,psl:lp.ps,wsl,Tlp:lp.T,Ps:nw.Ps,Pcd:nw.Pcd,wp:nw.wp,wr:nw.wr,wcp:nw.wcp,xr:s.xr,cp,fp,fpt:s.fpt,npsh:nw.A,phi:nw.phi,cav:nw.cav,
     Tm,wdh,wd:nw.wd,wduh,wdul,wv,LH:s.Mhs/MHS,LL:s.Mls/MLS,aH,aL,xdh:s.xdh,xdl:s.xdl,hdp,hdvf:!!s.fail.hdv,
-    wmu,wrj:nw.wrj,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst};
+    wmu,wrj:nw.wrj,xmu:s.xmu,xrj:s.xrj,Mcst:s.Mcst,cst:s.Mcst/CSTM,Tcst:s.Tcst,crd,wcd};
   coreF(s.f,k,rc);
 };
 // scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
@@ -326,7 +332,7 @@ const fault=s=>{
 };
 // the condensate pump suction pressure the page reads for the shutoff-head message
 const PC=PCD;
-const API=13;
+const API=14;
 export {CST,UAS,UAL,TDW,INCH,IZ,LV,toIn,fromIn,TAUF,MPOOL,APOOL,TP0,UAP,TSW,TPMAX,PLIM,poolLevel};
 export {UA0,RA,PATM,WLK,WRAD,VSJ,WSJ,VVP,WVB,PA0,PSB0,PSB1,PSJ0,PSJ1,PVP0,PVP1,pAir,yAir,blanket,sjSteam,sjCap,vpCap,cwTarget,TAUCW,motiveP};
 export {PEL,KXL,TLPD,HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMINF as WMIN,KR,RRATE,network,shutoff,heaterL,train,suction,cpFlow,
@@ -337,4 +343,4 @@ export {API,V,H,A,Z,QR,PR,TFR,SRV,NV,PB,BD,TAU,H0,KPU,KLN,KV,RSU,FRATE,NRATE,HWM
   turbineLine,stagePs,work,P1R,PXR,PLIR,ETAH,ETAL,NR,HIN,PW0F,TRH,IVRATE,PLU,SYNC,TRP,TK,PGR,lineAt,
   WTR,fwFlow,fwValve,heater,heaterT,heatBalance,subF,wSRV,decayFrac,init,step,scram,reset,fault,rpsSignals,setMode,manualScram,SP,MODES,TRIPS,GROUP,inHgVac,rpsActive,RWMAX,
   DPL,PL0,VWO,KT,BPF,KB,fcv,fcvInv,MSRATE,SVCLOSE,SVOPEN,CVRATE,BPRATE,steamLine,cvPos,
-  NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,X0,XR,WT,RODRATE,TSCRAM,DSUM,DL,DF,VCH,AF,LC,VDC,voids,voidVol,rodRho,rodFor,WDR,HPR,HS,KPP,MGRATE,NMIN,TCD};
+  NZ,STGT,GZ,RATED,steady,localFb,peak,fuelT,TREF,QC,WCR,BETA,LAMBDA,SRC,AV,AD,AM,MCF,RF,NG,NPOS,NOTCH,GW,XRATED,RODRATE,TSD,VSC,TSCRAM,WCRD,DSUM,DL,DF,VCH,AF,LC,VDC,voids,voidVol,cov,rodR,seq,rodsFor,WDR,HPR,HS,KPP,MGRATE,NMIN,TCD};

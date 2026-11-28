@@ -121,8 +121,8 @@ button#scram{border-color:var(--warn);color:var(--warn);font-weight:600}
 button#scram[aria-pressed=true]{background:var(--warn);color:var(--bg);border-color:var(--warn)}
 button:disabled{opacity:.45;cursor:not-allowed}
 /* recirculation pump breaker: a plain toggle, filled while closed (pump running) */
-button#rp{width:100%;font-size:15px;min-height:40px}
-button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button#rp,button#crd{width:100%;font-size:15px;min-height:40px}
+button#rp[aria-pressed=true],button#crd[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .grp p.hint{font-size:13px}
 /* six gauges in one strip on desktop */
 @media(min-width:1101px){.gauges{grid-template-columns:repeat(6,minmax(0,1fr))}}
@@ -147,6 +147,7 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
 .agrid .grp,.assists .chead h2{position:relative}
 .tipbox{display:none;position:absolute;left:0;right:0;top:calc(1.6em + 4px);z-index:5;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--bg);color:var(--ink);box-shadow:0 6px 24px rgba(0,0,0,.18);font:400 13px/1.5 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;white-space:normal}
 .info:hover>.tipbox,.info:focus>.tipbox{display:block}
+.tipbox.fix{position:fixed;right:auto;overflow-y:auto;pointer-events:none}
 .assists .chead h2 .tipbox{right:auto;width:min(640px,80vw)}
 .lower{grid-template-rows:auto 1fr}.lower>.stats{grid-row:1/3}.lower>.assists{grid-column:2}
 /* main steam valve switches (MSIVs, stop valve): pressed = commanded open; the text gives the position */
@@ -222,14 +223,18 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
     </div>
     <div class="grp">
       <h2 class="srvh">Reactor <output id="rxsum"></output></h2>
-      <div class="rx"><button id="scram" aria-pressed="false" title="Drive all rods fully in (over about 3 s). The rod lever goes to 0; after a reset the rods follow the lever again.">Scram</button><button id="rst" disabled title="Reset the protection: every trip whose signal has cleared resets. Once no scram trip is left in, the rods follow the lever again (it is at 0 after a scram).">Reset trips</button></div>
+      <div class="rx"><button id="scram" aria-pressed="false" title="Drive all rods fully in on the accumulators (all in within about 3 s). The group sliders go to 00; after a reset the rods follow them again.">Scram</button><button id="rst" disabled title="Reset the protection: every trip whose signal has cleared resets. Once no scram trip is left in, the rods follow the group sliders again (at 00 after a scram).">Reset trips</button></div>
       <div class="sws" role="group" aria-label="Reactor mode switch">
         <button id="modeshutdown" type="button" aria-pressed="false" title="Shutdown: scrams the reactor at once.">Shutdown</button>
         <button id="modestartup" type="button" aria-pressed="false" title="Startup / hot standby: the APRM trips at 15 %; MSIV closure, low steam line pressure and the condenser low vacuum scram and isolation are bypassed.">Startup</button>
         <button id="moderun" type="button" aria-pressed="true" title="Run: the APRM trips at 120 %; MSIV closure scrams; low steam line pressure and low condenser vacuum isolate.">Run</button>
       </div>
-      <div class="row"><label for="rod">Control rods withdrawn <output id="rodo"></output></label><input id="rod" type="range" min="0" max="100" step="0.01" value="0"></div>
-      <p class="hint">One lever for the whole rod pattern, manual only: BWRs have no automatic rod control. Rods move at most 0.1 % per second; critical near 60 % hot, about 80 % at rated power and flow.</p>
+      <div class="row"><label for="r1">Rods, group 1 (deep) <output id="r1o"></output></label><input id="r1" type="range" min="0" max="48" step="0.01" value="0"></div>
+      <div class="row"><label for="r2">Rods, group 2 (deep) <output id="r2o"></output></label><input id="r2" type="range" min="0" max="48" step="0.01" value="0"></div>
+      <div class="row"><label for="r3">Rods, group 3 (startup) <output id="r3o"></output></label><input id="r3" type="range" min="0" max="48" step="0.01" value="0"></div>
+      <div class="row"><label for="r4">Rods, group 4 (power) <output id="r4o"></output></label><input id="r4" type="range" min="0" max="48" step="0.01" value="0"></div>
+      <button id="crd" type="button" aria-pressed="true" title="Control rod drive pump: drive water for moving the rods, cooling water for the drives (3.8 kg/s from the storage tank into the vessel). Stopped, the rods can't be moved; the scram works on its accumulators.">CRD pump running</button>
+      <p class="hint">00 in, 48 out; − / + moves a group one notch. Pull 1, 2, 3, 4 in turn.<span class="info" tabindex="0" aria-label="Details">i<span class="tipbox" role="tooltip">The groups enter from the bottom: at 24 a group covers the lower half of the fuel. A notch is 2 positions (15 cm), 4 s on the drives. Hot, the reactor goes critical on group 3 near 19 (cold near 11), about 0.2 $ a notch there. Group 4 is for the power ascension; at rated all rods are out. Manual only, as in a real BWR.</span></span></p>
     </div>
     <div class="grp">
       <h2 class="srvh">Recirculation <output id="rcsum"></output></h2>
@@ -362,26 +367,26 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
   <div class="notes card">
     <div><h2>Things to try</h2>
       <ol>
-        <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level at 14.0 m, the rods all in and the reactor subcritical, the recirculation pump at its 20 % minimum speed, the mode switch in Startup. The MSIVs are open, the turbine stop valve shut; the bypass valve in A will hold 7 MPa once the pressure gets there. The condenser starts open to atmosphere, full of air, with the vacuum pump running: it pulls the shell down to about 19 kPa in an hour and 12 kPa in two. The turbine is tripped on low vacuum until you reset it with a vacuum pulled. Withdraw the rods: the reactor goes critical near 60 % withdrawn, and the period readout shows how fast the power rises; hold it to a period of a minute or more. Heat-up then follows the power: keep it under 55 °C per hour by trimming the rods. The water expands about 3 m on the way to 7 MPa; the cleanup reject in A sends up to 10 kg/s of it to the condenser while the startup feed valve in A stays shut; it starts feeding once steam leaves. Heat up much faster than 55 °C/h and the expansion outruns the reject near rated pressure: the level reaches L8, which trips the feed pump and the turbine. Once steam flows, press <i>Air ejector steam</i> and stop the vacuum pump when the ejector has the condenser below about 15 kPa. Switch the mode to Run before the power passes 15 %, where the Startup APRM trip scrams it. To roll the turbine, open the stop valve with the control valve in A: the speed governor brings it to the speed set (9 rpm/s, about 3½ min to 1800 rpm). Press the breaker to close it onto the grid, then the pressure regulator moves the reactor's steam from the bypass to the turbine.</li>
-        <li><b>Rated power.</b> Every control starts in A, balanced: rods 80 % withdrawn, core flow 100 %, feed pump at full speed, feed valve 75 % open, feed at 216 °C. Change the power the BWR way, with the core flow setpoint: at 75 % flow the voids grow, the void feedback takes the power down to about 87 % and the steam, feed and extraction flows follow; back at 100 % it returns. Two percent of rod insertion takes about 8 % off the power. Trip the recirculation pump: the pump coasts down, natural circulation keeps about a third of the flow and the power settles near 58 %.</li>
+        <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level at 14.0 m, the rods all in and the reactor subcritical, the recirculation pump at its 20 % minimum speed, the mode switch in Startup. The MSIVs are open, the turbine stop valve shut; the bypass valve in A will hold 7 MPa once the pressure gets there. The condenser starts open to atmosphere, full of air, with the vacuum pump running: it pulls the shell down to about 19 kPa in an hour and 12 kPa in two. The turbine is tripped on low vacuum until you reset it with a vacuum pulled. Pull the rods in order: groups 1 and 2 fully out (the reactor stays subcritical, the source counts multiply), then group 3 a notch at a time. It goes critical near position 11 (at 100 °C); the period readout shows how fast the power rises, and a notch there is worth about 0.3 $, a period near half a minute: wait between notches. Heat-up then follows the power: keep it under 55 °C per hour by trimming group 3. As the water heats the reactor loses reactivity (Doppler and moderator), so group 3 comes out further, to near 19 hot; then group 4 for the power ascension. With the rods in from below and no voids the power sits high in the core (watch the core in the mimic); the voids pull it down as the power rises. The CRD pump puts 3.8 kg/s of storage tank water into the vessel all the while. The water expands about 3 m on the way to 7 MPa; the cleanup reject in A sends up to 10 kg/s of it to the condenser while the startup feed valve in A stays shut; it starts feeding once steam leaves. Heat up much faster than 55 °C/h and the expansion outruns the reject near rated pressure: the level reaches L8, which trips the feed pump and the turbine. Once steam flows, press <i>Air ejector steam</i> and stop the vacuum pump when the ejector has the condenser below about 15 kPa. Switch the mode to Run before the power passes 15 %, where the Startup APRM trip scrams it. To roll the turbine, open the stop valve with the control valve in A: the speed governor brings it to the speed set (9 rpm/s, about 3½ min to 1800 rpm). Press the breaker to close it onto the grid, then the pressure regulator moves the reactor's steam from the bypass to the turbine.</li>
+        <li><b>Rated power.</b> Every control starts in A, balanced: all rods out, core flow 100 %, feed pump at full speed, feed valve 75 % open, feed at 216 °C. Change the power the BWR way, with the core flow setpoint: at 75 % flow the voids grow, the void feedback takes the power down to about 87 % and the steam, feed and extraction flows follow; back at 100 % it returns. Insert group 4 to 24 (the lower half of the core) and the power falls about 6 % while the peak moves up the core. A few notches in (shallow rods) hardly change the power: see the limitations. Trip the recirculation pump: the pump coasts down, natural circulation keeps about a third of the flow and the power settles near 58 %.</li>
         <li><b>Turbine trip</b> at rated power, everything in A. The stop valve shuts in 0.2 s and its position switch scrams the reactor; the bypass valve opens fully but passes only 25 % of rated steam, and the pressure peaks near 7.4 MPa, just over the 7.31 MPa high-pressure scram setting, below the safety/relief valves. The voids collapse and the level drops through L3 (a second scram signal) and recovers; the feedwater controller sets its level setpoint down 0.45 m after a scram, so the refill does not overshoot to L8. The bypass then carries the decay heat to the condenser at 7 MPa. Set the <b>load limit</b> below 100 % at rated power instead, and the bypass takes the steam the turbine may not.</li>
         <li><b>Load rejection</b> at rated power, everything in A. The generator breaker opens; the turbine's power–load unbalance fast-closes the control and intercept valves at once, which scrams the reactor (first-stage pressure above 30 %). The speed peaks near 105 % (1890 rpm), below the 110 % overspeed trip, and the speed governor brings it back to 1800 rpm with a trickle of steam; the bypass takes what it can and the pressure peaks near 7.4 MPa. To get back on the grid: reset the trips, restart the reactor, match the speed, press the breaker, then raise the load set. Or try a smaller load change: lower the <b>load set</b> to 800 MWe at rated and the control valve closes to it, the bypass opens for the rest, and the HP extraction pressure falls from 2.4 to 1.8 MPa, so the feed gets colder; bring the core flow down to close the bypass.</li>
         <li><b>Close MSIVs</b> at rated power. Both valves stroke shut over 4 s; below 90 % open their position switches scram the reactor, and the low header pressure that follows isolates them in the protection logic too. Pressure climbs past the high-pressure setting and the four safety/relief valves set lowest (7.62 MPa) lift on their springs and cycle as in a real isolation, each lift blowing steam to the suppression pool, which warms. Nothing reaches the turbine or the condenser, so the feed cools to the hotwell's temperature; the feed valve in A keeps the level a little below normal (the setdown), the swell of each relief valve lift showing on it.</li>
-        <li><b>Isolation at 6 %</b> (200 MW, critical with the rods at the matching position). The MSIVs start closing; the pressure reaches the high-pressure scram setting in about 30 s and the reactor scrams before the safety/relief valves lift. The feed valve in A keeps the level, and the makeup valve in A tops up the hotwell from the storage tank for the steam that went to the pool instead of back to it; switch it to M, shut, and watch the hotwell drain. Open one or two valves by hand to depressurise steadily, as for a cooldown.</li>
+        <li><b>Isolation at 6 %</b> (200 MW, critical with group 4 a few notches out). The MSIVs start closing; the pressure reaches the high-pressure scram setting in about 30 s and the reactor scrams before the safety/relief valves lift. The feed valve in A keeps the level, and the makeup valve in A tops up the hotwell from the storage tank for the steam that went to the pool instead of back to it; switch it to M, shut, and watch the hotwell drain. Open one or two valves by hand to depressurise steadily, as for a cooldown.</li>
         <li><b>Hot standby.</b> Critical at 1.5 % of rated power with the stop valve shut and the bypass in A passing about 20 kg/s. The startup feed valve in A holds the level, single-element, with the main feed valve shut in M. To go up in power, follow the transfer in the startup level control's ⓘ: the startup valve passes about 290 kg/s, enough for about 20 % power.</li>
         <li><b>Lose feedwater heating</b> at rated power with everything in A. Both extraction valves throttle to 20 %, the heater shell pressures drop and the feed reaches the vessel colder within a minute. The colder water at the core inlet collapses voids low in the core, the power shape moves down (watch the axial peaking) and the power rises: about +11 % after a minute and +17 % once the feed is some 51 K colder, just under the 120 % APRM trip. (Less extraction steam leaves more flow through the turbine, which raises its stage pressures and so the shell pressures: the heaters lose less than the valve openings suggest.) Throttle only the HP valve (about 27 K colder) and the power settles near +9 %; fail the HP heater drain valve shut (about 47 K colder) and it settles near +16 %, as real plants do on the loss of a heater string.</li>
         <li><b>HP drain valve fails shut</b> at rated power. The HP heater's drains have nowhere to go: its shell fills in about 20 s, the water covers more and more of the tubes, and over 80 % the shell's high-level dump spills to the condenser. With most of its tubes flooded the heater heats the feed far less, and, as with the loss of feedwater heating, the power rises until the APRM scrams it after about a minute. Press the event again to repair the valve; its level controller drains the shell back to half full.</li>
         <li><b>Stop the drain pump</b> at rated power. The LP heater drains and the cascaded HP drains collect in the drain tank, which fills, floods the LP heater's tubes and dumps to the condenser. The condensate pump takes the whole feed flow, the condenser takes the drains' heat, the feed arrives about 13 K colder and the power rises about 4 %, while the output falls from about 1110 to 1050 MWe. The HP heater now has to do the LP heater's work too: its extraction takes about 610 kg/s instead of 410, which draws its stage pressure down from 2.4 to 2.1 MPa.</li>
         <li><b>Stop the condensate pump</b> at rated power. The feed pump loses its suction pressure: within a second it is below the 0.7 MPa trip setting, the pump cavitates and delivers almost nothing, and after 5 s it trips. The level falls through L3 (scram) about 15 s after the pump stops and L2 (MSIV isolation) about 15 s after that. Start the condensate pump again: the feed pump stays tripped until you switch it to stop and back to run, and its speed then comes back at 10 % per second.</li>
         <li><b>Lose the condenser</b> at rated power. Stop the <i>CW pump</i>: the circulating water coasts down over about 12 s, the steam stops condensing and the vacuum goes. Within about 20 s the vacuum falls past 23 inHg, the low-vacuum scram, and 22.5 inHg, where the turbine trips; at 7 inHg the MSIVs isolate and the bypass valves are blocked, so the steam goes to the safety/relief valves. Gentler: raise the circulating water inlet to 30 °C, throttle its valve, or shut the air ejector steam: air builds up, blankets the tubes, and the back pressure climbs over an hour or so.</li>
-        <li><b>Protection.</b> Each trip that fires lights its tile and is logged with the time. <i>Reset trips</i> clears those whose signal has cleared; the rest stay in. After any scram the rod lever is at 0, so a reset does not pull the rods again. A tripped feed pump (L8) stays off until its trip is reset: there is no RCIC or HPCI, so after an isolation with the feed pump tripped the level boils down until you reset it. The mode switch in Shutdown scrams the reactor at once.</li>
+        <li><b>Protection.</b> Each trip that fires lights its tile and is logged with the time. <i>Reset trips</i> clears those whose signal has cleared; the rest stay in. After any scram the rod group sliders are at 00, so a reset does not pull the rods again. A tripped feed pump (L8) stays off until its trip is reset: there is no RCIC or HPCI, so after an isolation with the feed pump tripped the level boils down until you reset it. The mode switch in Shutdown scrams the reactor at once.</li>
         <li><b>Storage tank.</b> During an isolation the makeup valve in A replaces from the tank the steam the safety/relief valves send to the pool, and the tank level falls. Put the reject valve in M and open it at rated: the makeup valve in A opens to match, and the two circulate condensate through the tank, warming it.</li>
         <li><b>Depressurise.</b> At hot standby switch the bypass valve to M and open it wide: it passes about 450 kg/s. The water flashes as the pressure falls, the voids grow and the level rises at first, before the lost inventory brings it down. In Run the main steam line low-pressure isolation would close the MSIVs at 850 psig; in Startup it is bypassed.</li>
       </ol></div>
     <div><h2>What the model solves</h2>
       <p>The vessel (600 m³ of free volume, 21 m tall) holds water and steam at one pressure. It tracks the total mass and energy, and the steam mass. Each step it finds the pressure at which the water and the saturated steam exactly fill the vessel. Water hotter than saturation at that pressure flashes at once, so a falling pressure makes steam throughout the water. Water below saturation, after cold feedwater or cooling, condenses steam at a finite rate (10 s time constant), so pressure drops after a cold-water injection.</p>
       <p>The steam the water makes passes through it as bubbles before it reaches the dome. These voids take up volume inside the two-phase mixture, so they raise the level without changing the pressure. They clear with a 0.7 s time constant, sized to give about 35 m³ of voids, about 1.2 m of swell, at rated power. The level shown is the height of water plus voids over the vessel's mean cross-section; the recorder also shows the collapsed level, water alone.</p>
-      <p>The core power level comes from point kinetics: six delayed-neutron groups, a lumped fuel temperature (5 s time constant) and seven decay-heat groups. Reactivity comes from the rod lever and three feedbacks along the core height: voids (−0.1 % per % void), fuel temperature (Doppler) and the temperature of subcooled water. The core voids follow from the core flow, the inlet subcooling and the power along the core height (drift flux, 24 axial nodes), so more flow or colder inlet water means fewer voids and more power. The power has an axial shape: a one-group diffusion solve over the 24 nodes with the local void, fuel and water feedback moves the power towards where the reactivity is, low in the core at rated (peaking about 1.5 a little below mid-height) and up when the voids collapse. A scram drives the rods in over about 3 s; the fission power falls in seconds and the decay heat stays (about 5 % at 10 s, 3 % at a minute).</p>
+      <p>The core power level comes from point kinetics: six delayed-neutron groups, a lumped fuel temperature (5 s time constant) and seven decay-heat groups. Reactivity comes from four control rod groups, which enter from the bottom, and three feedbacks along the core height: voids (−0.1 % per % void), fuel temperature (Doppler) and the temperature of subcooled water. The core voids follow from the core flow, the inlet subcooling and the power along the core height (drift flux, 24 axial nodes), so more flow or colder inlet water means fewer voids and more power. The power has an axial shape: a one-group diffusion solve over the 24 nodes with the local void, fuel and water feedback moves the power towards where the reactivity is, low in the core at rated (peaking about 1.5 a little below mid-height) and up when the voids collapse or rods come in from below. A scram drives the rods in on the accumulators, all in within about 3 s; the fission power falls in seconds and the decay heat stays (about 5 % at 10 s, 3 % at a minute).</p>
       <p>The recirculation pump drives the jet pumps through an MG set whose speed changes at most 2 % a second, between 20 % and full. The core flow is where the jet pump head and the natural circulation head (the chimney's voids against the downcomer) balance the losses, with the loop's inertia; with the pump tripped natural circulation keeps about a third of rated flow. Feed mixes into the downcomer with the water from the separators, so the core inlet is subcooled.</p>
       <p>Reactor protection is part of the plant: each trip compares one signal with its typical BWR/4 setpoint, latches when it fires and is logged. Scram on high pressure (1045 psig), low level (L3), APRM high flux (120 % in Run, 15 % in Startup), MSIV closure (Run), turbine stop valve closure and control valve fast closure above 30 % first-stage pressure, low condenser vacuum (Run) and the mode switch in Shutdown; MSIV isolation on low-low level (L2), low steam line pressure (Run), high steam flow and very low vacuum (Run); turbine trip on high level (L8), low vacuum and 110 % overspeed; feed pump trip on L8. The bypass valves are blocked while the vacuum is below 7 inHg.</p>
       <p>The core's heat goes into the water, with the vessel's own heat losses taken out through the steel. Steam leaves through the main steam line and the safety/relief valves at saturated-steam enthalpy; feedwater enters as compressed liquid at the heater outlet temperature.</p>
@@ -393,7 +398,7 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
     </div>
     <div><h2>Assumptions and limits</h2>
       <ul>
-        <li>Core: point kinetics for the power level with a quasi-static axial shape (one-group diffusion, 24 nodes, fixed fuel and rod-pattern profile chosen to give a generic beginning-of-cycle shape at rated) and generic BWR/4 feedback coefficients, not fitted to a plant: no radial shape, xenon, burnup or local (pin) peaking. The rods move the reactivity uniformly, not the shape, so with no voids the shape sits high in the core. One rod lever stands for the rod pattern (critical near 60 % withdrawn hot, about 80 % at rated); the scram is a 3 s stroke placeholder for the control rod drives. The model stops if the reactor reaches prompt criticality.</li>
+        <li>Core: point kinetics for the power level with a quasi-static axial shape (one-group diffusion, 24 nodes, a fixed fuel zoning profile chosen to give a generic beginning-of-cycle shape at rated with all rods out) and generic BWR/4 feedback coefficients, not fitted to a plant: no radial shape, xenon, burnup or local (pin) peaking. Four rod groups that move as gangs stand for the rod pattern (a BWR/4 pulls one rod at a time through a sequence of many groups), with illustrative worths; no rod worth minimiser or rod blocks. The axial model is loosely coupled: with rods in from below and no voids the power peaks near 2.4 high in the core, and a few notches of shallow rods at rated move the power up enough that the voids shrink and give back nearly all their worth (a real core loses a little power). CRD hydraulics: one pump that gives drive water and 3.8 kg/s into the vessel; accumulators always charged. The model stops if the reactor reaches prompt criticality.</li>
         <li>Recirculation: one loop stands for two, one pump on one MG set, one jet pump stands for twenty. No pump heat, no flow-control valve, no end-of-cycle pump trip. The downcomer is one mixed region; no stratification or steam carry-under.</li>
         <li>Protection: one logic channel, no voting, no instrument delays or errors (the signals are the model's own values). No high drywell pressure trip (no drywell), and nothing starts on L2 or L1: no RCIC, HPCI, core spray or automatic depressurisation. After a scram the feedwater controller sets its level setpoint down 0.45 m for 10 minutes and ramps it back over 20 (illustrative).</li>
         <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
@@ -432,30 +437,31 @@ import * as Ctl from './bwr-control.js';
 import {VERSION} from './version.js';
 const {init,step,fault,Z,H,NV,SRV,BD,THW,H0,PC,heatBalance,fwValve,shutoff,PLO,TLO,WMIN,LV,PLIM,cvPos,KB,BPF,WR,QC,WCR,BETA,WDR}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
-const SIM_API=13,simStale=BWRSim.API!==SIM_API;
+const SIM_API=14,simStale=BWRSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
-const ids=['rod','mg','n','fv','sfv','ext','exl','rv','hdv','ldv','mu','rj','rw','cv','bp','pset','ll','lset','dpset','wset','mw','nset'];
+const RG=['r1','r2','r3','r4'],ids=[...RG,'mg','n','fv','sfv','ext','exl','rv','hdv','ldv','mu','rj','rw','cv','bp','pset','ll','lset','dpset','wset','mw','nset'];
 ids.push('cwv','tcw'); // condenser: circulating water valve %, inlet °C (manual only)
 // sliders with an M/A switch → key in ctl.auto
 const AK={mg:'mg',n:'n',fv:'fv',sfv:'sfv',rv:'rv',hdv:'hdv',ldv:'ldv',mu:'mu',rj:'rj',rw:'rw',cv:'cv',bp:'bp'},auto={mg:false,n:false,fv:false,sfv:false,rv:false,hdv:false,ldv:false,mu:false,rj:false,rw:false,cv:false,bp:false};
 const pct=v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut',pct0=v=>+v?Math.round(v)+' %':'shut';
-const fmt={rod:v=>+v?(+v).toFixed(2)+' %':'all in',mg:v=>(+v).toFixed(1)+' %',wset:v=>Math.round(v)+' %',n:v=>+v?(+v).toFixed(1)+' %':'stopped',fv:pct,sfv:pct,ext:pct0,exl:pct0,rv:pct0,hdv:pct0,ldv:pct0,mu:pct0,rj:pct0,
+const posT=v=>{const r=Math.round(v*10)/10;return (Number.isInteger(r)?String(r):r.toFixed(1)).padStart(2,'0')};
+const fmt={r1:posT,r2:posT,r3:posT,r4:posT,mg:v=>(+v).toFixed(1)+' %',wset:v=>Math.round(v)+' %',n:v=>+v?(+v).toFixed(1)+' %':'stopped',fv:pct,sfv:pct,ext:pct0,exl:pct0,rv:pct0,hdv:pct0,ldv:pct0,mu:pct0,rj:pct0,
   rw:v=>+v?`${Math.round(v)} % · ${(v/100*BWRSim.RWMAX).toFixed(1)} kg/s`:'shut',cv:pct,bp:pct,ll:v=>Math.round(v)+' % of rated steam',
   pset:v=>(+v).toFixed(2)+' MPa',dpset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m'};
 Object.assign(fmt,{cwv:v=>+v?Math.round(v)+' %':'shut',tcw:v=>(+v).toFixed(1)+' °C',mw:v=>Math.round(v)+' MWe',nset:v=>Math.round(v)+' rpm'});
 // SRVs opened by hand (ctl.srv, passed through to the plant); the springs act in the plant
 // recirculation pump breaker (ctl.rp), condensate, feed and drain pump run switches (ctl.cp, fp, hdp): plain switches, no M/A
-const srvMan=Array(NV).fill(false),ctl={srv:srvMan,rp:true,cp:true,fp:true,hdp:true,fwe:3};
+const srvMan=Array(NV).fill(false),ctl={srv:srvMan,rp:true,cp:true,fp:true,hdp:true,crd:true,fwe:3};
 // main steam isolation valves and turbine stop valve: switches, true = open command (ctl.ms1, ms2, sv)
 const SW=['ms1','ms2','sv'],sw={ms1:true,ms2:true,sv:true};
 const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=fmt[k]($(k).value)}
   for(const k of SW){ctl[k]=sw[k];$(k).setAttribute('aria-pressed',String(sw[k]))}
   ctl.auto={...auto};for(const k in AK)$(k+'Am').setAttribute('aria-checked',auto[AK[k]]);
-  ctl.pset*=1e6;ctl.dpset*=1e6};
+  ctl.rods=RG.map(k=>ctl[k]);ctl.pset*=1e6;ctl.dpset*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider; each press snaps to the next multiple of the step, hold to repeat
-const bump={rod:0.5,mg:1,wset:5,n:1,fv:0.5,sfv:0.5,ext:5,exl:5,rv:5,hdv:5,ldv:5,mu:5,rj:5,rw:5,cv:0.5,bp:1,pset:0.1,ll:5,lset:0.1,dpset:0.1};
+const bump={r1:2,r2:2,r3:2,r4:2,mg:1,wset:5,n:1,fv:0.5,sfv:0.5,ext:5,exl:5,rv:5,hdv:5,ldv:5,mu:5,rj:5,rw:5,cv:0.5,bp:1,pset:0.1,ll:5,lset:0.1,dpset:0.1};
 Object.assign(bump,{cwv:5,tcw:1,mw:10,nset:10});
 for(const k of SW)$(k).onclick=()=>{sw[k]=!sw[k];readCtl();if(s)syncAuto()};
 const nudge=(k,dir)=>{
@@ -492,7 +498,7 @@ const showSpeed=()=>{$('run').setAttribute('aria-pressed',String(!running));
   for(const b of $('speed').querySelectorAll('[data-speed]')){const on=+b.dataset.speed===speed;b.setAttribute('aria-pressed',String(on&&running));b.classList.toggle('sel',on&&!running)}};
 const toggle=()=>{running=!running;showSpeed()};
 $('run').onclick=()=>{if(halted)return;toggle()};showSpeed();
-const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='fwe')setFwe(o[k]);else if(SW.includes(k))sw[k]=o[k];else if(k==='cp'||k==='fp'||k==='hdp')ctl[k]=o[k];else if(k in TOG)setTog(k,o[k]);else $(k).value=o[k]}readCtl()};
+const setC=o=>{for(const k in o){if(k==='auto')Object.assign(auto,o[k]);else if(k==='fwe')setFwe(o[k]);else if(SW.includes(k))sw[k]=o[k];else if(k==='cp'||k==='fp'||k==='hdp'||k==='crd')ctl[k]=o[k];else if(k==='rods')o.rods.forEach((v,g)=>$(RG[g]).value=v);else if(k in TOG)setTog(k,o[k]);else $(k).value=o[k]}readCtl()};
 // condenser on/off switches (plain toggles, no M/A): CW pump, SJAE motive steam, vacuum pump, vacuum
 // breaker; their state goes straight into ctl. CDN is the normal running line-up every scenario starts from.
 // main level controller: single- or three-element (ctl.fwe 1 | 3), operator-selected
@@ -502,13 +508,13 @@ const TOG={cwp:true,sj:true,vp:false,vb:false},CDN={...TOG,cwv:100,tcw:20};
 const setTog=(k,v)=>{TOG[k]=ctl[k]=!!v;$(k).setAttribute('aria-pressed',String(!!v))};
 for(const k in TOG){setTog(k,TOG[k]);$(k).onclick=()=>setTog(k,!TOG[k])}
 // scenarios set the plant state, put every control in A (at low power the MG set in M: it holds its speed) and close
-// every SRV. The rod lever is set to where init made the core critical; the core flow setpoint to the
+// every SRV. The rod group sliders are set to where init made the core critical; the core flow setpoint to the
 // initial flow.
-const MAN={fwe:3,sfv:0,auto:{mg:true,n:true,fv:true,sfv:false,rv:true,hdv:true,ldv:true,mu:true,rj:true,rw:true,cv:true,bp:true},rw:0,cp:true,fp:true,hdp:true,ms1:true,ms2:true,sv:true,ll:105,mw:1200,nset:1800};
+const MAN={fwe:3,sfv:0,auto:{mg:true,n:true,fv:true,sfv:false,rv:true,hdv:true,ldv:true,mu:true,rj:true,rw:true,cv:true,bp:true},rw:0,cp:true,fp:true,hdp:true,crd:true,ms1:true,ms2:true,sv:true,ll:105,mw:1200,nset:1800};
 let pcool=false;$('pcool').onclick=()=>{pcool=!pcool;$('pcool').setAttribute('aria-pressed',String(pcool))};
 const start=(st,cfg)=>{srvMan.fill(false);ctl.rp=st.rp??true;pcool=false;$('pcool').setAttribute('aria-pressed','false');
   setC({...MAN,...CDN,...cfg,auto:{...MAN.auto,...cfg.auto}});s=init(st);
-  setC({rod:+(s.core.x*100).toFixed(2),wset:Math.round(s.f.Wc/WCR*100)});cs=Ctl.init(ctl,s);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
+  setC({rods:s.core.x.map(x=>+(x*48).toFixed(2)),wset:Math.round(s.f.Wc/WCR*100)});cs=Ctl.init(ctl,s);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 // at power Q MW, recirculation at MG set speed mg %: steam flow and feed temperature from the heat balance
 // with the heaters in, pump at full speed, feed valve where it passes that flow; the turbine control valve
 // passes the steam, or with byp the stop valve is shut and the bypass passes it (no turbine flow: the
@@ -528,14 +534,15 @@ const atPower=(Q,mg,cfg,byp,su)=>{const {W,Tfw}=byp?{W:Q*1e6/(sat(Tsat(7e6)).hg-
 // passes the steam once the pressure reaches the setpoint. The condenser starts open to atmosphere, full
 // of air; the vacuum pump runs, the SJAE waits for steam (the turbine is tripped on low vacuum until the
 // vacuum is pulled and the trip reset)
-$('scStart').onclick=()=>start({P:0.1e6,L:14.0,q:0,rod:0,mg:0.2,sv:0,vac:false,mode:'startup'},{mg:20,n:0,fv:0,sfv:0,fwe:1,ext:0,exl:0,rv:0,hdv:50,ldv:50,mu:0,rj:0,cv:0,bp:0,sv:false,pset:7,lset:14.0,dpset:2.2,win:21600,sj:false,vp:true,auto:{mg:false,fv:false,sfv:true}});
+$('scStart').onclick=()=>start({P:0.1e6,L:14.0,q:0,rods:[0,0,0,0],mg:0.2,sv:0,vac:false,mode:'startup'},{mg:20,n:0,fv:0,sfv:0,fwe:1,ext:0,exl:0,rv:0,hdv:50,ldv:50,mu:0,rj:0,cv:0,bp:0,sv:false,pset:7,lset:14.0,dpset:2.2,win:21600,sj:false,vp:true,auto:{mg:false,fv:false,sfv:true}});
 // hot standby: critical at 1.5 % of rated power, pumps at 30 % speed, stop valve shut, the bypass passing the steam
 $('scHot').onclick=()=>atPower(0.015*QC/1e6,30,{win:3600,auto:{mg:false}},true,true);
 $('scRated').onclick=()=>atPower(3293,100,{win:600});
 // isolation: critical at 200 MW (rods set for it) when the MSIVs start closing
 $('scIso').onclick=()=>{atPower(200,30,{win:3600,auto:{mg:false}});setC({ms1:false,ms2:false})};
-// scram: the plant drives the rods in; the lever goes to 0 so that a reset does not pull them again
-$('scram').onclick=()=>{if(s&&!halted){BWRSim.manualScram(s);setC({rod:0});syncAuto()}};
+// scram: the plant drives the rods in; the group sliders go to 00 so that a reset does not pull them again
+$('scram').onclick=()=>{if(s&&!halted){BWRSim.manualScram(s);setC({rods:[0,0,0,0]});syncAuto()}};
+$('crd').onclick=()=>{ctl.crd=!ctl.crd;if(s)syncAuto()};
 $('rp').onclick=()=>{ctl.rp=!ctl.rp;if(s)syncAuto()};
 $('rst').onclick=()=>{if(s){BWRSim.reset(s);syncAuto()}};
 for(const m of BWRSim.MODES)$('mode'+m).onclick=()=>{if(s&&!halted){BWRSim.setMode(s,m);syncAuto()}};
@@ -571,8 +578,8 @@ const physTick=simDt=>{
   const dt=ctl_dt();let n=Math.round(simDt/dt);
   while(n-->0&&!halted){
     const sc0=!!s.scram;step(s,{...Ctl.update(cs,s,ctl,dt),pc:pcool},dt);
-    // any scram (protection or button) puts the rod lever at 0, so a reset does not pull the rods again
-    if(s.scram&&!sc0)setC({rod:0});
+    // any scram (protection or button) puts the rod group sliders at 00, so a reset does not pull the rods again
+    if(s.scram&&!sc0)setC({rods:[0,0,0,0]});
     const d=s.d,msg=FAULT[fault(s)];
     if(msg){halted=msg;setAlert(msg+' The model stops here; pick a scenario to start again.');if(running)toggle();break}
     if(s.t-lastS>=2){lastS=s.t;const f=s.f;hist.push({t:s.t,Q:f.Pth/QC*100,Wf:f.Wc/WCR*100,P:d.P,L:d.level,C:d.collapsed,W:f.wst,F:f.fw,R:f.wsrv,B:f.wb,T:d.Tl-273.15,Tf:f.Tfw-273.15});if(hist.length>12000)hist.shift()}
@@ -599,6 +606,9 @@ const syncAuto=()=>{
   // scram and the pump breaker
   {const sc=!!s.scram,f=s.f;$('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc&&!Object.keys(s.rps.lat).length;
    $('rxsum').textContent=`${(f.Pth/QC*100).toFixed(f.Pth<0.1*QC?2:1)} % · ${(f.Pth/1e6).toFixed(f.Pth<1e8?1:0)} MW`;
+   // rod groups: where each one is, and where it is going while the drives move it
+   RG.forEach((k,g)=>{const x=f.rods[g]*48,tg=+$(k).value;$(k+'o').textContent=Math.abs(x-tg)>0.05?`${posT(x)} → ${posT(tg)}`:posT(x)});
+   $('crd').setAttribute('aria-pressed',String(ctl.crd));$('crd').textContent=ctl.crd?'CRD pump running':'CRD pump stopped · rods can\'t move';
    $('rp').setAttribute('aria-pressed',String(ctl.rp));$('rp').textContent=ctl.rp?'Pump running · breaker closed':'Pump tripped · breaker open';
    $('rcsum').textContent=`${(f.Wc/WCR*100).toFixed(0)} % flow · ${f.Wc.toFixed(0)} kg/s`}
   // SRV toggles: pressed = opened by hand, ring = open on its spring
@@ -674,10 +684,10 @@ const updText=()=>{
   const sv=f.nsrv?`${f.nsrv} of ${NV} open (${[nspr?nspr+' on spring':'',nman?nman+' by hand':''].filter(x=>x).join(', ')})`:'closed';
   const fwLoad=f.fw*(sat(d.T).hf-f.hfw);
   const rows=[['State',d.sub<0.05?(f.gen>0.5?'boiling':'saturated'):'water subcooled'],['Water heat-up rate',(Math.abs(rT)<0.5?'0':(rT>0?'+':'−')+Math.abs(rT).toFixed(0))+' °C/h',Math.abs(rT)>55],
-    ['Reactor',s.scram?`scrammed ${fmtT(s.t-s.scram.t)} ago, rods ${(f.rod*100).toFixed(0)} % out`:f.rho<-0.002?'subcritical':Math.abs(f.per)>1000||!isFinite(f.per)?'critical, steady':f.per>0?'supercritical, power rising':'power falling',!!s.scram||(f.per>0&&f.per<30)],
+    ['Reactor',s.scram?`scrammed ${fmtT(s.t-s.scram.t)} ago, rods ${f.rods.every(x=>x<1e-6)?'all in':f.rods.map(x=>posT(x*48)).join(' ')}`:f.rho<-0.002?'subcritical':Math.abs(f.per)>1000||!isFinite(f.per)?'critical, steady':f.per>0?'supercritical, power rising':'power falling',!!s.scram||(f.per>0&&f.per<30)],
     ['Core thermal power',`${(f.Pth/1e6).toFixed(f.Pth<1e8?2:0)} MW · ${(f.Pth/QC*100).toFixed(f.Pth<0.1*QC?3:1)} %`,f.Pth>1.05*QC],['Fission power',f.nf<1e3?f.nf.toFixed(0)+' W':f.nf<1e6?(f.nf/1e3).toFixed(1)+' kW':(f.nf/1e6).toFixed(f.nf<1e8?2:0)+' MW'],['Decay heat',((f.Pth-f.nf)/1e6).toFixed(1)+' MW'],
     ['Heat to coolant',(f.Q/1e6).toFixed(f.Q!==0&&Math.abs(f.Q)<1e8?1:0)+' MW'],['Reactivity',`${(Math.abs(f.rho)<5e-7?0:f.rho/BETA).toFixed(3)} $ · ${(Math.abs(f.rho)<5e-6?0:f.rho*1e5).toFixed(0)} pcm`,f.rho>0.5*BETA],
-    ['Reactor period',Math.abs(f.per)>1000||!isFinite(f.per)?'∞':(f.per>0?'+':'−')+Math.abs(f.per).toFixed(0)+' s',f.per>0&&f.per<30],['Control rods withdrawn',(f.rod*100).toFixed(2)+' %'],['Fuel temperature (average)',(f.Tf-273.15).toFixed(0)+' °C'],
+    ['Reactor period',Math.abs(f.per)>1000||!isFinite(f.per)?'∞':(f.per>0?'+':'−')+Math.abs(f.per).toFixed(0)+' s',f.per>0&&f.per<30],['Control rod groups 1–4',f.rods.map(x=>posT(x*48)).join(' · ')],['Fuel temperature (average)',(f.Tf-273.15).toFixed(0)+' °C'],
     ['Core flow',`${f.Wc.toFixed(0)} kg/s · ${(f.Wc/WCR*100).toFixed(0)} %`],['Recirc pump speed',`${f.rp?'':'tripped · '}${(f.ng*100).toFixed(0)} %`,!f.rp],['Jet pump drive flow',f.Wd.toFixed(0)+' kg/s'],
     ['Core void, average · exit',`${(f.ac*100).toFixed(1)} % · ${(f.ae*100).toFixed(1)} %`],['Axial peaking · at height',`${f.pk.toFixed(2)} · ${(f.zpk*100).toFixed(0)} %`],['Core exit quality',(f.xe*100).toFixed(1)+' %'],
     ['Core inlet subcooling',`${(f.dhin/1e3).toFixed(1)} kJ/kg · ${d.subdc.toFixed(1)} K`],['Downcomer water',(d.Tdc-273.15).toFixed(1)+' °C'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
@@ -853,8 +863,13 @@ const drawVessel=dtReal=>{
   const sx0=x0+vw*0.16,sx1=x1-vw*0.16,ysh=Y(Z.SHR),yc0=Y(Z.BAF),yc1=Y(Z.TAF);
   const hq=clamp(f.Q/3293e6,-1,1);
   cx.fillStyle=col.metal;cx.globalAlpha=0.6;cx.fillRect(sx0+6,yc1,sx1-sx0-12,yc0-yc1);cx.globalAlpha=1;
-  if(hq>0.002){cx.fillStyle=`${accA(0.2+0.65*Math.sqrt(hq))}`;cx.fillRect(sx0+6,yc1,sx1-sx0-12,yc0-yc1)}
+  // the power along the core height (the axial shape, node by node, bottom up), as bright as the local power
+  if(hq>0.002&&f.sh){const n=f.sh.length,hz=(yc0-yc1)/n,pm=Math.max(1.6,...f.sh),a0=0.25+0.65*Math.sqrt(hq);
+    for(let i=0;i<n;i++){cx.fillStyle=`${accA(a0*clamp(f.sh[i]/pm,0.08,1))}`;cx.fillRect(sx0+6,yc0-(i+1)*hz,sx1-sx0-12,hz+0.5)}}
   cx.strokeStyle='rgba(255,255,255,.55)';cx.lineWidth=1;for(let i=1;i<8;i++){const xx=sx0+6+(sx1-sx0-12)*i/8;cx.beginPath();cx.moveTo(xx,yc1+3);cx.lineTo(xx,yc0-3);cx.stroke()}
+  // control rods: the four groups in eight slots (1 2 3 4 1 2 3 4), in from the bottom up to their tips
+  if(f.rods){cx.fillStyle=col.ink;for(let j=0;j<8;j++){const x=f.rods[j%4],tip=yc0-(1-x)*(yc0-yc1),xx=sx0+6+(sx1-sx0-12)*(j+0.5)/8;
+    if(tip<yc0-0.5)cx.fillRect(xx-1.5,tip,3,yc0-tip);cx.fillRect(xx-3,yc0,6,4)}}
   // void haze above the core inside the shroud, as dense as the voids are large
   const vf=clamp(d.Vb/50,0,1);if(vf>0.01&&ly<yc1){cx.fillStyle=`rgba(255,255,255,${0.35*vf})`;const top=Math.max(ly,Y(14.6));cx.fillRect(sx0,top,sx1-sx0,yc1-top)}
   cx.strokeStyle=col.ink;cx.lineWidth=2;cx.beginPath();cx.moveTo(sx0,Y(4.2));cx.lineTo(sx0,ysh);cx.lineTo(sx1,ysh);cx.lineTo(sx1,Y(4.2));cx.stroke();
@@ -1101,6 +1116,15 @@ const ro=new ResizeObserver(()=>drawRec());ro.observe(rec);
 $('win').addEventListener('change',drawRec);
 requestAnimationFrame(frame);
 $('ver').textContent=VERSION;
+// info tooltips: shown as fixed boxes placed by the icon and kept inside the viewport (the control
+// columns would otherwise clip them or spill them into the next column)
+for(const ic of document.querySelectorAll('.info')){const tb=ic.querySelector('.tipbox');if(!tb)continue;
+  const place=()=>{tb.classList.add('fix');const r=ic.getBoundingClientRect(),vw=innerWidth,vh=innerHeight,w=Math.min(420,vw-16);
+    tb.style.width=w+'px';tb.style.maxHeight=Math.max(120,vh-16)+'px';tb.style.left=clamp(r.left-12,8,vw-w-8)+'px';
+    const h=tb.offsetHeight,below=r.bottom+6;tb.style.top=(below+h<=vh-8||r.top-6-h<8?clamp(below,8,Math.max(8,vh-h-8)):r.top-6-h)+'px'};
+  ic.place=place;ic.addEventListener('mouseenter',place);ic.addEventListener('focus',place)}
+// a scroll moves the icon: keep an open tooltip beside it
+addEventListener('scroll',()=>{for(const ic of document.querySelectorAll('.info:hover,.info:focus'))ic.place&&ic.place()},{passive:true,capture:true});
 window.PZready=true;
 </script>
 </body>

@@ -305,6 +305,17 @@ pump flow into the vessel (a small, steady makeup, from the CST).
 insertion inside `decayFrac`. Rod blocks from the rod worth minimiser / rod sequence control are
 optional.
 
+**Done** (bwr-core.js; numbers in docs/bwr.md, "Control rods"): four ganged groups (1, 2 deep, 3 startup,
+4 power), positions 00–48 in notches of 2, bottom entry; each group lowers k∞ where it covers the fuel, so
+the worth comes from the axial shape (no separate worth curve). Rated is all rods out (the fuel zoning
+profile G(z) is calibrated there, so the rated and cold-feed behaviour is unchanged). Scram: 0.2 s delay,
+then every rod in at a steady stroke, all in by 2.9 s. CRD pump: drive water (rods move only with it) and
+3.8 kg/s from the storage tank into the vessel. No rod blocks or worth minimiser. Finding: bottom-entry rods
+do not cure the top-peaked shape at hot zero power, they add to it (2.4 at 73 % height against 2.1 at 65 %
+with the uniform lever), as in a real BWR at startup; the peak there comes from the fuel zoning that keeps
+the rated shape off the bottom. Shallow rods at rated give their worth back through the voids (a
+loosely coupled one-group axial model); see docs/bwr.md.
+
 ### 14. Reactor water cleanup
 **Models:** RWCU: suction from the recirculation loop, regenerative and non-regenerative heat
 exchangers, demineraliser, return to the feed line; the reject line to the condenser/radwaste used to
