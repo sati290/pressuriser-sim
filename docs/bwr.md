@@ -13,9 +13,14 @@ properties). Tests: `tests/bwr.test.mjs`.
 | Net heat | −100 … +3400 MW (page) | Into the water: core or decay heat minus cleanup/shutdown cooling and losses. Rated 3293 MW |
 | Main steam valve | 2000 kg/s full open at 7.0 MPa (`WMS`, `PR`), ∝ P × subsonic factor ψ(PC/P)/ψ* (κ = 1.3), condenser PC = 0.01 MPa | Stands for MSIVs + turbine control and bypass valves. Travel ≤ 20 %/s (`RATE`, full stroke 5 s). `s.mv` is the position, `u.mv` the demand |
 | SRVs | `SRV` = 11 valves `{p, w}`: 4 × 1090 psig (7.617 MPa abs) rated 800,000 lb/h (100.8 kg/s), 4 × 1100 psig (7.686 MPa) 808,000 lb/h (101.8 kg/s), 3 × 1110 psig (7.755 MPa) 815,000 lb/h (102.7 kg/s); flow w·P/p × subsonic factor to the pool at 0.1 MPa | From a GE BWR/4 training lesson plan (NRC-hosted; group counts partly illegible in the OCR, read so that capacity ∝ set pressure, which it is for one valve model). Each valve: spring opens it fully above p, recloses below p − `BD` (0.25 MPa, illustrative; not in the source), latch `s.spr[i]`; or opened by hand, `u.srv[i]` true. Open = spring or hand. No automatic relief logic, low-low set or ADS |
-| Feedwater | 0–2500 kg/s (`FWMAX`), 20–230 °C, enthalpy `hLiq(T, P)` | Pumps deliver at any vessel pressure |
+| Hotwell | `HWM` 600 t capacity, normal half full, water at `THW` = T_sat(PC) = 45.8 °C | Source of the feed. `condensate(s, wst)` returns the main steam flow at once at THW (ideal condenser placeholder, to be replaced by a condenser model). Makeup from / reject to the condensate storage tank `u.mk`, ±100 kg/s (`MKMAX`) |
+| Feed pump | ΔP = n²·`H0` − `KPU`·w², H0 = 10 MPa, KPU = 0.24 Pa/(kg/s)²; suction at PC | Condensate, booster and feed pumps lumped. Speed `u.n` 0–1 (affinity). Shutoff 10.01 MPa at full speed, 6.4 MPa at 80 %. Loses suction below 5 % hotwell: flow × Mh/(0.05·HWM) |
+| Heater + piping drop | `KLN`·w², KLN = 0.094 Pa/(kg/s)² | 0.3 MPa at rated flow |
+| Feed valve | drop w²/(`KV`·x²)², KV = 2.31 (kg/s)/√Pa, quadratic characteristic; stroke ≤ 10 %/s (`FRATE`) | Flow w = √((n²H0 + PC − P)/(KPU + KLN + 1/(KV x²)²)), zero if the root is not positive (check valve). `fwFlow(n, x, P, Mh)`, inverse `fwValve(w, n, P)`. Rated 1788 kg/s at 74.5 % open, 2400 kg/s wide open at 7 MPa |
+| Feedwater heater | Outlet target THW + e·(T_sat(p_ext) − `TTD` − THW), p_ext = `PE`·wst/`WR`; TTD = 3 K, PE = 2.28 MPa, WR = 1788 kg/s | One stage for the whole heater train. Extraction pressure ∝ main steam flow (turbine stage pressures are), set so rated flow gives 216 °C. `u.ext` (e) 0–1 extraction valve. Outlet follows the target with `TAU.h`. `heaterT(wst, e)`, `heatBalance(Q, P, e)` the steady {W, Tfw} |
 | `TAU.c` | 10 s | Subcooled water condenses steam towards saturation |
 | `TAU.b` | 0.7 s | Steam bubbles (voids) leave the two-phase mixture; gives ~34 m³ of voids (1.2 m swell) at rated steaming |
+| `TAU.h` | 60 s | Feedwater heater outlet temperature (heater and piping holdup) |
 
 ## Scram
 
@@ -30,12 +35,15 @@ continues from that value.
 ## State and step
 
 State: total mass `M`, total internal energy `U`, steam mass `Mv` (dome + voids, always saturated), void
-steam `Mb` (part of `Mv`), valve position `mv`, SRV spring latches `spr[]`.
+steam `Mb` (part of `Mv`), valve position `mv`, SRV spring latches `spr[]`; feedwater train: feed valve
+position `fv`, heater outlet temperature `Th`, hotwell mass `Mh`.
 
 Each step (`step(s, u, dt)`):
 1. Valve moves toward its demand at `RATE`; each SRV spring latch from P; an SRV is open if its spring or `u.srv[i]` holds it.
-2. Flows at the start-of-step pressure: steam out (main steam + SRVs) at h″, feedwater in at h(T_fw, P),
-   heat Q. `M` and `U` updated; `Mv` loses the steam that left.
+2. Flows at the start-of-step pressure: steam out (main steam + SRVs) at h″, feedwater in at h(T_fw, P)
+   with T_fw the heater outlet `Th` and the flow from `fwFlow` (pump speed, feed valve position after its
+   travel, hotwell), heat Q. `M` and `U` updated; `Mv` loses the steam that left. Hotwell: Mh += (return
+   + makeup − feed)·dt; heater outlet relaxes towards `heaterT(wst, e)`.
 3. If the water (U − Mv·u″)/(M − Mv) is below u′, it condenses steam: Ml·(u′ − u)/(u″ − u′)·(1 − e^(−dt/τc)).
 4. Pressure solve on the saturation temperature T (Illinois regula falsi): at trial T the steam has
    u″(T); if the water would be above u′(T) it flashes to equilibrium, Mv = (U − M·u′)/(u″ − u′); the
@@ -47,29 +55,47 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 (the vessel is rigid, so there is no external work; the tests check both).
 
 `fault(s)`: `'uncovered'` level below TAF, `'flooded'` level at the steam nozzle, `'critical'` above
-21.5 MPa, `'range'` if the solve fails.
+21.5 MPa, `'hotwell'` hotwell over capacity (condenser flooding), `'range'` if the solve fails.
+
+Command `u` = {heat W, n 0–1 pump speed, fv 0–1 feed valve demand, ext 0–1 heater extraction, mk kg/s
+makeup (negative: reject), mv 0–1 steam valve demand, srv[]}. `s.f` records what was applied, with the feed
+train's fw, Tfw, Pd (pump discharge), pe (extraction pressure), Tt (heater target), ret (condensate
+return), mk, Mh, hw (hotwell fraction).
 
 ## Control (bwr-control.js)
 
 - Pressure regulator: steam valve demand = KP·(P − pset) + I, KP = 3×10⁻⁶ /Pa (0.1 MPa → 30 %), integral
   time 30 s, anti-windup at 0 and 1.
-- Feedwater, three-element: demand = main steam flow + KL·(lset − level) + I, KL = 800 kg/s per m, integral
-  time 60 s, 0 … 2500 kg/s. SRV flow is not in the steam signal, so after a valve closure the level term
-  alone has to call for feedwater: about 3 m low asks for full flow.
+- Feedwater, three-element cascade: flow demand F = main steam flow + KL·(lset − level) + I, KL = 800 kg/s
+  per m, integral time 60 s, 0 … 2500 kg/s; then a flow controller on the feed valve, x = KX·(F − fw) + I,
+  KX = 10⁻⁴ per kg/s, integral time 4 s, anti-windup at 0 and 1 (the level integral also holds while the
+  valve is saturated). SRV flow is not in the steam signal, so after a valve closure the level term alone
+  has to call for feedwater. The pump speed is manual: no valve opening helps once vessel pressure is above
+  the shutoff head.
+- Hotwell makeup: mk = (fw − return) + KH·(0.5 − hotwell fraction) + I, KH = 1000 kg/s per unit fraction,
+  integral 300 s, ±100 kg/s. Setpoint fixed at half full.
+- Pump speed and heater extraction are manual only.
 - SRVs: no automatic logic in the controller; `u.srv` passes the operator's per-valve hand openings
   through. The springs act in the plant.
-- In M an actuator's integral holds the operator's value (for feedwater, net of the steam-flow
-  feedforward), so the demand — the notch — is the operator's value plus the proportional correction for
+- In M an actuator's integral holds the operator's value (for the level loop, the measured feed flow net
+  of the steam-flow feedforward; for makeup, net of its feedforward), so the demand — the notch — is the operator's value plus the proportional correction for
   the present error. At balance the notch sits on the slider; switching to A starts from the notch.
 
 ## Validation numbers (tests/bwr.test.mjs)
 
-- Rated heat balance (3293 MW, 216 °C feed, 7.0 MPa → 1788 kg/s) stays steady at dt 0.25 and 2 s.
+- Rated heat balance (3293 MW, 216 °C feed, 7.0 MPa → 1788 kg/s) stays steady at dt 0.25 and 2 s, with the
+  pump at full speed, the feed valve 74.5 % open, the heater at 216 °C and the hotwell half full.
 - Valve closure at rated heat: level shrinks > 0.4 m in 6 s (void collapse), pressure > 7.4 MPa. With no scram,
-  pressure levels off near 13 MPa where all eleven SRVs pass the steam; with a scram, only the 1090 psig bank
-  lifts and pressure peaks just above 7.6 MPa. Isolation at 200 MW: the lowest bank cycles 7.36–7.62 MPa,
-  about one lift per 40 s.
-- Cold feedwater (100 kg/s at 50 °C, no heat): pressure falls ~0.35 MPa/min, subcooling < 1 K.
+  pressure climbs past the feed pump's 10 MPa shutoff head in about 30 s, feed stops although the valve opens
+  fully, and the core uncovers after about 70 s. With a scram, only the 1090 psig bank lifts and pressure
+  peaks just above 7.6 MPa; the feed cools to 46 °C (no extraction steam) and the level peaks about 1.6 m
+  above normal. Isolation at 200 MW: the lowest bank cycles 7.35–7.62 MPa, about one lift per 45 s.
+- Extraction closed by 32 points at rated: feed about 35 K colder after 1 min, 59 K after 6 min. In A the
+  steam flow settles 12 % lower and the level dips about 0.9 m; in M the falling pressure lets the pump
+  deliver more, and the vessel floods in under 3 min.
+- Hotwell: without makeup it drains during an isolation (relief steam does not return); with makeup in A it
+  stays half full. A full hotwell with the steam valve open is the `'hotwell'` fault.
+- Cold feedwater (about 100 kg/s at 46 °C, no heat): pressure falls ~0.35 MPa/min, subcooling < 1 K.
 - Startup 30 MW from 100 °C, valve shut: 60–110 K/h, level up > 0.8 m in an hour from expansion.
 - Load step 3293 → 2000 MW with both controllers in A: pressure and level back to setpoint within 20 min.
 
@@ -77,6 +103,8 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 
 Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
 subcooling separate from the core, steam superheat, air in the dome (below 100 °C the pressure goes
-sub-atmospheric), vessel and internals heat capacity, turbine, condenser, feedwater heaters, cleanup
-reject flow, suppression-pool heat-up. Void clearance uses one time constant at every power and pressure,
+sub-atmospheric), vessel and internals heat capacity, turbine, condenser (the main steam returns to the hotwell at once
+as 45.8 °C condensate), moisture separator reheaters, separate heater stages and drains, pump trips (no
+level-8 or low-suction trip; suction loss is a flow taper), pump minimum-flow recirculation, startup
+low-flow valve, condensate and feed water inventory in the pipes, cleanup reject flow, suppression-pool heat-up. Void clearance uses one time constant at every power and pressure,
 so swell from bulk flashing during a depressurisation is underestimated.

@@ -29,6 +29,10 @@ nitrogen compression (see docs/physics.md). Follow-ups:
 ## Plant variants
 11. **Parameter presets** — e.g. VVER-440 / VVER-1000 vs Westinghouse 4-loop (volumes, setpoints,
     heater power). Needs sourced numbers; don't invent them.
+12. **BWR condenser** (next) — close the loop: turbine exhaust and bypass steam into a condenser with
+    its own pressure (cooling water, air), condensate to the hotwell at the condenser temperature. Replaces
+    `condensate()` in bwr-sim.js, which today returns the main steam flow at once at 45.8 °C; the steam
+    valve's back pressure `PC` would then follow the condenser.
 
 ## UX
 12. Units toggle (SI / psi-°F).
