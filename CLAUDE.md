@@ -24,6 +24,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `tests/bwr.test.mjs` | BWR regression tests (imports the BWR-side modules directly). |
 | `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
 | `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. Serves the repo itself over http. |
+| `version.js` | `VERSION` ('0.1.x'), shown in the footer of both pages so the owner can tell whether the browser has the latest. ES module, no imports. |
 | `tools/vapour-table.mjs` | Regenerates the superheated-steam table `VT` in sim.js from IAPWS-IF97 region 2. |
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`); also exports `serve(port)`. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
@@ -188,6 +189,10 @@ pushing a branch is publishing it.
 - The BWR page is `bwr.html` at the same places (e.g. `.../<branch>/bwr.html`).
 
 The old claude.ai artifact is no longer the live version; don't republish there.
+
+**Version:** every change you push bumps the last number of `VERSION` in `version.js` by one (0.1.0 →
+0.1.1 → …), once per push, whatever files changed. Mention the new version in your reply. The owner
+uses the footer to check that the browser isn't showing a cached copy.
 
 **When you finish a task that changed `index.html` or any of the scripts, commit and push it, then end your reply with
 the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare

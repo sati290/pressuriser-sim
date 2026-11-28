@@ -109,6 +109,7 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
 .notes ol,.notes ul{padding-left:20px;margin:0}
 code{font-size:14px;overflow-wrap:anywhere}
+footer.ver{padding-top:0;font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums}
 a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 @media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -249,6 +250,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
   </div>
 </section>
 
+<footer class="band wrap ver">Version <span id="ver">not loaded</span></footer>
+
 <script>
 // The model is ES modules, so a failed import (opened from file://, a missing or stale file) stops the
 // whole page script without a word. The module sets PZready as its last act; say so if it didn't.
@@ -262,6 +265,7 @@ import {sat,Tsat,clamp,hLiq} from './common.js';
 // namespace import: a cached older bwr-sim.js without a newer export gives undefined, not a link error
 import * as BWRSim from './bwr-sim.js';
 import * as Ctl from './bwr-control.js';
+import {VERSION} from './version.js';
 const {init,step,fault,Z,H,NV,WMS}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
 const SIM_API=2,simStale=BWRSim.API!==SIM_API;
@@ -545,6 +549,7 @@ readCtl();$('scHot').click();
 const ro=new ResizeObserver(()=>drawRec());ro.observe(rec);
 $('win').addEventListener('change',drawRec);
 requestAnimationFrame(frame);
+$('ver').textContent=VERSION;
 window.PZready=true;
 </script>
 </body>
