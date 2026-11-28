@@ -224,8 +224,9 @@ strongly on where the voids are).
 values, labelled illustrative (no plant source found offline). Core void from the core thermal-hydraulics
 (one channel, flat axial power, drift flux), not from Mb. Seven decay-heat groups fitted to the old
 (1 + t)^−0.2 shape. One rod lever, S-shaped worth, critical at 60 % HZP and 80 % at rated; manual only.
-Decided: void spatially as boiling boundary + linear quality, one node; the flat power shape makes the
-feedwater-temperature response about twice a real core's (labelled). `u.heat` stays as a fixed-heat test hook.
+Decided: void spatially as boiling boundary + linear quality, one node; the flat power shape made the
+feedwater-temperature response about twice a real core's. Fixed later by a quasi-static axial shape
+(one-group diffusion, 24 nodes, local feedback; docs/bwr.md, "Axial shape"): 52 K colder feed now gives +17 %. `u.heat` stays as a fixed-heat test hook.
 
 ### 9. Recirculation loop and jet pump (done)
 **Models:** one recirculation pump driving one jet pump (standing for all), core flow as a state; power

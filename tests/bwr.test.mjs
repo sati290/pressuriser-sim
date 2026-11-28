@@ -126,10 +126,11 @@ test('closing the MSIVs at rated heat: voids collapse (shrink), pressure rises, 
   // the core voids collapse as the pressure rises (the downcomer water entering the core is further
   // below the new saturation temperature). Before steps 9–10 all the voids came from the vessel's net
   // steaming and the level fell > 0.4 m; now the core boiling continues at lower void, the swell shrinks
-  // about 0.1 m while the feed still comes in
+  // about 0.1 m while the feed still comes in (0.075 m with the axial shape: the flux moves up where the voids
+  // collapse, so more of the heat boils in the upper core)
   const s = rated(), V0 = s.d.Vb, S0 = s.d.level - s.d.collapsed;let Smin = S0, Vmin = V0, Pmax = 0, srv = 0;
   runPlant(s, { ...RATED_U, ...ISO }, 6, 0.25, x => { Smin = Math.min(Smin, x.d.level - x.d.collapsed); Vmin = Math.min(Vmin, x.d.Vb); return true; });
-  assert.ok(Smin < S0 - 0.08, `swell shrinks: min ${Smin} from ${S0}`);
+  assert.ok(Smin < S0 - 0.06, `swell shrinks: min ${Smin} from ${S0}`);
   assert.ok(Vmin < V0 - 2, `void volume falls: min ${Vmin} from ${V0} m³`);
   assert.ok(s.d.P > 7.4e6, `pressure rises: ${MPa(s.d.P)}`);
   // same at 300 MW: the springs lift the lowest bank, which holds pressure just above its set point

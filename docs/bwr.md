@@ -12,7 +12,7 @@ re-exports what the page and tests use (so they import `bwr-sim.js` only):
 | Module | System | State it owns |
 |---|---|---|
 | `bwr-vessel.js` | Vessel geometry, water–steam solve with the downcomer region (`at`, `solve`, `derive`, `dcMass`, `vesselInit`) | `M`, `U`, `Mv`, `Mb`, `Mfl`, `udc`, `d` |
-| `bwr-core.js` | Point kinetics, fuel node, decay heat groups, rod lever (`rodRho`, `rodFor`), core voids (`voids`, `voidVol`), `coreInit`, `coreStep` (substeps) | `core {n, c[6], D[7], Tf, x, ac, ae, xe, zb, W, dh, rho, per, q, pc}` |
+| `bwr-core.js` | Point kinetics, axial shape (`steady`, `localFb`, `peak`, `GZ`, `STGT`), fuel node, decay heat groups, rod lever (`rodRho`, `rodFor`), core voids (`voids`, `voidVol`), `coreInit`, `coreStep` (substeps) | `core {n, c[6], D[7], Tf, x, s[24], a[24], hs[24], fb, pk, zpk, ac, ae, xe, zb, W, dh, rho, per, q, pc}` |
 | `bwr-recirc.js` | Recirculation pump and MG set (`mgStep`), jet pump (`jet`), natural circulation head, loop momentum (`resid`, `loopStep`), `recircInit` | `rc {on, ng, dm, Wd, Wc}` |
 | `bwr-steam.js` | Rated conditions (`QR`, `PR`, `WR`), main steam line (`steamLine`, `cvPos`, `valveStep`: MSIVs, stop, control and bypass valves), SRVs (`srvStep`), nozzle factor | `ms[2]`, `sv`, `cv`, `bp`, `Pl`, `spr[]` |
 | `bwr-condenser.js` | Turbine stub (`expansion`, `turbinePower`), condenser shell (`condense`, `condSteady`), circulating water (`cwTarget`, `cwStep`), condenser air (`airFlows`, `airStep`, `sjSteam`, `sjCap`, `vpCap`, `blanket`) | `cd {Tc, Ms, Ma}`, `wcw`, `vb` |
@@ -76,24 +76,41 @@ All numbers generic BWR/4 class; illustrative unless stated.
 | `QC`, `PRC`, `WCR` | 3293 MW, 7.0 MPa, 12,900 kg/s | Rated power, dome pressure, core flow (BWR/4 ~102 Mlb/h) |
 | `LAM`, `BF`, `BETA` | λ 0.0124 … 3.01 /s, U-235 group fractions (Keepin), β = 0.0056 | Six delayed groups; β lowered from 0.0065 for a mid-cycle core with Pu. `LAMBDA` 4×10⁻⁵ s is not needed by the prompt-jump form (kept for reference) |
 | `SRC` | 1 W | Source in power units: subcritical power SRC/(β − ρ), ~8 W with the rods in |
-| `AV`, `AD`, `AM` | −1×10⁻³ /% void, −2×10⁻⁵ /K, −2×10⁻⁵ /K | Void (core-average), Doppler (lumped fuel temperature), moderator (core inlet temperature). Reference hot zero power, `TREF` = T_sat(7 MPa) |
+| `AV`, `AD`, `AM` | −1×10⁻³ /% void, −2×10⁻⁵ /K, −2×10⁻⁵ /K | Local void, Doppler (fuel temperature along the shape), moderator (subcooled water). Reference hot zero power, `TREF` = T_sat(7 MPa). GE BWR Technology Manual ch. 1.7 (NRC ML11258A296) gives −1×10⁻³ per % void and −1×10⁻⁵ per °F fuel as typical |
+| `NZ`, `M2`, `DEXT` | 24, 65 cm², 0.1 m | Axial nodes, migration area (one group), extrapolation distance beyond the fuel ends |
+| `BSK`, `STGT`, `GZ` | 0.35, peaking 1.53 at 44 % height | Rated shape: chopped sine × (1 + BSK·(1 − 2z)); G(z) the fixed k∞ profile that gives it at rated, scaled to k = 1 at hot zero power |
 | `MCF`, `RF` | 5×10⁷ J/K, 1×10⁻⁷ K/W | Fuel node: τ = 5 s, 615 °C average at rated. All heat is deposited in the fuel |
 | `DL`, `DF` | λ 1/1.5 … 1/1.5×10⁶ s; Σf = 0.0693 | Seven decay-heat groups driven by fission power; least-squares fit to 0.065·(1 + t)^−0.2 of the total (within 3 % from 1 s to 3 days) |
 | `AF`, `LC`, `VCH` | 7.5 m², 3.7 m, 30 m³ | Core flow area (764 bundles × ~0.0098 m²), heated length, chimney + standpipes + separators volume at the exit void |
 | `C0`, `VGJ`, `TAUV` | 1.1, 0.25 m/s, 0.7 s | Zuber–Findlay drift flux; voids relax to their targets with TAUV |
-| `X0`, `XR`, `WT` | 60 %, 80 %, 0.174 | Rod lever: ρ_rod = WT·(F(x) − F(X0)), F(x) = x − sin(2πx)/(2π) (sin² differential worth); WT chosen so the rods balance the rated feedback (−0.0447) at XR. All in: −0.120 (21.5 $); all out +0.053 |
+| `X0`, `XR`, `WT` | 60 %, 80 %, 0.255 | Rod lever: ρ_rod = WT·(F(x) − F(X0)), F(x) = x − sin(2πx)/(2π) (sin² differential worth); WT chosen so the rods balance the rated feedback (−0.0659, including the shape change from hot zero power) at XR. All in: −0.177 (31.6 $); all out +0.078 |
 | `RODRATE`, `TSCRAM` | 0.1 %/s, 3 s | Lever travel; scram stroke (placeholder for step 13) |
 
 Kinetics (prompt-jump, precursors in power units c_i = Λλ_iC_i): n = (Σc_i + SRC)/(β − ρ),
 dc_i/dt = λ_i(β_i n − c_i), implicit Euler for c_i solved together with n; ρ ≥ β (or the implicit
 denominator below 1 % of β) latches `core.pc` → fault `'prompt'`. Decay groups dD_j/dt = λ_j(f_j n − D_j).
 Fuel: MCF·dTf/dt = n + ΣD − (Tf − T_sat)/RF, exact per substep; the heat to the coolant is the fuel
-energy balance over the substep. Reactivity ρ = ρ_rod(x) + AV·100·ac + AD·(Tf − TREF) + AM·(T_in − TREF).
+energy balance over the substep. Reactivity ρ = ρ_rod(x) + ρ_fb, the feedback part from the axial shape.
 
-Core voids (`voids(Q, W, Δh_in, P)`): flat axial power; boiling boundary zb = W·Δh_in/Q; exit quality
-x_e = (Q − W·Δh_in)/(W·h_fg) (≤ 1; W at least 100 kg/s); quality linear from 0 at zb to x_e;
-α(x) = x/(C0(x + (1 − x)ρ″/ρ′) + ρ″·Vgj/G), G = W/AF; core average by Simpson over the boiling length.
-Rated: zb 0.185, x_e 0.138, average 38.5 %, exit 67.8 %.
+Axial shape (quasi-static; the fix for the cold-feed response): one-group diffusion over NZ nodes,
+−M²φ″ + φ = (k∞(z)/k)φ, φ = 0 at DEXT beyond the fuel ends, finite differences. k∞(z) = G(z)·(1 + f(z)),
+f = AV·100·α(z) + AD·(Tc + (Tf − Tc)·s(z) − TREF) + AM·(Tc − h_sub(z)/c_p − TREF), with the node voids α,
+the node subcooling h_sub and the lumped fuel temperature Tf spread along the shape s. G(z) is computed once:
+G = (A·s*)/(s*·(1 + f_rated)) for the rated target shape s* (STGT), then scaled so that k = 1 with f = 0.
+ρ_fb = 1 − 1/k, k from the Rayleigh quotient of the current shape; each substep two shifted inverse
+(Wielandt, shift 0.003 below 1/k) iterations move the shape towards the new feedback. The fission power
+is n·s(z) and goes into the coolant along s. `steady(Q, W, Δh, P)` solves shape and voids together (init).
+Why: in a point model a colder feed removed voids at the bottom of the boiling length, where α is steepest
+in x, while the extra power went in along the whole height, mostly into the high-quality upper core, so it
+restored few voids: 54 K colder feed gave +33 % (a real BWR/4: some 15–20 %, no scram). A cosine or
+bottom-peaked fixed shape (+25 to +38 %) or subcooled boiling (+29 to +32 %) did not change that; letting the
+shape move down to where the voids were lost does (+17 %).
+
+Core voids (`voids(Q, W, Δh_in, P, s)`): the heat goes in along the shape s; equilibrium quality from the
+heat so far, x = (Q·∫s − W·Δh_in)/(W·h_fg) (W at least 100 kg/s); boiling boundary zb where it reaches 0;
+α(x) = x/(C0(x + (1 − x)ρ″/ρ′) + ρ″·Vgj/G), G = W/AF; each node's void the mean over four points in it,
+the core average the mean of the nodes (each relaxes with TAUV). Without s, the steady shape (`steady`).
+Rated: zb 0.239, x_e 0.138, average 39.5 %, exit 67.7 %.
 
 `coreStep(k, inp, dt, flow)` runs ceil(dt/0.05) substeps with P, T_sat, Δh_in and T_in held: rods,
 kinetics, decay, fuel, then `flow(h, k)` (the recirculation substep) and the void relaxation. Returns the
@@ -299,17 +316,19 @@ and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s); core: Pth (f
 
 ## Validation numbers (tests/bwr.test.mjs, bwr-core, bwr-recirc, bwr-downcomer)
 
-- Kinetics at rated: critical with the rods at 80.1 %, fuel 615 °C, void 38.5 %; steady at dt 0.25 and 2 s.
-- Valve closure at rated, no scram: power peaks ~1.15× (fixed valves, 12 s) to ~1.5× (controllers, 5 s);
-  core void 0.385 → 0.30 in 5 s; pressure past 15 MPa and core uncovered after ~80 s. With scram: level
+- Kinetics at rated: critical with the rods at 80.1 %, fuel 615 °C, void 39.5 %, axial peaking 1.53 at 44 % height; steady at dt 0.25 and 2 s.
+- Control valve shut at rated, no scram: power peaks 1.50× within 12 s with the other valves fixed (1.62× before the
+  axial shape), 1.37× in 5 s with the controllers (1.44×); core void 0.395 → 0.38; pressure past 15 MPa and core uncovered after ~80 s. With scram: level
   13.8 … 15.4 m, pressure peak 7.62 MPa.
-- Lose feedwater heating (extraction 20 %) with everything in A: power +18 % at 1 min, +40 % at 6 min
-  (stronger than plants, see "Not modelled").
+- Lose feedwater heating with everything in A (rods fixed): HP drain valve fails shut: feed 52 K colder,
+  power +17 %, peaking 1.62 at 35 % height, no scram; HP extraction to 20 %: 34 K, +11 %; both extraction
+  valves to 20 %: 41 K and +14 % at 1 min, 63 K and +21 % at 5 min, APRM trip at 120 % after about 2 min.
+  Before the axial shape: +33 % on the drain valve failure, +46 % with both valves (scram after ~50 s).
 - Scram from rated: rods in at 3 s; 5 % at 10 s, 3.3 % at 60 s (decayFrac 3.3 %).
 - Startup: rods in, 8 W; critical near 60 % hot (57.7 % at 100 °C); a positive period.
 - Hot standby 1.5 %: rods 60.6 %, holds within 5 % for 20 min with the pressure regulator.
-- Flow control: 40 % core flow → 64.5 % power, MG set ~27 %; back to 100 %.
-- Pump trip at rated: coastdown, power dips to ~36–39 %, settles at 58 % on 32.5 % natural circulation.
+- Flow control: 40 % core flow → 58.4 % power (64.5 % before the axial shape), MG set ~26 %; back to 100 %.
+- Pump trip at rated: coastdown, power dips to ~37 %, settles at 52 % on 33 % natural circulation.
 - Natural circulation alone at 30 % heat: 31 % flow.
 - Downcomer at rated: 9.1 K subcooled (Δh_in 46.5 kJ/kg); a feed temperature step reaches the core inlet
   with the ~6 s mixing time; mass and energy exact through closure + scram with kinetics.
@@ -402,9 +421,10 @@ hydraulics (one rod lever stands for the rods), main steam drains to the condens
 
 ## Not modelled
 
-Spatial neutronics (one point-kinetics node: no flux shape, xenon, burnup or local peaking; generic
-feedback coefficients), individual rods and CRD hydraulics (one lever, 3 s scram placeholder), axial power
-shape (flat: the power response to feedwater temperature is about twice a real core's), core bypass flow,
+Radial and 3-D neutronics (point kinetics for the level, one-group quasi-static axial shape only: no
+radial shape, xenon, burnup or pin peaking; generic feedback coefficients), individual rods and CRD
+hydraulics (one lever, uniform worth: the rods do not shape the flux; 3 s scram placeholder), subcooled
+boiling, core bypass flow,
 separate recirculation loops and jet pumps, recirculation pump heat, valves and limits, downcomer
 stratification and steam carry-under, protection beyond the trips listed (no high drywell pressure, no
 RCIC/HPCI/ECCS start on L2/L1, no ADS, no end-of-cycle recirculation pump trip, single logic channel: no
