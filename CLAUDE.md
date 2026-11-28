@@ -127,14 +127,14 @@ A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is un
 ### The BWR page (bwr.html, bwr-sim.js, bwr-control.js)
 
 Same split and conventions as the PWR page: the plant never decides M/A, the controller produces
-demands every step and `command` picks demand or operator value per actuator (`fv` feed valve, `mk` hotwell makeup, `mv` have M/A;
-net heat, feed pump speed `n`, heater extraction `ext` and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring
+demands every step and `command` picks demand or operator value per actuator (`n` feed pump speed, `fv` feed valve, `mk` hotwell makeup, `mv` have M/A;
+net heat, the heater extraction valve `ext` and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring
 opens it on pressure in the plant). The vessel is one rigid volume: totals `M`, `U`,
 saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water
 and steam fill the vessel, flashing water above saturation at once and condensing on subcooled water with
 a time constant. Level includes the voids (swell); `d.collapsed` is water alone. Feedwater comes from the hotwell
 (`s.Mh`) through one lumped pump (`fwFlow`: pump curve, heater/pipe drop, quadratic feed valve `s.fv`
-against vessel pressure) and one heater stage (`s.Th`, extraction pressure ∝ main steam flow). The main
+against vessel pressure) and one heater stage (`heater()`: extraction pressure ∝ main steam flow, throttled by the extraction valve to the shell pressure; outlet `s.Th`). The main
 steam returns to the hotwell through `condensate(s, wst)`, for now an ideal condenser; the planned condenser
 model replaces that function. `API` in bwr-sim.js and
 `SIM_API` in bwr.html follow the same versioning rule as sim.js `API` (bwr-sim.js is imported as a namespace too). Equations in docs/bwr.md; keep the

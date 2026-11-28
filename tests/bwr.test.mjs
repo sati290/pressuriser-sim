@@ -27,12 +27,12 @@ const P0 = 7e6, Q0 = 3293e6, TFW = 216 + 273.15;
 const W0 = Q0 / (common.sat(common.Tsat(P0)).hg - common.hLiq(TFW, P0));
 // feed valve opening that passes the rated flow with the pump at full speed
 const FV0 = B.fwValve(W0, 1, P0);
-const rated = () => B.init({ P: P0, L: 14.3, gen: W0, mv: W0 / B.WMS, fv: FV0, tfw: 216 });
+const rated = () => B.init({ P: P0, L: 14.3, gen: W0, mv: W0 / B.WMS, fv: FV0, n: 1, tfw: 216 });
 const RATED_U = { heat: Q0, n: 1, fv: FV0, ext: 1, mk: 0, mv: W0 / B.WMS, srv: [] };
 // no feed: pump stopped, valve shut
 const NOFEED = { n: 0, fv: 0, ext: 0, mk: 0 };
-const AUTO = () => ({ fv: true, mv: true, mk: true });
-const RATED_C = () => ({ heat: 3293, n: 100, fv: FV0 * 100, ext: 100, mk: 0, mv: W0 / B.WMS * 100, srv: [], pset: 7e6, lset: 14.3, auto: AUTO() });
+const AUTO = () => ({ n: true, fv: true, mv: true, mk: true });
+const RATED_C = () => ({ heat: 3293, n: 100, fv: FV0 * 100, ext: 100, mk: 0, mv: W0 / B.WMS * 100, srv: [], pset: 7e6, lset: 14.3, dpset: 2.2e6, auto: AUTO() });
 
 test('init round-trips pressure and level, with the voids inside the level', () => {
   const s = rated();
@@ -73,20 +73,43 @@ test('feed pump and valve: flow from the pump curve against vessel pressure', ()
   near(s.fv, FV0 + B.FRATE, 1e-9, 'valve travel limit');
 });
 
-test('feedwater heater: outlet follows the extraction steam, which follows the main steam flow', () => {
-  near(B.heaterT(B.WR, 1) - 273.15, 216, 1e-6, 'rated');
+test('feedwater heater: the extraction valve sets the shell pressure, the shell the outlet temperature', () => {
+  const r = B.heater(B.WR, 1, B.WR);
+  near(r.T - 273.15, 216, 1e-6, 'rated outlet');
+  near(r.ps, r.pe * 0.95, 1e3, '5 % drop across the open valve at rated');
+  near(r.ws, B.WR * (common.hLiq(TFW, 7e6) - common.hLiq(B.THW, 7e6)) / (common.sat(r.T + B.TTD).hg - common.sat(r.T + B.TTD).hf), 1e-3, 'shell condenses what heats the feed');
   near(B.heaterT(0, 1), B.THW, 1e-9, 'no steam flow, no extraction: hotwell temperature');
-  near(B.heaterT(B.WR, 0), B.THW, 1e-9, 'extraction shut');
+  near(B.heaterT(B.WR, 0), B.THW, 1e-9, 'extraction valve shut');
   near(B.THW - 273.15, 45.8, 0.1, 'hotwell at condenser saturation, 0.01 MPa');
+  // throttling: the outlet falls monotonically as the valve closes; less feed flow, hotter outlet
+  let last = 1e9;
+  for (const e of [1, 0.6, 0.3, 0.1, 0.02]) { const T = B.heaterT(B.WR, e); assert.ok(T < last, `outlet falls as the valve closes: ${e} → ${T}`); last = T; }
+  assert.ok(B.heaterT(B.WR, 0.3, B.WR / 2) > B.heaterT(B.WR, 0.3, B.WR), 'half the feed, hotter');
   const half = B.heaterT(B.WR / 2, 1) - 273.15;
-  assert.ok(half > 170 && half < 200, `half steam flow heats less: ${half}`);
-  // closing the extraction by 32 points at rated: about 55 K colder feed, over about a minute
+  assert.ok(half > 170 && half < 200, `half steam flow, lower extraction pressure: ${half}`);
+  // the "lose feedwater heating" event: valve to 20 % at rated, about 55 K colder over a few minutes
   const s = rated();
-  runPlant(s, { ...RATED_U, ext: 0.68 }, 60, 0.5);
+  runPlant(s, { ...RATED_U, ext: 0.2 }, 60, 0.5);
   const T60 = s.f.Tfw - 273.15;
-  runPlant(s, { ...RATED_U, ext: 0.68 }, 300, 0.5);
-  assert.ok(T60 < 216 - 25 && T60 > 216 - 45, `after 1 min: ${T60}`);
-  assert.ok(s.f.Tfw - 273.15 < 216 - 50, `after 6 min: ${s.f.Tfw - 273.15}`);
+  runPlant(s, { ...RATED_U, ext: 0.2 }, 300, 0.5);
+  assert.ok(T60 < 216 - 25 && T60 > 216 - 50, `after 1 min: ${T60}`);
+  assert.ok(s.f.Tfw - 273.15 < 216 - 45 && s.f.Tfw - 273.15 > 216 - 75, `after 6 min: ${s.f.Tfw - 273.15}`);
+});
+
+test('feed pump speed in A holds the discharge-to-dome differential pressure, at rated and through a depressurisation', () => {
+  for (const dt of [0.25, 2]) {
+    const c = RATED_C(), s = rated(), k = K.init(c);
+    run(s, k, c, 300, dt);
+    near((s.f.Pd - s.d.P) / 1e6, 2.2, 0.005, `rated dt=${dt}`);
+    c.heat = 200; c.pset = 1e6; run(s, k, c, 5400, dt);
+    near(MPa(s.d.P), 1.0, 0.02, `depressurised dt=${dt}`);
+    near((s.f.Pd - s.d.P) / 1e6, 2.2, 0.02, `ΔP held dt=${dt}`);
+    assert.ok(s.n < 0.6, `the pump slowed with the vessel pressure: ${s.n} dt=${dt}`);
+    near(s.d.level, 14.3, 0.15, `level held dt=${dt}`);
+  }
+  // the speed moves at most NRATE per second
+  const s = rated(); B.step(s, { ...RATED_U, n: 0 }, 1);
+  near(s.n, 1 - B.NRATE, 1e-12, 'speed ramp');
 });
 
 test('mass and energy are conserved: closed vessel, then with feed and steam', () => {
@@ -168,7 +191,7 @@ test('hotwell: drains without makeup when steam is lost to the pool; pump loses 
   assert.ok(s.f.hw < 0.45, `hotwell drains: ${s.f.hw}`);
   assert.equal(s.f.ret, 0, 'no condensate return while isolated');
   // nearly empty hotwell: the pump delivers less than its curve
-  const e = B.init({ P: P0, L: 14.3, hw: 0.02 });
+  const e = B.init({ P: P0, L: 14.3, hw: 0.02, n: 1 });
   B.step(e, { heat: 0, n: 1, fv: 0, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5); e.fv = 1;
   B.step(e, { heat: 0, n: 1, fv: 1, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5);
   near(e.f.fw, 0.4 * B.fwFlow(1, 1, P0), 0.05 * B.fwFlow(1, 1, P0), 'suction-limited feed');
@@ -229,7 +252,7 @@ test('SRV opened by hand stays open below its set pressure, and only that valve'
 
 test('pressure regulator and three-element feedwater recover from a load step (dt 0.25 and 2 s)', () => {
   for (const dt of [0.25, 2]) {
-    const s = rated(), k = K.init(), c = RATED_C();
+    const c = RATED_C(), s = rated(), k = K.init(c);
     run(s, k, c, 60, dt);
     c.heat = 2000; run(s, k, c, 1200, dt);
     near(MPa(s.d.P), 7.0, 0.005, `P back to setpoint dt=${dt}`);
