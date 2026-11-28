@@ -22,18 +22,21 @@ const GROUPS=[4,4,3],GSTEP=0.07e6,RESEAT=0.35e6;
 // controller memory: iP, iF integrators (valve fraction, kg/s); g open state of each SRV group;
 // dem the latest demand for every actuator (SI)
 const init=()=>({iP:0,iF:0,g:GROUPS.map(()=>false),dem:{mv:0,fw:0,srv:0}});
-// Automatic logic runs all the time and produces a demand for every actuator (k.dem). An actuator in
-// M keeps its integrator tracking the operator's value, so switching it to A starts from where it is.
+// Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
+// in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
+// demand is the operator's value plus the proportional correction for the present error: the notch shows
+// which way, and how far, the controller would move it, and switching to A starts from there. (Holding
+// the integral at operator value − proportional term would make the demand always equal the slider.)
 const demands=(k,s,c,dt)=>{
   const d=s.d,f=s.f,A=c.auto||{};
   // pressure regulator
   const e=d.P-c.pset;
-  if(!A.mv)k.iP=(c.mv/100)-KP*e;
+  if(!A.mv)k.iP=c.mv/100;
   else{const I=k.iP+KP/TIP*e*dt,v=KP*e+I;if(!((v>1&&e>0)||(v<0&&e<0)))k.iP=I}
-  k.iP=clamp(k.iP,-1,2);const mv=clamp(KP*e+k.iP,0,1);
+  k.iP=clamp(k.iP,-1,1);const mv=clamp(KP*e+k.iP,0,1);
   // feedwater: steam flow measured in the main steam line only (SRV discharge is not)
   const eL=c.lset-d.level,ff=f.wst;
-  if(!A.fw)k.iF=c.fw-ff-KL*eL;
+  if(!A.fw)k.iF=c.fw-ff;
   else{const I=k.iF+KL/TIL*eL*dt,v=ff+KL*eL+I;if(!((v>FWMAX&&eL>0)||(v<0&&eL<0)))k.iF=I}
   k.iF=clamp(k.iF,-FWMAX,FWMAX);const fw=clamp(ff+KL*eL+k.iF,0,FWMAX);
   // SRV groups with hysteresis

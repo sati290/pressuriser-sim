@@ -115,12 +115,26 @@ test('pressure regulator and three-element feedwater recover from a load step (d
   }
 });
 
-test('switching the valve and the feedwater from M to A is bumpless', () => {
+test('in M the demand is the operator value plus the proportional correction; switching to A starts there', () => {
   const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fw: false, mv: false, srv: true } };
   run(s, k, c, 30, 0.5);
+  // balanced: the notch sits on the slider
+  near(k.dem.mv, c.mv / 100, 0.01, 'valve demand at balance');
+  near(k.dem.fw, c.fw, 5, 'feed demand at balance');
+  // pressure 0.02 MPa over the setpoint and level 0.2 m low: the demand moves off the slider the right way
+  c.pset = 6.98e6; c.lset = 14.5; K.demands(k, s, c, 0.5);
+  near(k.dem.mv, c.mv / 100 + K.KP * (s.d.P - c.pset), 0.005, 'valve demand opens by KP·e');
+  near(k.dem.fw, c.fw + K.KL * (c.lset - s.d.level), 5, 'feed demand rises by KL·e');
   c.auto = AUTO(); const u = K.update(k, s, c, 0.5);
-  near(u.mv, c.mv / 100, 0.01, 'valve demand at switch-over');
-  near(u.fw, c.fw, 5, 'feed demand at switch-over');
+  near(u.mv, k.dem.mv, 1e-12, 'A starts from the indicated valve demand');
+  near(u.fw, k.dem.fw, 1e-9, 'A starts from the indicated feed demand');
+  // valve shut by hand with pressure below the setpoint: demand stays shut (was a clamp artefact before)
+  const s2 = B.init({ P: 6.5e6, L: 14.3 }), k2 = K.init(), c2 = { ...RATED_C(), heat: 20, mv: 0, fw: 0, auto: { fw: false, mv: false, srv: true } };
+  run(s2, k2, c2, 10, 0.5);
+  assert.equal(k2.dem.mv, 0, 'valve demand shut');
+  // above the setpoint with the valve shut by hand: the demand opens in proportion, not to an arbitrary limit
+  c2.pset = 6.45e6; K.demands(k2, s2, c2, 0.5);
+  near(k2.dem.mv, K.KP * (s2.d.P - c2.pset), 1e-3, 'valve demand from shut');
 });
 
 test('startup heat-up with the valve shut: pressure and level rise at the expected rate', () => {

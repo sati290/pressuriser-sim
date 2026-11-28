@@ -47,7 +47,9 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
   time 120 s, 0 … 2500 kg/s. SRV flow is not in the steam signal.
 - SRV relief mode: groups of 4, 4, 3 valves opening at relSet, +0.07, +0.14 MPa, each reclosing 0.35 MPa
   below its opening pressure.
-- In M an actuator's integrator tracks the operator's value, so switching to A is bumpless.
+- In M an actuator's integral holds the operator's value (for feedwater, net of the steam-flow
+  feedforward), so the demand — the notch — is the operator's value plus the proportional correction for
+  the present error. At balance the notch sits on the slider; switching to A starts from the notch.
 
 ## Validation numbers (tests/bwr.test.mjs)
 
