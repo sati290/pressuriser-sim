@@ -140,12 +140,14 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
 .srvs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .srvs button.spr{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--acc)}
 .lower{grid-template-columns:minmax(260px,1fr) minmax(0,2.4fr)}
+/* state table on the left over both rows; recorder above the automatic-control card on the right */
+.lower{grid-template-rows:auto 1fr}.lower>.stats{grid-row:1/3}.lower>.assists{grid-column:2;align-self:stretch}
 /* main steam valve switches (MSIVs, stop valve): pressed = commanded open; the text gives the position */
 .sws{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}
 .sws button{font-size:13px;padding:4px 6px;line-height:1.25;min-height:44px}
 .sws button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .lower .fig{min-height:470px}
-@media(max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}.lower{grid-template-rows:none}.lower>.stats{grid-row:auto}.lower>.assists{grid-column:auto}}
 /* the plant mimic takes the full width, the manual controls go in a row of columns under it; the canvas
    is at least 1180 px wide, so on small screens the card scrolls sideways (phones: landscape) */
 .main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}
@@ -170,7 +172,7 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
 <header class="band"><div class="wrap">
   <div>
     <h1>BWR reactor vessel simulator</h1>
-    <p>A boiling-water reactor pressure vessel with its main steam line (isolation, turbine stop, control and bypass valves), safety/relief valves, a turbine stub, the condenser and the condensate and feed train: hotwell, condensate pump, polisher, LP heater, feed pump, HP heater and feed valve, with the heater drains and the condensate storage tank. The core has point kinetics with void, Doppler and moderator feedback, one control rod lever, and a recirculation pump on an MG set driving a jet pump; reactor protection scrams and isolates it. Start up from 100 °C, run it at power, change the core flow, trip the turbine, isolate it, and watch power, pressure, level and the core voids interact. <a class="nav" href="index.html">PWR pressuriser simulator</a></p>
+    <p>A boiling-water reactor with its steam line, turbine stub, condenser and feed train, point-kinetics core and reactor protection. <a class="nav" href="index.html">PWR pressuriser simulator</a></p>
   </div>
   <div class="bar">
     <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
@@ -292,51 +294,48 @@ button#rp[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:
         <select id="win" aria-label="Time window"><option value="120">Last 2 min</option><option value="600" selected>Last 10 min</option><option value="3600">Last hour</option><option value="21600">Last 6 hours</option></select></div>
       <div class="fig"><svg id="rec"></svg></div>
     </div>
+    <div class="card assists">
+      <div class="chead"><h2>Automatic control</h2>
+        <p>The MG set speed, the feed pump speed, the feed valve, the feed pump's minimum-flow valve, the two heater drain valves, the storage tank's makeup and reject valves, the cleanup reject, the turbine control valve and the bypass valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. The control rods, the recirculation pump breaker, the two extraction valves, the pump run switches, the isolation and stop valves, the safety/relief valves and the condenser (circulating water pump, valve and inlet temperature, air ejector, vacuum pump, vacuum breaker) are always manual: BWRs have no automatic rod control (power is changed with the rods and with the core flow), and the rest are set once for the operating state. The safety/relief valves' springs open them on pressure, and the reactor protection scrams, isolates and trips whatever you do. Nothing switches between M and A by itself.</p></div>
+      <div class="agrid">
+        <div class="grp">
+          <h3>Core flow (MG set speed)</h3>
+          <div class="row"><label for="wset">Core flow setpoint <output id="wseto"></output></label><input id="wset" type="range" min="20" max="110" step="1" value="100"></div>
+          <p>Proportional-integral on the core flow (100 % = 12,900 kg/s): 10 % of rated flow low raises the MG set speed demand 3 %, integral 5 s. The MG set's speed limiter lets the speed change at most 2 % per second and holds it at 20 % or more while the pump runs. Power follows the flow along the rod line through the void feedback: at 40 % flow it settles near 65 %.</p>
+        </div>
+        <div class="grp">
+          <h3>Pressure regulator (control and bypass valves)</h3>
+          <div class="row"><label for="pset">Pressure setpoint <output id="pseto"></output></label><input id="pset" type="range" min="0.2" max="7.5" step="0.01" value="7"></div>
+          <div class="row"><label for="ll">Load limit <output id="llo"></output></label><input id="ll" type="range" min="0" max="110" step="1" value="105"></div>
+          <p>As on the GE electro-hydraulic control, simplified: a proportional-integral term on dome pressure gives a steam flow demand (0.1 MPa above the setpoint asks for 34 % of rated steam more, integral 30 s). The turbine control valve gets the demand up to the load limit; the bypass valve gets what the turbine is not taking: the excess over the load limit, or everything once the stop valve shuts. Each demand becomes a valve position through the valve's characteristic at the rated throttle pressure. Below the setpoint both valves close, so with little heat the pressure rises to the setpoint and then holds there. A real regulator senses the throttle pressure at the turbine; this one senses the dome.</p>
+        </div>
+        <div class="grp">
+          <h3>Feedwater level control (feed valve)</h3>
+          <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="12" max="16" step="0.05" value="14.3"></div>
+          <p>Three-element: the feed flow demand follows the main steam flow, plus a proportional-integral term on the level error (800 kg/s per metre, integral 60 s). A flow controller then moves the feed valve until the measured feed flow matches the demand (proportional-integral, integral 4 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it. The valve can only pass what the pump delivers: if the vessel pressure rises past the pump's shutoff head, no valve opening helps.</p>
+        </div>
+        <div class="grp">
+          <h3>Feed pump speed</h3>
+          <div class="row"><label for="dpset">Pump discharge above dome <output id="dpseto"></output></label><input id="dpset" type="range" min="0.5" max="4" step="0.05" value="2.2"></div>
+          <p>Proportional-integral on the pump discharge pressure minus dome pressure, as turbine-driven feed pumps are run: the speed follows the vessel pressure, so the feed valve always has about the same pressure drop to work with (2.2 MPa at rated, 0.3 MPa of it in the heater and piping). 0.1 MPa of error moves the speed 0.15 %, integral 10 s. The speed changes at most 10 % per second.</p>
+        </div>
+        <div class="grp">
+          <h3>Feed pump minimum flow</h3>
+          <p>The recirculation valve from the feed pump discharge back to the condenser opens in proportion as the flow to the vessel falls below 25 % of rated (447 kg/s), fully at no forward flow, so the pump never runs dead-headed. Proportional only.</p>
+        </div>
+        <div class="grp">
+          <h3>Heater drain levels</h3>
+          <p>Each heater shell's level is held half full by its own proportional-integral controller: the HP heater on its drain valve (the drains cascade to the LP heater), the LP heater and its drain tank on the drain pump's discharge valve. A quarter of the shell above the setpoint strokes the valve fully open; integral 30 s.</p>
+        </div>
+        <div class="grp">
+          <h3>Hotwell level (makeup and reject)</h3>
+          <p>One controller holds the hotwell half full, split range over two valves: its output, a net makeup in kg/s, opens the makeup valve (storage tank to condenser) when positive and the reject valve (condensate pump discharge back to the tank) when negative, 1 % of stroke per kg/s, so the two are never both asked open. The output is what the condensate pump sends on (feed plus minimum-flow recirculation, less the drains pumped forward) minus the condensate return, plus a proportional-integral term on the hotwell level (10 % off asks for the full stroke, integral 300 s). Each valve has its own M/A switch; with one in M the other still follows the controller.</p>
+        </div>
+      </div>
+      <p class="astat" id="astat" role="status"></p>
+    </div>
   </div>
 </main>
-
-<section class="band wrap" style="padding-top:0;padding-bottom:0">
-  <div class="card assists">
-    <div class="chead"><h2>Automatic control</h2>
-      <p>The MG set speed, the feed pump speed, the feed valve, the feed pump's minimum-flow valve, the two heater drain valves, the storage tank's makeup and reject valves, the cleanup reject, the turbine control valve and the bypass valve each have an M/A switch. In A the slider follows the automatic demand and is greyed out. In M the slider is yours and a notch marks the demand: your value plus the correction the controller would make for the present pressure or level error. It sits on your value when the error is zero, and switching to A starts from the notch. The control rods, the recirculation pump breaker, the two extraction valves, the pump run switches, the isolation and stop valves, the safety/relief valves and the condenser (circulating water pump, valve and inlet temperature, air ejector, vacuum pump, vacuum breaker) are always manual: BWRs have no automatic rod control (power is changed with the rods and with the core flow), and the rest are set once for the operating state. The safety/relief valves' springs open them on pressure, and the reactor protection scrams, isolates and trips whatever you do. Nothing switches between M and A by itself.</p></div>
-    <div class="agrid">
-      <div class="grp">
-        <h3>Core flow (MG set speed)</h3>
-        <div class="row"><label for="wset">Core flow setpoint <output id="wseto"></output></label><input id="wset" type="range" min="20" max="110" step="1" value="100"></div>
-        <p>Proportional-integral on the core flow (100 % = 12,900 kg/s): 10 % of rated flow low raises the MG set speed demand 3 %, integral 5 s. The MG set's speed limiter lets the speed change at most 2 % per second and holds it at 20 % or more while the pump runs. Power follows the flow along the rod line through the void feedback: at 40 % flow it settles near 65 %.</p>
-      </div>
-      <div class="grp">
-        <h3>Pressure regulator (control and bypass valves)</h3>
-        <div class="row"><label for="pset">Pressure setpoint <output id="pseto"></output></label><input id="pset" type="range" min="0.2" max="7.5" step="0.01" value="7"></div>
-        <div class="row"><label for="ll">Load limit <output id="llo"></output></label><input id="ll" type="range" min="0" max="110" step="1" value="105"></div>
-        <p>As on the GE electro-hydraulic control, simplified: a proportional-integral term on dome pressure gives a steam flow demand (0.1 MPa above the setpoint asks for 34 % of rated steam more, integral 30 s). The turbine control valve gets the demand up to the load limit; the bypass valve gets what the turbine is not taking: the excess over the load limit, or everything once the stop valve shuts. Each demand becomes a valve position through the valve's characteristic at the rated throttle pressure. Below the setpoint both valves close, so with little heat the pressure rises to the setpoint and then holds there. A real regulator senses the throttle pressure at the turbine; this one senses the dome.</p>
-      </div>
-      <div class="grp">
-        <h3>Feedwater level control (feed valve)</h3>
-        <div class="row"><label for="lset">Level setpoint <output id="lseto"></output></label><input id="lset" type="range" min="12" max="16" step="0.05" value="14.3"></div>
-        <p>Three-element: the feed flow demand follows the main steam flow, plus a proportional-integral term on the level error (800 kg/s per metre, integral 60 s). A flow controller then moves the feed valve until the measured feed flow matches the demand (proportional-integral, integral 4 s). Steam through the safety/relief valves is not in the steam-flow signal, so the level term has to make up for it. The valve can only pass what the pump delivers: if the vessel pressure rises past the pump's shutoff head, no valve opening helps.</p>
-      </div>
-      <div class="grp">
-        <h3>Feed pump speed</h3>
-        <div class="row"><label for="dpset">Pump discharge above dome <output id="dpseto"></output></label><input id="dpset" type="range" min="0.5" max="4" step="0.05" value="2.2"></div>
-        <p>Proportional-integral on the pump discharge pressure minus dome pressure, as turbine-driven feed pumps are run: the speed follows the vessel pressure, so the feed valve always has about the same pressure drop to work with (2.2 MPa at rated, 0.3 MPa of it in the heater and piping). 0.1 MPa of error moves the speed 0.15 %, integral 10 s. The speed changes at most 10 % per second.</p>
-      </div>
-      <div class="grp">
-        <h3>Feed pump minimum flow</h3>
-        <p>The recirculation valve from the feed pump discharge back to the condenser opens in proportion as the flow to the vessel falls below 25 % of rated (447 kg/s), fully at no forward flow, so the pump never runs dead-headed. Proportional only.</p>
-      </div>
-      <div class="grp">
-        <h3>Heater drain levels</h3>
-        <p>Each heater shell's level is held half full by its own proportional-integral controller: the HP heater on its drain valve (the drains cascade to the LP heater), the LP heater and its drain tank on the drain pump's discharge valve. A quarter of the shell above the setpoint strokes the valve fully open; integral 30 s.</p>
-      </div>
-      <div class="grp">
-        <h3>Hotwell level (makeup and reject)</h3>
-        <p>One controller holds the hotwell half full, split range over two valves: its output, a net makeup in kg/s, opens the makeup valve (storage tank to condenser) when positive and the reject valve (condensate pump discharge back to the tank) when negative, 1 % of stroke per kg/s, so the two are never both asked open. The output is what the condensate pump sends on (feed plus minimum-flow recirculation, less the drains pumped forward) minus the condensate return, plus a proportional-integral term on the hotwell level (10 % off asks for the full stroke, integral 300 s). Each valve has its own M/A switch; with one in M the other still follows the controller.</p>
-      </div>
-    </div>
-    <p class="astat" id="astat" role="status"></p>
-  </div>
-</section>
 
 <section class="band wrap" style="padding-top:16px">
   <div class="notes card">
