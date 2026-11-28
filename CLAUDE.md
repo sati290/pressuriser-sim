@@ -129,7 +129,7 @@ A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is un
 ### The BWR page (bwr.html, bwr-sim.js, bwr-control.js)
 
 Same split and conventions as the PWR page: the plant never decides M/A, the controller produces
-demands every step and `command` picks demand or operator value per actuator (`n` feed pump speed, `fv` feed valve, `mk` hotwell makeup, `mv` have M/A;
+demands every step and `command` picks demand or operator value per actuator (`n` feed pump speed, `fv` feed valve, `mk` hotwell makeup, `cv` turbine control valve, `bp` bypass valve have M/A; the MSIV and stop valve switches,
 net heat, the heater extraction valve `ext` and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring
 opens it on pressure in the plant). The vessel is one rigid volume: totals `M`, `U`,
 saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water

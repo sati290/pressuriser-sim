@@ -30,7 +30,7 @@ test('condenser: less cooling water raises the back pressure; vacuum follows the
 });
 
 test('steam valve closed: the condenser cools to the circulating water, hotwell stops gaining', () => {
-  const s = runPlant(rated(), { ...RATED_U, mv: 0, heat: 0, n: 0, fv: 0 }, 300, 1);
+  const s = runPlant(rated(), { ...RATED_U, cv: 0, heat: 0, n: 0, fv: 0 }, 300, 1);
   assert.ok(s.f.Pc < 3.5e3, `vacuum improves with no load: ${s.f.Pc}`);
   near(s.f.ret, 0, 1, 'no condensate');
   assert.equal(B.fault(s), '');

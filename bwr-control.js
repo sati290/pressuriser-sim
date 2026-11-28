@@ -3,17 +3,31 @@
 // that bwr-sim.js step() takes. An ES module; imports only common.js (not bwr-sim.js). See docs/bwr.md.
 //
 // Settings c are in panel units: heat MW; n % feed pump speed; fv % feed valve; ext % heater
-// extraction; mk kg/s hotwell makeup (negative: reject); mv % main steam valve; srv array, true for each
-// SRV opened by hand; pset Pa; lset m; dpset Pa; auto {n,fv,mv,mk} booleans; cwp, sj, vp, vb booleans,
-// cwv % and tcw °C for the circulating water and condenser air removal. Net heat, heater extraction, the
-// SRVs, the circulating water and the air removal are always manual (the SRV springs are in the plant). The command is SI:
-// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
+// extraction; mk kg/s hotwell makeup (negative: reject); cv % turbine control valve; bp % bypass valve;
+// ms1, ms2, sv booleans (inboard/outboard MSIV and turbine stop valve switches, true open); ll % load
+// limit (of rated steam flow); srv array, true for each SRV opened by hand; pset Pa; lset m; dpset Pa;
+// auto {n,fv,cv,bp,mk} booleans; cwp, sj, vp, vb booleans, cwv % and tcw °C for the circulating water and
+// condenser air removal (manual only). Net heat, heater extraction, the MSIV and stop valve switches and the
+// SRVs are always manual (the SRV springs are in the plant). The command is SI:
+// {heat W, n 0–1, fv 0–1, ext 0–1, mk kg/s, ms1, ms2, sv, cv 0–1, bp 0–1, srv array, cwp, cwv 0–1, tcw K, sj, vp, vb}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
-// pressure regulator (main steam valve), PI on P − pset: 0.1 MPa over opens the valve 30 % more,
-// integral time 30 s
-const KP=3e-6,TIP=30;
+// pressure regulator (GE EHC scheme, simplified): PI on dome pressure P − pset gives a steam flow demand D
+// as a fraction of rated steam flow; 0.1 MPa over asks for 34 % of rated more, integral time 30 s. (A
+// real EHC senses throttle pressure at the turbine; here the dome.) The control valves get min(D, load
+// limit); the bypass gets what the turbine is not taking: D minus the turbine flow reference, which is the
+// control valves' flow demand times the measured stop valve position (so a turbine trip hands the whole
+// demand to the bypass, up to its capacity). (Measured turbine flow in its place lags a step and, with
+// the page's 2 s step, makes the two valves chase each other.) Each flow is turned into a valve position with the valve's
+// characteristic at the rated throttle pressure (no pressure compensation). These must match
+// bwr-steam.js (the tests check): rated steam WR, rated throttle pressure PL0, turbine valve constant KT,
+// bypass capacity BPF of rated.
+const KP=3.4e-6,TIP=30;
+const WR=1788.0622120891583,PL0=6.7e6,KT=2.815429037009538e-4,BPF=0.25;
+const fcvInv=f=>1-(1-clamp(f,0,1))**(2/3),fcv=x=>1-(1-clamp(x,0,1))**1.5;
+// flow fraction of rated that the control valve passes at lift x at the rated throttle pressure
+const cvFlow=x=>KT*PL0*fcv(x)/WR,cvLift=D=>fcvInv(D*WR/(KT*PL0));
 // feedwater, three-element: main steam flow (feedforward) + PI on the level error, 800 kg/s per m,
 // integral time 60 s. The gain is high enough that about 3 m low asks for full flow even with no
 // steam-flow signal: after a main steam valve closure the steam leaves through the SRVs, which the
@@ -30,12 +44,12 @@ const HSET=0.5,KH=1000,TIH=300;
 // turbine-driven feed pumps do, so the feed valve keeps a steady pressure drop to work with at any vessel
 // pressure. PI, 0.1 MPa of error moves the speed 0.15 %, integral time 10 s.
 const KN=1.5e-8,TIN=10;
-// controller memory: iP, iF, iX, iH integrators (steam valve fraction, feed flow kg/s, feed valve
+// controller memory: iP, iF, iX, iH integrators (steam flow demand, fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{mv:0,fw:0,fv:0,mk:0,n:0}});
+const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0}});
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -43,11 +57,19 @@ const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:
 // the integral at operator value − proportional term would make the demand always equal the slider.)
 const demands=(k,s,c,dt)=>{
   const d=s.d,f=s.f,A=c.auto||{};
-  // pressure regulator
-  const e=d.P-c.pset;
-  if(!A.mv)k.iP=c.mv/100;
-  else{const I=k.iP+KP/TIP*e*dt,v=KP*e+I;if(!((v>1&&e>0)||(v<0&&e<0)))k.iP=I}
-  k.iP=clamp(k.iP,-1,1);const mv=clamp(KP*e+k.iP,0,1);
+  // pressure regulator: flow demand D, split between the control valves (up to the load limit) and the
+  // bypass. With both valves in M the integral holds what the two sliders pass. Anti-windup: the integral
+  // stops rising when no valve in A can pass more (control valve at the load limit, in M, or its stop
+  // valve not open; bypass fully open or in M), and stops falling at D = 0.
+  const e=d.P-c.pset,LL=(c.ll??105)/100,sv=f.sv??1,ref=x=>(A.cv?Math.min(Math.max(0,x),LL):cvFlow(c.cv/100))*sv;
+  if(!A.cv&&!A.bp)k.iP=cvFlow(c.cv/100)+BPF*c.bp/100;
+  else{const I=k.iP+KP/TIP*e*dt,v=KP*e+I;
+    const cvSat=!A.cv||v>=LL||sv<0.99,bpSat=!A.bp||v-ref(v)>=BPF;
+    // high: hold while saturated; low: fall only as far as D = 0 (holding instead would pin the integral
+    // wherever it was when D first reached 0, and the pressure would settle below the setpoint)
+    if(v<0&&e<0)k.iP=Math.max(I,Math.min(k.iP,-KP*e));else if(!(cvSat&&bpSat&&e>0))k.iP=I}
+  k.iP=clamp(k.iP,-0.5,LL+BPF+0.1);const D=Math.max(0,KP*e+k.iP);
+  const cv=cvLift(Math.min(D,LL)),bp=clamp((D-ref(D))/BPF,0,1);
   // feedwater level, three-element: steam flow measured in the main steam line only (SRV discharge
   // is not). Its output is the flow demand F for the flow controller. In M the integral holds the
   // measured feed flow net of the feedforward, so F is the present flow plus the level correction.
@@ -72,12 +94,13 @@ const demands=(k,s,c,dt)=>{
   if(!A.n)k.iN=c.n/100;
   else{const I=k.iN+KN/TIN*eN*dt,v=KN*eN+I;if(!((v>1&&eN>0)||(v<0&&eN<0)))k.iN=I}
   k.iN=clamp(k.iN,0,1);const n=clamp(KN*eN+k.iN,0,1);
-  k.dem={mv,fw,fv,mk,n};
+  k.dem={D,cv,bp,fw,fv,mk,n};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  const u={heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
+  const u={heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,
+    ms1:!!c.ms1,ms2:!!c.ms2,sv:!!c.sv,cv:A.cv?D.cv:c.cv/100,bp:A.bp?D.bp:c.bp/100,srv:c.srv||[]};
   // circulating water and condenser air removal: manual only, passed through (absent: the plant's normal
   // line-up). cwp CW pump, sj SJAE motive steam, vp vacuum pump, vb vacuum breaker (booleans); cwv % CW
   // valve; tcw °C CW inlet temperature (an operator input standing for the river or tower).
@@ -88,4 +111,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,KP,TIP,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN};
+export {init,demands,command,update,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN};

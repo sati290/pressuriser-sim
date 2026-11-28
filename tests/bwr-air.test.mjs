@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { common, B, near, runPlant, rated, RATED_U } from './bwr-helpers.mjs';
 
-const COLD = { heat: 0, n: 0, fv: 0, ext: 0, mk: 0, mv: 0, srv: [] };
+const COLD = { heat: 0, n: 0, fv: 0, ext: 0, mk: 0, cv: 0, srv: [] };
 
 test('rated design point: SJAE holds a few hundred Pa of air, back pressure about 7 kPa, steady', () => {
   near(B.PA0, 260, 10, 'design air partial pressure');
@@ -36,7 +36,7 @@ test('startup: vacuum pump, then steam to the condenser with the SJAE in service
     const s = B.init({ P: 7e6, L: 14.3, vac: false });
     runPlant(s, { ...COLD, vp: true, sj: true }, 3600, dt);
     assert.ok(s.f.Pc < 22e3 && s.f.wsj === 0, `SJAE idle with the steam valve shut: ${s.f.Pc}`);
-    runPlant(s, { ...COLD, vp: true, sj: true, mv: 30 / B.WMS, heat: 45e6 }, 1800, dt);
+    runPlant(s, { ...COLD, vp: true, sj: true, bp: 30 / (B.KB * 7e6), ms1: true, ms2: true, heat: 45e6 }, 1800, dt);
     assert.equal(B.fault(s), '');
     assert.ok(s.f.sjc > 0.99, 'SJAE at full capacity');
     assert.ok(s.f.Pc < 4e3 && s.f.pa < 500, `vacuum ${s.f.Pc}, air ${s.f.pa} dt=${dt}`);
