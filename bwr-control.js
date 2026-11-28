@@ -25,6 +25,9 @@
 // in kg/s of net makeup, opens the makeup valve above 0 and the reject valve below (1 % of stroke per kg/s,
 // about the valves' flow at a 70 % full CST). Keys absent from c.auto follow auto.mk, absent values follow
 // mk (positive: makeup, negative: reject), for callers older than step 7.
+// Turbine and generator (step 15): mw MWe load set, nset rpm speed set (both optional: without mw the
+// load channel does not limit, without nset the speed set is the rated 1800 rpm). The generator breaker
+// is an operator action on the plant (bwr-sim.js breaker()), not a command.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -41,6 +44,18 @@ const FWMAX=2500,MKMAX=100;
 const KP=3.4e-6,TIP=30;
 const WR=1788.0622120891583,PL0=6.7e6,KT=2.815429037009538e-4,BPF=0.25;
 const fcvInv=f=>1-(1-clamp(f,0,1))**(2/3),fcv=x=>1-(1-clamp(x,0,1))**1.5;
+// Speed/load channel of the EHC, the third limit on the control valves beside the pressure regulator and
+// the load limit (the valves take the lowest of the three; the bypass the rest of the pressure regulator's
+// demand). Breaker closed: the load reference ramps towards the load set at LRATE (5 MWe/s, quicker than a
+// plant would load, for the sandbox) and becomes a steam flow demand through MWR, the gross output per unit of
+// rated steam flow at rated, plus a slow MW feedback trim (integral time TIMW 20 s, ±15 %, only while this
+// channel is the one holding the valves). Breaker open: a proportional speed governor, droop DROOP 5 %
+// (5 % overspeed shuts the valves), on the speed reference, which ramps towards the speed set at ACC
+// (0.5 %/s, 9 rpm/s) and follows the actual speed while the stop valve is shut. The shaft is fast (inertia
+// constant HIN 5 s in the plant) against the controller's step, so the governor's gain is cut to HIN/dt at
+// large steps (2.5 at the page's 2 s step: 40 % droop), which keeps the loop stable. Must match
+// bwr-sim.js: NR, HIN, MWR (the tests check). Illustrative settings.
+const NR=1800,HIN=5,MWR=1115e6,LRATE=5e6,TIMW=20,DROOP=0.05,ACC=0.005;
 // flow fraction of rated that the control valve passes at lift x at the rated throttle pressure
 const cvFlow=x=>KT*PL0*fcv(x)/WR,cvLift=D=>fcvInv(D*WR/(KT*PL0));
 // feedwater, three-element: main steam flow (feedforward) + PI on the level error, 800 kg/s per m,
@@ -89,7 +104,7 @@ const KD=4,TID=30,LSH=0.5;
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,
+const init=(c)=>({Lr:null,nr:null,iL:0,iP:c?cvFlow(c.cv/100)+BPF*c.bp/100:0,iF:0,iX:c?c.fv/100:0,iH:c?manMu(c)-manRj(c):0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,
   dem:{D:0,cv:0,bp:0,fw:0,fv:0,mk:0,n:0,rw:0,mg:1,rv:0,hdv:0.5,ldv:0.5,mu:0,rj:0}});
 // the drain level loops are in A unless c.auto says otherwise
 const autoD=(A,k)=>A[k]??true;
@@ -108,14 +123,24 @@ const demands=(k,s,c,dt)=>{
   // bypass. With both valves in M the integral holds what the two sliders pass. Anti-windup: the integral
   // stops rising when no valve in A can pass more (control valve at the load limit, in M, or its stop
   // valve not open; bypass fully open or in M), and stops falling at D = 0.
-  const e=d.P-c.pset,LL=(c.ll??105)/100,sv=f.sv??1,ref=x=>(A.cv?Math.min(Math.max(0,x),LL):cvFlow(c.cv/100))*sv;
+  // speed/load channel SL (fraction of rated steam flow)
+  const brk=f.brk??true,spd=f.spd??1;let SL=Infinity;
+  if(brk){k.nr=1;
+    if(c.mw==null){k.Lr=f.Pgen??0;k.iL=0}
+    else{if(k.Lr==null)k.Lr=f.Pgen??0;k.Lr+=clamp(c.mw*1e6-k.Lr,-LRATE*dt,LRATE*dt);SL=Math.max(0,k.Lr/MWR+k.iL)}}
+  else{k.Lr=0;k.iL=0;const ns=(c.nset??NR)/NR;
+    if(k.nr==null||(f.sv??1)<0.99)k.nr=spd;else k.nr+=clamp(ns-k.nr,-ACC*dt,ACC*dt);
+    SL=Math.max(0,Math.min(1/DROOP,HIN/dt)*(k.nr-spd))}
+  const e=d.P-c.pset,LL=Math.min((c.ll??105)/100,SL),sv=f.sv??1,ref=x=>(A.cv?Math.min(Math.max(0,x),LL):cvFlow(c.cv/100))*sv;
   if(!A.cv&&!A.bp)k.iP=cvFlow(c.cv/100)+BPF*c.bp/100;
   else{const I=k.iP+KP/TIP*e*dt,v=KP*e+I;
     const cvSat=!A.cv||v>=LL||sv<0.99,bpSat=!A.bp||v-ref(v)>=BPF;
     // high: hold while saturated; low: fall only as far as D = 0 (holding instead would pin the integral
     // wherever it was when D first reached 0, and the pressure would settle below the setpoint)
     if(v<0&&e<0)k.iP=Math.max(I,Math.min(k.iP,-KP*e));else if(!(cvSat&&bpSat&&e>0))k.iP=I}
-  k.iP=clamp(k.iP,-0.5,LL+BPF+0.1);const D=Math.max(0,KP*e+k.iP);
+  k.iP=clamp(k.iP,-0.5,Math.min(LL,1.2)+BPF+0.1);const D=Math.max(0,KP*e+k.iP);
+  // MW trim: only while the load channel holds the valves below both the pressure regulator and the load limit
+  if(brk&&c.mw!=null&&A.cv&&SL<D&&SL<(c.ll??105)/100&&sv>=0.99)k.iL=clamp(k.iL+(k.Lr-(f.Pgen??0))/MWR/TIMW*dt,-0.15,0.15);
   const cv=cvLift(Math.min(D,LL)),bp=clamp((D-ref(D))/BPF,0,1);
   // feedwater level, three-element: steam flow measured in the main steam line only (SRV discharge
   // is not). Its output is the flow demand F for the flow controller. In M the integral holds the
@@ -164,7 +189,7 @@ const demands=(k,s,c,dt)=>{
     k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
   const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
   const mu=clamp(mk/MKMAX,0,1),rj=clamp(-mk/MKMAX,0,1);
-  k.dem={D,cv,bp,fw,fv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
+  k.dem={D,SL,Lr:k.Lr,nr:k.nr,cv,bp,fw,fv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
@@ -184,4 +209,4 @@ const command=(k,c)=>{
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,KXS,RDB,RBAND,SDL,SDT,SDR,setdown,WMIN,KD,TID,LSH};
+export {NR,HIN,MWR,LRATE,TIMW,DROOP,ACC,init,demands,command,update,WCR,KW,TIW,KP,TIP,WR,PL0,KT,BPF,cvFlow,cvLift,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,KXS,RDB,RBAND,SDL,SDT,SDR,setdown,WMIN,KD,TID,LSH};
