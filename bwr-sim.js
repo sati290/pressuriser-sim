@@ -1,16 +1,13 @@
 // BWR reactor pressure vessel plant model: pure physics, no DOM, no automatic control.
 // step() takes final actuator commands (from the operator or from bwr-control.js; the plant can't tell).
-// Loaded after common.js, as a classic <script> (bwr.html) or a module (tests); it only defines
-// globalThis.BWRSim. Equations and constants are described in docs/bwr.md.
+// An ES module; imports common.js. Equations and constants are described in docs/bwr.md.
 //
 // The vessel is one fixed volume at one pressure holding water and saturated steam. The water is one
 // well-mixed region that may be subcooled (after cold feedwater or cooling) but never stays above
 // saturation: water above saturation flashes at once. Subcooled water condenses steam at a finite rate.
 // Part of the steam is in transit as bubbles in the core and chimney (the voids): they occupy volume
 // inside the two-phase mixture and so raise the level (swell) without changing the pressure.
-globalThis.BWRSim = (() => {
-'use strict';
-const {sat,Tsat,clamp,liqRho,hLiq,Tuf,T0,THI}=globalThis.PZCommon;
+import {sat,Tsat,clamp,liqRho,hLiq,Tuf,T0,THI} from './common.js';
 // geometry: free fluid volume V (m³) over height H (m), taken as a uniform free cross-section A.
 // Elevations above the inside bottom of the vessel (m): bottom and top of active fuel, top of the core
 // shroud (separator standpipes start there), feedwater sparger, normal water level, main steam nozzle.
@@ -114,5 +111,5 @@ const fault=s=>{
   if(d.P>21.5e6)return 'critical';
   return '';
 };
-return {API:1,V,H,A,Z,WMS,PR,PC,RATE,NV,WV,PV,PB,PSV,PSVR,FWMAX,TAU,subF,wMS,wSRV,init,step,fault};
-})();
+const API=1;
+export {API,V,H,A,Z,WMS,PR,PC,RATE,NV,WV,PV,PB,PSV,PSVR,FWMAX,TAU,subF,wMS,wSRV,init,step,fault};

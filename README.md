@@ -6,8 +6,7 @@ water-solid operation, bubble draw, heat-up, hot standby, load transients, coold
 A second page, `bwr.html`, simulates a BWR reactor pressure vessel with its main steam line and valve,
 safety/relief valves (manual or automatic) and feedwater line: pressure, level, core voids and swell.
 
-- Open `index.html` in a browser (it loads `common.js`, `sim.js` and `control.js` next to it), or
-  `bwr.html` (it loads `common.js`, `bwr-sim.js`, `bwr-control.js`). No build step.
+- `npm run serve` and open http://localhost:8000/ (or /bwr.html). The scripts are ES modules, which browsers won't load from `file://`. No build step. Or open a branch through raw.githack (see `CLAUDE.md`).
 - `npm test` runs the physics regression suite (Node ≥ 20, no dependencies).
 - `npm run shots` renders screenshots (needs Playwright).
 

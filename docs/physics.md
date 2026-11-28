@@ -38,13 +38,13 @@
 
 ## Files
 
-| File | Global | Contents |
+| File | Imported as | Contents |
 |---|---|---|
-| `common.js` | `PZCommon` | Steam tables (`satX`, `sat`, `Tsat`), `clamp`, actuator limits `LIM`. Used by both of the others |
-| `sim.js` | `PZSim` | The plant: state, `init`, `step(s, u, dt)`, `fault`. Knows nothing about M/A or setpoints |
-| `control.js` | `PZCtl` | Automatic control: its own memory, demands, and the final command `u` |
+| `common.js` | named imports | Steam tables (`satX`, `sat`, `Tsat`), `clamp`, actuator limits `LIM`. Used by both of the others |
+| `sim.js` | `PZSim` (namespace) | The plant: state, `init`, `step(s, u, dt)`, `fault`. Knows nothing about M/A or setpoints |
+| `control.js` | `Ctl` (namespace) | Automatic control: its own memory, demands, and the final command `u` |
 
-Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)` and then
+Each step the page (and the tests' `run`) calls `u = Ctl.update(cs, s, c, dt)` and then
 `PZSim.step(s, u, dt)`, with the same dt, so the controller sees the plant state at the start of the step.
 
 ## Plant state variables (`s`)
@@ -64,7 +64,7 @@ Each step the page (and the tests' `run`) calls `u = PZCtl.update(cs, s, c, dt)`
 | `extra` | Timed extra RCS heat pulse `{Q, end}` (load step) |
 | `f` | What was applied in the last step: `{hp, hb, Q, ws, ch, ld, wr, wrn, wn, n2, trip, Qr, loss}` (after limits and interlocks; `wrn` nitrogen part of the relief flow, `wn` nitrogen supply) |
 
-## Controller memory (`cs`, from `PZCtl.init()`)
+## Controller memory (`cs`, from `Ctl.init()`)
 
 | Field | Meaning |
 |---|---|
@@ -93,7 +93,7 @@ last steam (below `MVMIN`, no nitrogen) condenses. As Mn → 0 the gas tends to 
 `init` builds water at Tpz (solid), a bubble with water and steam at T_sat(P), or a cushion with water and
 gas at Tpz, saturated steam plus nitrogen making up P − p_sat(Tpz).
 
-## Control step `PZCtl.update(cs, s, c, dt)` (control.js)
+## Control step `Ctl.update(cs, s, c, dt)` (control.js)
 
 Manual control is primary. The automatic logic runs every step (`demands(cs, s, c, dt)`) and writes a
 demand for each actuator to `cs.dem`. `command(cs, c)` then builds the plant command: an actuator

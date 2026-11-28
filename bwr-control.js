@@ -1,14 +1,11 @@
 // Automatic control for the BWR page: no DOM, no plant equations.
 // It reads the plant state (s.d, s.f) and the operator's settings, and produces the final command
-// that BWRSim.step() takes. Loaded after common.js (it does not need bwr-sim.js), as a classic
-// <script> (bwr.html) or a module (tests); it only defines globalThis.BWRCtl. See docs/bwr.md.
+// that bwr-sim.js step() takes. An ES module; imports only common.js (not bwr-sim.js). See docs/bwr.md.
 //
 // Settings c are in panel units: heat MW; fw kg/s; tfw °C; mv % main steam valve; srv SRVs open;
 // pset, relSet Pa; lset m; auto {fw,mv,srv} booleans. Net heat and feedwater temperature are
 // always manual. The command is SI: {heat W, fw kg/s, tfw K, mv 0–1, srv count}.
-globalThis.BWRCtl = (() => {
-'use strict';
-const {clamp}=globalThis.PZCommon;
+import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): SRV count and feedwater pump limit
 const NV=11,FWMAX=2500;
 // pressure regulator (main steam valve), PI on P − pset: 0.1 MPa over opens the valve 30 % more,
@@ -48,8 +45,7 @@ const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
   return {heat:c.heat*1e6,fw:A.fw?D.fw:c.fw,tfw:c.tfw+273.15,mv:A.mv?D.mv:c.mv/100,srv:A.srv?D.srv:c.srv};
 };
-// one control step: update the demands from the plant state, return the command for BWRSim.step.
+// one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-return {init,demands,command,update,KP,TIP,KL,TIL,GROUPS,GSTEP,RESEAT};
-})();
+export {init,demands,command,update,KP,TIP,KL,TIL,GROUPS,GSTEP,RESEAT};

@@ -1,8 +1,8 @@
 # BWR vessel model (bwr.html)
 
-A separate page beside the PWR pressuriser. Same architecture: `bwr-sim.js` is the plant (pure physics,
-`globalThis.BWRSim`), `bwr-control.js` the automatic control (`globalThis.BWRCtl`), both on top of
-`common.js` (steam tables, liquid properties). Tests: `tests/bwr.test.mjs`.
+A separate page beside the PWR pressuriser. Same architecture: `bwr-sim.js` is the plant (pure physics),
+`bwr-control.js` the automatic control, both ES modules importing `common.js` (steam tables, liquid
+properties). Tests: `tests/bwr.test.mjs`.
 
 ## Geometry and constants
 

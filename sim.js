@@ -1,15 +1,12 @@
 // Pressuriser + RCS plant model: pure physics, no DOM, no automatic control.
 // step() takes final actuator commands (from the operator or from control.js; the plant can't tell).
-// Loaded after common.js, as a classic <script> (index.html) or a module (tests); it only defines
-// globalThis.PZSim. Equations and constants are described in docs/physics.md.
+// An ES module; imports only common.js. Equations and constants are described in docs/physics.md.
 //
 // The pressuriser is two regions at one pressure, never forced into equilibrium: water (compressed
 // liquid, may be below or above saturation) and a gas space of steam and/or nitrogen with its own
 // temperature (steam superheated, saturated, or wet for one step before the condensate rains out).
 // With no gas space it is water-solid. Below the water sits the insurge layer.
-globalThis.PZSim = (() => {
-'use strict';
-const {sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QP,QB,T0,THI}=globalThis.PZCommon;
+import {sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QP,QB,T0,THI} from './common.js';
 const VP=51,VR=280,CM=0.6e9,TAU=300;
 // nitrogen (ideal gas): gas constant, cv, cp (J/kg/K); steam gas constant; supply header
 // pressure (Pa), supply flow at 1 MPa across the valve (kg/s), supply temperature (K); below N2MIN of
@@ -218,5 +215,5 @@ const fault=s=>{
 };
 // API: bump when the plant state or s.d fields the page reads change; index.html checks it, so a
 // cached older sim.js beside a newer page (raw.githack caches files separately) is reported, not shown as NaN
-return {API:3,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};
-})();
+const API=3;
+export {API,kap,liqRho,rcsP,hLiq,cpL,vap,vapT,gas,relW,subF,gasF,n2W,init,step,fault,VP,VR,CM,TAU,TAUNE,RN,CVN,N2P,N2MIN,UA,TAMB,PB};

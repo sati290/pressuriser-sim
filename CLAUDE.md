@@ -12,20 +12,20 @@ Physical correctness and honest labelling of limitations matter more than featur
 
 | Path | What |
 |---|---|
-| `index.html` | Presentation: CSS, markup, UI wiring, renderers. Loads `common.js`, `sim.js`, `control.js` (in that order) with plain relative `<script src>`; nothing else external except Google Fonts. |
-| `common.js` | What both plant and controller need, on both pages: steam tables, liquid properties (`kap`, `liqRho`, `hLiq`, `cpL`, `Tuf`, `inv`), `clamp`, actuator limits `LIM`. Defines `globalThis.PZCommon`. |
-| `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater. Loads `common.js`, `bwr-sim.js`, `bwr-control.js`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
-| `bwr-sim.js` | BWR plant: pure physics, `globalThis.BWRSim`. See docs/bwr.md. |
-| `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater, SRV relief groups), `globalThis.BWRCtl`. Needs `common.js`, not `bwr-sim.js`. |
-| `tests/bwr.test.mjs` | BWR regression tests (imports the three BWR-side scripts directly). |
-| `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
-| `sim.js` | The plant: pure physics, no DOM, no automatic control. Defines `globalThis.PZSim`. |
-| `control.js` | Automatic control: demands and the final command for the plant. Defines `globalThis.PZCtl`. Needs `common.js`, not `sim.js`. |
-| `tests/load-physics.mjs` | Imports the three scripts in Node; exposes `PZCommon` as `common`, `PZSim` as `phys`, `PZCtl` as `ctrl`, plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
+| `index.html` | Presentation: CSS, markup, UI wiring, renderers. Its page script is a `<script type="module">` importing `./common.js`, `./sim.js`, `./control.js`; nothing else external except Google Fonts. Needs http(s), not `file://`. |
+| `common.js` | What both plant and controller need, on both pages: steam tables, liquid properties (`kap`, `liqRho`, `hLiq`, `cpL`, `Tuf`, `inv`), `clamp`, actuator limits `LIM`. ES module, no imports. |
+| `sim.js` | The plant: pure physics, no DOM, no automatic control. ES module; imports `common.js`. |
+| `control.js` | Automatic control: demands and the final command for the plant. ES module; imports `common.js`, not `sim.js`. |
+| `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater. Module page script importing `./common.js`, `./bwr-sim.js`, `./bwr-control.js`; needs http(s) like `index.html`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
+| `bwr-sim.js` | BWR plant: pure physics. ES module; imports `common.js`. See docs/bwr.md. |
+| `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater, SRV relief groups). ES module; imports `common.js`, not `bwr-sim.js`. |
+| `tests/load-physics.mjs` | Imports the three modules in Node as namespaces `common`, `phys` (sim.js), `ctrl` (control.js), plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. |
+| `tests/bwr.test.mjs` | BWR regression tests (imports the BWR-side modules directly). |
+| `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
+| `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. Serves the repo itself over http. |
 | `tools/vapour-table.mjs` | Regenerates the superheated-steam table `VT` in sim.js from IAPWS-IF97 region 2. |
-| `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`). |
+| `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`); also exports `serve(port)`. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
 
@@ -35,7 +35,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 npm test                      # physics regression suites (PWR and BWR)
 npm run shots                 # screenshots into shots/ (needs: npm i -D playwright && npx playwright install chromium)
 node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Chrome
-npm run serve                 # http://localhost:8000 — or just open index.html
+npm run serve                 # http://localhost:8000 (index.html can't be opened from file://)
 ```
 
 Always run `npm test` after touching any of the scripts, and the screenshot
@@ -45,11 +45,12 @@ tool after any CSS/markup/drawing change.
 
 ### The three scripts
 
-Each is one IIFE assigning one global; everything the page or the tests use is in its `return {…}`
-list — add a new function there to make it available. They must stay plain scripts (no ES
-`export`): browsers refuse module scripts from `file://`, and Node imports them as ES modules just
-fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js` each read
-`PZCommon` at load; neither reads the other. Anything both need goes into `common.js`.
+Each is an ES module with no build step: browsers and Node load the same files. Everything the page
+or the tests use is in the `export {…}` list at its end — add a new function there to make it
+available. Imports use relative paths with the `.js` extension (`./common.js`). Dependencies:
+`sim.js` and `control.js` each import `common.js`; neither imports the other. Anything both need
+goes into `common.js`. No globals: in devtools use `await import('./sim.js')`. Modules don't load
+from `file://`; the page shows a warning there (and whenever its module script failed to finish).
 
 ### common.js — shared
 
@@ -80,7 +81,7 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
   `u = {ch, ld, sp kg/s, hp 0–1, hb groups, rel 0–1, n2 0–1, heat W}` (see docs/physics.md). It clamps to `LIM` and
   applies the plant's own protection (heater trip below 12 % level, safety valve); `s.f` records
   what was applied.
-- `API` version number: bump it (and `SIM_API` in index.html) when the state or `s.d` fields the page
+- `API` version number (`const API`, exported): bump it (and `SIM_API` in index.html) when the state or `s.d` fields the page
   reads change; the page warns when a cached older sim.js is loaded beside it.
 - `fault(s)` why the model must stop (`'dry'|'range'|'critical'|'boiling'`) or `''`; the page maps
   codes to the alert text.
@@ -99,10 +100,11 @@ fine since they only touch `globalThis`. Dependencies: `sim.js` and `control.js`
 
 ### index.html — presentation
 
-The three `<script src>` tags (`common.js`, `sim.js`, `control.js`) come first; the page's own `<script>` is one block `{ … }` (no globals
-leak) that destructures what it needs from `PZSim`. Order:
+A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is unset (module failed or
+`file://`). Then the page's own `<script type="module">`, which sets `PZready` as its last line. Order:
 
-1. Imports from `PZCommon`, `PZSim`, and `PZCtl` (as `Ctl`). The page keeps `s` (plant) and `cs` (controller).
+1. Imports: named from `common.js`; `sim.js` as namespace `PZSim` (so the `API` check sees a stale
+   cached copy as `undefined` rather than a link error), destructured; `control.js` as namespace `Ctl`. The page keeps `s` (plant) and `cs` (controller).
 2. DOM wiring: `ids`/`checks`/`fmt`/`readCtl()` map controls → `ctl` (SI units except where noted:
    `hp` proportional heaters %; `hb` backup heater groups on; `heat` MW, signed net heat to coolant; flows kg/s; `set`, `relSet` stored in Pa; `relMan` relief opening %;
    `inv` is `'pres'|'lev'`; `n2` nitrogen supply valve opening % (always manual, no M/A); `pzMode` is `'pres'|'dT'` (heater/spray logic), `dT` the pressuriser − coolant target in K; `auto` is `{ch,ld,hp,hb,sp,rel}` booleans, one per actuator). Manual controls sit
@@ -128,8 +130,8 @@ demands every step and `command` picks demand or operator value per actuator (`f
 net heat and feedwater temperature are manual only). The vessel is one rigid volume: totals `M`, `U`,
 saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water
 and steam fill the vessel, flashing water above saturation at once and condensing on subcooled water with
-a time constant. Level includes the voids (swell); `d.collapsed` is water alone. `BWRSim.API` and
-`SIM_API` in bwr.html follow the same versioning rule as `PZSim.API`. Equations in docs/bwr.md; keep the
+a time constant. Level includes the voids (swell); `d.collapsed` is water alone. `API` in bwr-sim.js and
+`SIM_API` in bwr.html follow the same versioning rule as sim.js `API` (bwr-sim.js is imported as a namespace too). Equations in docs/bwr.md; keep the
 page's notes in step with its limitations.
 
 ## Conventions

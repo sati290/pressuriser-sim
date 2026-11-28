@@ -1,11 +1,9 @@
 // BWR vessel regression tests. Run: node --test tests/bwr.test.mjs  (or npm test)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../common.js';
-import '../bwr-sim.js';
-import '../bwr-control.js';
-
-const common = globalThis.PZCommon, B = globalThis.BWRSim, K = globalThis.BWRCtl;
+import * as common from '../common.js';
+import * as B from '../bwr-sim.js';
+import * as K from '../bwr-control.js';
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, expected ${b} ± ${tol}`);
 const MPa = p => p / 1e6;
 

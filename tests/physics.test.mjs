@@ -6,7 +6,7 @@ import { common, phys, ctrl, ctlOf, engage, run, runPlant, C, MPa } from './load
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, expected ${b} ± ${tol}`);
 
-// Control settings (panel units, see control.js). run() passes them through PZCtl.update to get the
+// Control settings (panel units, see control.js). run() passes them through control.js update to get the
 // command for PZSim.step. Every actuator (ch, ld, hp, hb, sp, rel) is manual unless c.auto[k] is true; then it follows
 // the demand the automatic logic computes. inv picks the inventory logic: 'pres' (letdown holds
 // pressure) or 'lev' (charging holds level). Nothing switches by itself; tests that cross
