@@ -89,6 +89,30 @@ test('valve closure at rated heat with feedwater in A: feed rises to replace the
   }
 });
 
+test('scram: heat follows the decay curve, ignores the slider, reset hands it back', () => {
+  near(B.decayFrac(0), 1, 1e-9, 'full power at the scram');
+  near(B.decayFrac(60), 0.033, 0.004, '1 min');
+  near(B.decayFrac(3600), 0.013, 0.002, '1 h');
+  const s = runPlant(rated(), RATED_U, 1, 0.5); B.scram(s); // heat at the scram is the last applied
+  runPlant(s, { ...RATED_U, heat: 1e9 }, 60, 0.5);
+  near(s.f.Q, Q0 * B.decayFrac(s.t - 0.5 - s.scram.t), 1e3, 'heat at 1 min is decay heat (taken at the start of the step), not the command');
+  B.scram(s); near(s.scram.P0, Q0, 1, 'a second scram keeps the first');
+  B.reset(s); runPlant(s, { ...RATED_U, heat: 50e6 }, 1, 0.5);
+  near(s.f.Q, 50e6, 1, 'after reset the command applies');
+});
+
+test('valve closure with scram: pressure held by the relief valves, level kept by feedwater', () => {
+  const s = rated(), k = K.init(), c = { ...RATED_C(), auto: { fw: true, mv: false, srv: true } };
+  run(s, k, c, 10, 0.5); c.mv = 0; B.scram(s);
+  let Pmax = 0, Lmin = 99;
+  run(s, k, c, 1800, 0.5, x => { Pmax = Math.max(Pmax, x.d.P); Lmin = Math.min(Lmin, x.d.level); return true; });
+  assert.equal(B.fault(s), '');
+  assert.ok(Pmax < B.PSV, `relief mode holds it below the safety setpoint: ${MPa(Pmax)}`);
+  assert.ok(Pmax > 7.7e6, `relief valves lift: ${MPa(Pmax)}`);
+  assert.ok(Lmin > 12, `level min ${Lmin}`);
+  assert.ok(!s.sv, 'safety mode not needed');
+});
+
 test('opening the steam valve depressurises: the water flashes and the level swells above the collapsed level', () => {
   const s = B.init({ P: 7e6, L: 14.0 }), L0 = s.d.level;
   runPlant(s, { heat: 20e6, fw: 0, tfw: 400, mv: 0.3, srv: 0 }, 2, 0.25);

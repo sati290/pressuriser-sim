@@ -17,6 +17,16 @@ properties). Tests: `tests/bwr.test.mjs`.
 | `TAU.c` | 10 s | Subcooled water condenses steam towards saturation |
 | `TAU.b` | 0.7 s | Steam bubbles (voids) leave the two-phase mixture; gives ~34 m³ of voids (1.2 m swell) at rated steaming |
 
+## Scram
+
+`scram(s, q)` records the time and P0 = q, the net heat at that moment (≥ 0; default the last applied `s.f.Q`; the page passes the commanded heat); from then on `step` ignores
+`u.heat` and uses P0·`decayFrac`(t − t_scram) until `reset(s)`. `decayFrac(t)` = 0.935·(0.93·e^(−t/2) +
+0.06·e^(−t/10) + 0.01·e^(−t/80)) + 0.065·(1 + t)^(−0.2): fission power with the rods in (prompt drop,
+then two delayed-neutron tails) plus decay heat in Way–Wigner form for long operation at P0. Gives
+100 % at 0, ~7.5 % at 10 s, 3.3 % at 1 min, 1.3 % at 1 h, 0.7 % at a day — rough, not a fitted curve.
+The page greys the net-heat slider while scrammed and back-fills it with the decay heat, so reset
+continues from that value.
+
 ## State and step
 
 State: total mass `M`, total internal energy `U`, steam mass `Mv` (dome + voids, always saturated), void
@@ -62,7 +72,7 @@ Level = (V_water + Mb/ρ″)/A; collapsed level = V_water/A. Mass and energy are
 
 ## Not modelled
 
-Neutronics and void/pressure reactivity feedback, scram, recirculation pumps and jet pumps, downcomer
+Neutronics and void/pressure reactivity feedback, automatic scram (scram is an operator button), recirculation pumps and jet pumps, downcomer
 subcooling separate from the core, steam superheat, air in the dome (below 100 °C the pressure goes
 sub-atmospheric), vessel and internals heat capacity, turbine, condenser, feedwater heaters, cleanup
 reject flow, suppression-pool heat-up. Void clearance uses one time constant at every power and pressure,

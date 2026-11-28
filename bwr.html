@@ -113,7 +113,12 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 @media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
-/* BWR page: stats and a wide recorder under the mimic */
+/* BWR page: scram buttons; stats and a wide recorder under the mimic */
+.rx{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rx button{font-size:15px;min-height:40px}
+button#scram{border-color:var(--warn);color:var(--warn);font-weight:600}
+button#scram[aria-pressed=true]{background:var(--warn);color:var(--bg);border-color:var(--warn)}
+button:disabled{opacity:.45;cursor:not-allowed}
 .lower{grid-template-columns:minmax(260px,1fr) minmax(0,2.4fr)}
 .lower .fig{min-height:360px}
 @media(max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}}
@@ -149,9 +154,17 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
         <button id="scHot">Hot standby<br>7.0 MPa, 20 MW</button>
         <button id="scRated">Rated power<br>3293 MW, 7.0 MPa</button>
         <button id="scIso">Isolation at 200 MW<br>valve closing</button>
+      </div>
+      <p>Each scenario starts the plant afresh.</p>
+    </div>
+    <div class="grp">
+      <h2>Events</h2>
+      <div class="rx"><button id="scram" aria-pressed="false">Scram</button><button id="rst" disabled>Reset scram</button></div>
+      <div class="btns">
         <button id="scClose">Close main steam valve</button>
         <button id="scFwh">Lose feedwater heating: −55 K</button>
       </div>
+      <p id="scramT"></p>
     </div>
     <div class="grp">
       <h2>Reactor</h2>
@@ -213,7 +226,7 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
       <ol>
         <li><b>Startup.</b> The vessel is at 100 °C and atmospheric pressure with the head vent just shut, the level low at 11.5 m, every valve shut and 30 MW of heat. The water heats at about 80 °C per hour, faster than the usual 55 °C/h limit, so turn the heat down to stay inside it. Pressure follows the saturation curve, and the level rises as the water expands: about 3 m on the way to 7 MPa. When pressure nears 7 MPa, switch the steam valve to A to hold it.</li>
         <li><b>Rated power.</b> Every control starts in M, balanced. Switch feedwater and the steam valve to A, then change the net heat. Less heat means less steam made in the core, fewer voids and a lower level (shrink); the feedwater controller sees the level fall and the steam flow drop at the same time.</li>
-        <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: at 8.5 MPa the eleven valves pass about 1300 kg/s, less than the 1790 kg/s the core makes, so pressure climbs until their flow catches up, near 11.8 MPa, far above any real plant's limit. All that steam is lost to the pool: with feedwater in A the level drops about 1.3 m and the controller runs feed up to replace it, since the steam-flow signal sees none of it; with feedwater in M the core uncovers in about 90 s. Turn the heat down to decay-heat levels by hand.</li>
+        <li><b>Close main steam valve</b> at rated power. The valve strokes shut in 5 s, pressure climbs, the voids collapse and the level drops about 0.7 m within seconds. The heat stays on, because there is no scram or neutronics: at 8.5 MPa the eleven valves pass about 1300 kg/s, less than the 1790 kg/s the core makes, so pressure climbs until their flow catches up, near 11.8 MPa, far above any real plant's limit. All that steam is lost to the pool: with feedwater in A the level drops about 1.3 m and the controller runs feed up to replace it, since the steam-flow signal sees none of it; with feedwater in M the core uncovers in about 90 s. Press <b>Scram</b> to drop the heat to decay heat: pressure then peaks around the relief setpoints and the relief valves cycle, as in a real isolation.</li>
         <li><b>Isolation at 200 MW</b> (about 6 % of rated, decay heat shortly after a scram). The valve closes, the relief valves lift in groups and cycle. Each lift drops the pressure 0.35 MPa and blows inventory to the suppression pool. Feedwater in A keeps the level. Put the relief valves in M and hold one or two open to depressurise steadily, as for a cooldown.</li>
         <li><b>Lose feedwater heating</b> at rated power with feedwater and the steam valve in A. Colder feedwater takes more heat to bring to saturation, so about 12 % less steam is made, the voids shrink and the level dips briefly while the controllers follow. With everything in M the valve passes the old steam flow, so pressure falls, and the feedwater, no longer matched, fills the vessel. In a real BWR the colder water also raises reactor power through void feedback; here the heat is what you set.</li>
         <li><b>Depressurise.</b> At hot standby open the steam valve wide by hand. The water flashes as the pressure falls, the voids grow and the level rises at first, before the lost inventory brings it down.</li>
@@ -224,7 +237,7 @@ a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
       <p>Net heat goes into the water: core power or decay heat minus cleanup and shutdown cooling, with the vessel's own heat losses included. Steam leaves through the main steam line and the safety/relief valves at saturated-steam enthalpy; feedwater enters as compressed liquid at the temperature you set.</p></div>
     <div><h2>Assumptions and limits</h2>
       <ul>
-        <li>No neutronics: power is the net heat you set and does not respond to voids, pressure or feedwater temperature. No scram, no recirculation pumps or flow control, no jet pumps. The voids clear at the same rate at every power and pressure; in a real core they depend on recirculation flow, and the bubbles from bulk flashing in a depressurisation rise more slowly, so swell on depressurisation is underestimated.</li>
+        <li>No neutronics: power is the net heat you set and does not respond to voids, pressure or feedwater temperature. Scram is a button only: nothing trips it automatically (real plants scram on valve closure, high pressure, low level). After a scram the heat follows a fixed curve: the fission power falls with the rods in (a prompt drop, then 10 s and 80 s delayed-neutron tails) and decay heat of 6.5 % falls as (1 + t)^−0.2, about 7 % of the pre-scram heat at 10 s, 3.3 % at 1 min, 1.3 % at 1 h, assuming long operation at that heat. No recirculation pumps or flow control, no jet pumps. The voids clear at the same rate at every power and pressure; in a real core they depend on recirculation flow, and the bubbles from bulk flashing in a depressurisation rise more slowly, so swell on depressurisation is underestimated.</li>
         <li>The water is one well-mixed region: downcomer, core and lower plenum share one temperature. In a real BWR the downcomer is a few kelvin subcooled at power and the core still boils; here the water is saturated whenever it boils.</li>
         <li>The steam is always saturated, so there is no superheat in the dome. The dome holds no air or nitrogen: below 100 °C the pressure would fall below atmospheric, where a real vessel would have its head vent open.</li>
         <li>Level is the volume of water and voids over a uniform cross-section of 28.6 m², from the inside bottom of the vessel: top of active fuel 9.3 m, normal level 14.3 m, main steam nozzle 16.5 m. Real vessels measure level in the downcomer, against a reference leg. The model stops if the level falls to the top of the fuel or reaches the steam nozzle.</li>
@@ -251,7 +264,7 @@ import * as BWRSim from './bwr-sim.js';
 import * as Ctl from './bwr-control.js';
 const {init,step,fault,Z,H,NV,WMS}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
-const SIM_API=1,simStale=BWRSim.API!==SIM_API;
+const SIM_API=2,simStale=BWRSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
 const ids=['heat','fw','tfw','mv','srv','pset','lset','relSet'];
@@ -312,6 +325,8 @@ $('scStart').onclick=()=>start({P:0.1e6,L:11.5},{heat:30,fw:0,tfw:50,mv:0,pset:7
 $('scHot').onclick=()=>atPower(20,150,{win:3600});
 $('scRated').onclick=()=>atPower(3293,216,{win:600});
 $('scIso').onclick=()=>{atPower(200,150,{win:3600,mv:0});setC({auto:{fw:true,mv:false,srv:true}})};
+$('scram').onclick=()=>{if(s&&!halted){BWRSim.scram(s,ctl.heat*1e6);syncAuto()}}; // the heat being commanded, also before the first step
+$('rst').onclick=()=>{if(s){BWRSim.reset(s);syncAuto()}};
 $('scClose').onclick=()=>{setC({auto:{mv:false},mv:0})};
 $('scFwh').onclick=()=>{setC({tfw:Math.max(20,ctl.tfw-55)})};
 
@@ -335,6 +350,7 @@ const probe=document.createElement('i');probe.style.display='none';document.body
 const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
 // rate of change per hour over ~5 real seconds of history (5 s × speed), capped at 300 sim-s
 const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
+const fmtT=t=>t<120?`${t.toFixed(0)} s`:t<7200?`${(t/60).toFixed(0)} min`:`${(t/3600).toFixed(1)} h`;
 const syncAuto=()=>{
   const d=s.d,A=ctl.auto,D=cs.dem;
   const dv={fw:D.fw,mv:D.mv*100,srv:D.srv},dtx={fw:v=>v.toFixed(0),mv:v=>v.toFixed(1),srv:v=>Math.round(v)};
@@ -345,6 +361,12 @@ const syncAuto=()=>{
     $(k+'d').textContent=on?'':'auto '+dtx[k](v);
     m.hidden=on;m.style.setProperty('--f',clamp((v-el.min)/(el.max-el.min),0,1));
   }
+  // scram: the heat slider is greyed and follows the decay heat, so reset continues from it
+  {const sc=!!s.scram,el=$('heat');el.disabled=$('heatDn').disabled=$('heatUp').disabled=sc;
+    $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc;
+    if(sc&&s.t>s.scram.t){const v=Math.round(s.f.Q/1e6);el.value=v;ctl.heat=v;$('heato').textContent=fmt.heat(v)}
+    $('scramT').textContent=sc?`Scrammed ${fmtT(s.t-s.scram.t)} ago from ${(s.scram.P0/1e6).toFixed(0)} MW: core heat now ${(s.f.Q/1e6).toFixed(s.f.Q<1e8?1:0)} MW, ${(s.f.Q/Math.max(1,s.scram.P0)*100).toFixed(1)} % (fission tail and decay heat). Reset hands the heat back to the slider at this value.`
+      :'These act on the running plant. Scram drops the heat to the fission tail and decay heat, starting from the net heat at that moment; reset hands the heat back to the slider at its current value. Closing the valve puts it in M and shuts it over 5 s.'}
   let m='',bad=false;
   if(s.sv){m='Safety mode: every safety/relief valve is open on its spring until pressure falls below 8.1 MPa.';bad=true}
   else if(!A.srv){m='Safety/relief valves in M: only the safety mode at 8.5 MPa limits pressure.';bad=true}
@@ -364,7 +386,7 @@ const updText=()=>{
   const sv=s.sv?'safety mode, all open':f.nsrv?`${f.nsrv} of ${NV} open (${ctl.auto.srv?'A':'by hand'})`:'closed';
   const fwLoad=f.fw*(sat(d.T).hf-f.hfw);
   const rows=[['State',d.sub<0.05?(f.gen>0.5?'boiling':'saturated'):'water subcooled'],['Water heat-up rate',(Math.abs(rT)<0.5?'0':(rT>0?'+':'−')+Math.abs(rT).toFixed(0))+' °C/h',Math.abs(rT)>55],
-    ['Net heat to water',(f.Q/1e6).toFixed(0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
+    ['Reactor',s.scram?'scrammed':'at the net heat set'],['Net heat to water',(f.Q/1e6).toFixed(f.Q!==0&&Math.abs(f.Q)<1e8?1:0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
     ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,s.sv||f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
     ['Feedwater',`${f.fw.toFixed(0)} kg/s at ${(f.Tfw-273.15).toFixed(0)} °C`],['Heat to bring feed to saturation',(fwLoad/1e6).toFixed(0)+' MW'],
     ['Voids',d.Vb.toFixed(1)+' m³'],['Swell (level − collapsed)',(d.level-d.collapsed).toFixed(2)+' m'],['Collapsed level',d.collapsed.toFixed(2)+' m'],
@@ -484,7 +506,7 @@ const drawVessel=dtReal=>{
    const warn=Math.abs(rT)>55;cx.font='13px Geist,system-ui,sans-serif';
    if(warn){const tw=cx.measureText(t).width;cx.fillStyle=col.acc;cx.beginPath();cx.roundRect(tx-5,yw+25,tw+10,16,8);cx.fill()}
    lbl(t,tx,yw+37,warn?'#fff':'rgba(255,255,255,.85)')}
-  cx.textAlign='center';lbl(`${narrow?'':'Core '}${f.Q>=0?'+':'−'}${Math.abs(f.Q/1e6).toFixed(0)} MW`,(sx0+sx1)/2,(yc0+yc1)/2+5,'#fff',!narrow);
+  cx.textAlign='center';lbl(`${narrow?'':s.scram?'Decay ':'Core '}${f.Q>=0?'+':'−'}${Math.abs(f.Q/1e6).toFixed(0)} MW`,(sx0+sx1)/2,(yc0+yc1)/2+5,'#fff',!narrow);
   // steam line: SRV on the branch, main steam valve on the run
   const vopen=s.mv,wst=f.wst;
   valve(xv,ys,false,vopen,wst>0.5);

@@ -22,6 +22,12 @@ const WMS=2000,PR=7.0e6,PC=0.01e6,RATE=0.2;
 const NV=11,WV=113,PV=7.8e6,PB=0.1e6,PSV=8.5e6,PSVR=8.1e6;
 // feedwater pump limit, kg/s; net heat range is the page's business
 const FWMAX=2500;
+// Scram: the rods go in and core heat falls to the fission tail plus decay heat, a fraction of the
+// power at the scram P0 after t seconds. Fission (93.5 % of steady power): prompt drop as the rods
+// insert, then the delayed-neutron tail (a 10 s and an 80 s group). Decay heat 6.5 % at the scram,
+// falling as (1 + t)^−0.2 (Way–Wigner form, long operation at P0 assumed). Rough: about 7 % at 10 s,
+// 3.3 % at 1 min, 1.3 % at 1 h, 0.6 % at a day.
+const decayFrac=t=>{t=Math.max(0,t);return 0.935*(0.93*Math.exp(-t/2)+0.06*Math.exp(-t/10)+0.01*Math.exp(-t/80))+0.065*(1+t)**-0.2};
 // time constants (s), overridable per state as s.tau: subcooled water condenses steam (c); steam
 // bubbles rise out of the two-phase mixture (b). Round illustrative values, not fitted to plant data.
 const TAU=Object.freeze({c:10,b:0.7});
@@ -66,7 +72,7 @@ const derive=(s,e)=>{
 // o: {P Pa, L m two-phase level, Tl °C water temperature (default saturated), gen kg/s steaming the
 // voids start in equilibrium with, mv valve position 0–1, tau overrides}
 const init=o=>{
-  const s={t:0,mv:o.mv||0,sv:false,tau:{...TAU,...o.tau}};
+  const s={t:0,mv:o.mv||0,sv:false,scram:null,tau:{...TAU,...o.tau}};
   const T=Tsat(o.P);
   const q=sat(T),rg=q.rg,ug=q.ug,uf=q.uf,Tl=o.Tl!=null?Math.min(T,o.Tl+273.15):T;
   s.Mb=(o.gen||0)*s.tau.b;
@@ -78,6 +84,7 @@ const init=o=>{
 };
 // One step. u is the final command, SI: {heat W net heat into the water; fw kg/s feedwater, tfw K its
 // temperature; mv 0–1 main steam valve demand; srv SRVs open in relief mode (rounded)}.
+// After scram(s) the core heat is the decay curve and u.heat is ignored until reset(s).
 // Each command is clamped to its range; the valve moves toward its demand at RATE; the SRV safety mode
 // acts on top of the command.
 const step=(s,u,dt)=>{
@@ -85,7 +92,7 @@ const step=(s,u,dt)=>{
   const q=sat(d.T),hg=q.hg,ug=q.ug,uf=q.uf; // sat() reuses one object: copy fields first
   const a=clamp(u.mv||0,0,1);s.mv+=clamp(a-s.mv,-RATE*dt,RATE*dt);
   if(P>PSV)s.sv=true;else if(P<PSVR)s.sv=false;
-  const nsrv=s.sv?NV:Math.round(clamp(u.srv||0,0,NV)),fw=clamp(u.fw||0,0,FWMAX),Tfw=clamp(u.tfw||T0,T0,THI),Q=u.heat||0;
+  const nsrv=s.sv?NV:Math.round(clamp(u.srv||0,0,NV)),fw=clamp(u.fw||0,0,FWMAX),Tfw=clamp(u.tfw||T0,T0,THI),Q=s.scram?s.scram.P0*decayFrac(s.t-s.scram.t):u.heat||0;
   const wst=wMS(s.mv,P),wsrv=wSRV(nsrv,P),hfw=hLiq(Tfw,P);
   // flows at the start-of-step pressure: steam leaves at h″, feedwater joins the water, heat into the water
   const mo=Math.min((wst+wsrv)*dt,0.5*s.M);
@@ -102,6 +109,10 @@ const step=(s,u,dt)=>{
   s.d=derive(s,e);
   s.f={Q,fw,Tfw,hfw,hg,wst,wsrv,nsrv,gen,cond:mc/dt,mv:s.mv};
 };
+// scram from heat q (W; default the last applied net heat, taken as core power; none if not positive);
+// a second scram keeps the first; reset hands the heat back to the command
+const scram=(s,q=s.f.Q)=>{if(!s.scram)s.scram={t:s.t,P0:Math.max(0,q)}};
+const reset=s=>{s.scram=null};
 // why the model must stop, or '' while the state is valid
 const fault=s=>{
   const d=s.d;
@@ -111,5 +122,5 @@ const fault=s=>{
   if(d.P>21.5e6)return 'critical';
   return '';
 };
-const API=1;
-export {API,V,H,A,Z,WMS,PR,PC,RATE,NV,WV,PV,PB,PSV,PSVR,FWMAX,TAU,subF,wMS,wSRV,init,step,fault};
+const API=2;
+export {API,V,H,A,Z,WMS,PR,PC,RATE,NV,WV,PV,PB,PSV,PSVR,FWMAX,TAU,subF,wMS,wSRV,decayFrac,init,step,scram,reset,fault};
