@@ -37,8 +37,8 @@ nitrogen compression (see docs/physics.md). Follow-ups:
 
 ## BWR page (bwr.html)
 
-Roadmap order: the feedwater system (done), then a simple condenser to close the loop.
-The rest is roughly in order of value. See docs/bwr.md, "Not modelled", for what each one replaces.
+Roadmap order: docs/roadmap.md orders these items (and the rest of the plant layout) into shippable steps.
+The list below is kept for reference. See docs/bwr.md, "Not modelled", for what each one replaces.
 
 ### Steam–feedwater loop
 B1. **Feedwater system** (done, 0.1.6) — condenser hotwell as the suction source, feedwater pump,
