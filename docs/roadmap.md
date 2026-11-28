@@ -13,7 +13,8 @@ Ground rules carried over from the project: one of each component (no redundant 
 arrangements, control schemes and sourced numbers, with placeholders labelled as such; manual control
 primary, every new actuator gets M/A and a demand notch; emergency core cooling is out of scope for now.
 Priority from the owner: **turbine and MSR are low priority**, so the turbine island stays a lumped stub
-until late (step 15).
+until late (step 15). **Control rods and RWCU (steps 12, 13) are deprioritised** as well: until
+then reactivity is a single control (step 8) and cleanup stays inside net heat.
 
 The existing backlog items B1–B11 (docs/backlog.md) map onto the steps below; this file is the order.
 
@@ -32,15 +33,15 @@ The existing backlog items B1–B11 (docs/backlog.md) map onto the steps below; 
 | 9 | Recirculation loop and jet pump | 8 (useful without it) | one void time constant, no core flow | B5 |
 | 10 | Downcomer node and core inlet subcooling | 9 | one well-mixed water region | B7 |
 | 11 | Reactor protection: automatic scram and isolation | 4, 8 | scram on the button only | B6 |
-| 12 | Control rods and CRD hydraulics | 8, 11 | rods as an all-in/all-out scram | — |
-| 13 | Reactor water cleanup | 5, 10 | cleanup inside net heat | — |
+| 12 | Control rods and CRD hydraulics (low priority) | 8, 11 | rods as an all-in/all-out scram | — |
+| 13 | Reactor water cleanup (low priority) | 5, 10 | cleanup inside net heat | — |
 | 14 | Vessel heat capacity, real level geometry, suppression pool heat-up | — | steel heat capacity, level span, pool temperature | B8, B10, B11 |
 | 15 | Turbine, MSR, generator and grid (low priority) | 1, 4, 5 | the turbine stub | — |
-| 16 | Remaining auxiliaries: gland seal, main steam drains, off-gas train | 3, 15 | — | — |
+| 16 | Remaining auxiliaries: gland seal, main steam drains, off-gas train (low priority) | 3, 15 | — | — |
 | — | Emergency cooling (RCIC, HPCI, core spray, RHR, ADS, isolation condenser) | 11, 14 | deferred | B9 |
 
-Steps 1–7 close and complete the steam–feed loop. Steps 8–13 make the reactor respond like a reactor.
-Step 14 can slot in anywhere. Steps 15–16 finish the turbine island.
+Steps 1–7 close and complete the steam–feed loop. Steps 8–11 make the reactor respond like a reactor.
+Step 14 can slot in anywhere. Steps 12, 13, 15 and 16 are low priority and come last: control rods, cleanup, and the turbine island.
 
 ## Steam–feed loop
 
@@ -201,6 +202,18 @@ item 9) is natural here.
 
 **Open:** sourced BWR/4 trip setpoints (level instrument zero, L1–L8 in inches above instrument zero).
 
+### 14. Vessel and containment details (any time)
+- **Vessel and internals heat capacity** (B10): one steel node with UA to the water.
+- **Level by real geometry** (B11): instrument span and zero, swell from bulk flashing slower on
+  depressurisation.
+- **Suppression pool heat-up** (B8): pool mass and temperature from SRV discharge, a pool cooling
+  placeholder (RHR is deferred, so a fixed-UA cooler labelled as such), heat capacity temperature limit.
+
+## Low priority
+
+Kept in the plan with their numbers, done after the rest (Attila, 2026-11-28: turbine and MSR low
+priority; control rods and RWCU deprioritised too).
+
 ### 12. Control rods and CRD hydraulics
 **Models:** rod position as rod groups (a rod pattern, not 137 rods) withdrawn in notches by the
 operator, rod worth curve for reactivity; scram insertion from hydraulic accumulators over ~3 s; CRD
@@ -219,14 +232,6 @@ lower level during heatup (water expands; today only the feed valve can manage l
 modelled), regen exchanger effectiveness; reject flow a manual valve. Replaces the cleanup part of the
 net-heat input.
 
-### 14. Vessel and containment details (any time)
-- **Vessel and internals heat capacity** (B10): one steel node with UA to the water.
-- **Level by real geometry** (B11): instrument span and zero, swell from bulk flashing slower on
-  depressurisation.
-- **Suppression pool heat-up** (B8): pool mass and temperature from SRV discharge, a pool cooling
-  placeholder (RHR is deferred, so a fixed-UA cooler labelled as such), heat capacity temperature limit.
-
-## Turbine island (low priority)
 
 ### 15. Turbine, MSR, generator and grid
 **Models:** HP turbine, MSR (moisture removal and reheat), LP turbine, generator on one shaft; grid
@@ -259,6 +264,7 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 
 - Generic BWR/4-class plant, not one named plant.
 - Turbine stub until step 15 is fine.
+- Control rods/CRD (12) and RWCU (13) deprioritised, done with the turbine island.
 - Circulating water is an in/out pipe for now.
 - Bypass about 25 % of rated steam, as is typical.
 - Startup includes pulling condenser vacuum.
