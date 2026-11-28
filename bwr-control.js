@@ -5,9 +5,10 @@
 // Settings c are in panel units: rod % control rod lever withdrawn (manual only: BWRs have no automatic
 // rod control); heat MW (optional fixed core heat, a test hook; leave it out for the kinetics); n % feed pump speed; fv % feed valve; ext % heater
 // extraction; mk kg/s hotwell makeup (negative: reject); mv % main steam valve; srv array, true for each
-// SRV opened by hand; pset Pa; lset m; dpset Pa; auto {n,fv,mv,mk} booleans. Net heat, heater extraction
+// SRV opened by hand; pset Pa; lset m; dpset Pa; rp recirculation pump breaker (true closed; a plain
+// switch, no M/A); mg % MG set speed; wset % rated core flow setpoint; auto {n,fv,mv,mk,mg} booleans. The rods, heater extraction
 // and the SRVs are always manual (the SRV springs are in the plant). The command is SI:
-// {rod 0–1, heat W (undefined unless c.heat is set), n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array}.
+// {rod 0–1, heat W (undefined unless c.heat is set), rp, mg 0–1 (undefined unless c.mg is set), n 0–1, fv 0–1, ext 0–1, mk kg/s, mv 0–1, srv array}.
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -30,12 +31,17 @@ const HSET=0.5,KH=1000,TIH=300;
 // turbine-driven feed pumps do, so the feed valve keeps a steady pressure drop to work with at any vessel
 // pressure. PI, 0.1 MPa of error moves the speed 0.15 %, integral time 10 s.
 const KN=1.5e-8,TIN=10;
+// core flow (recirculation MG set speed): PI on the core flow against the setpoint wset (% of the rated
+// WCR, which must match bwr-core.js): 10 % of rated flow low raises the speed demand 3 %, integral time
+// 5 s; anti-windup at 0 and 1. The MG set's speed limiter (2 %/s, minimum 20 %) is in the plant, so a
+// big setpoint change ramps.
+const WCR=12900,KW=2.3e-5,TIW=5;
 // controller memory: iP, iF, iX, iH integrators (steam valve fraction, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{mv:0,fw:0,fv:0,mk:0,n:0}});
+const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,iW:c&&c.mg!=null?c.mg/100:1,dem:{mv:0,fw:0,fv:0,mk:0,n:0,mg:1}});
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -72,14 +78,21 @@ const demands=(k,s,c,dt)=>{
   if(!A.n)k.iN=c.n/100;
   else{const I=k.iN+KN/TIN*eN*dt,v=KN*eN+I;if(!((v>1&&eN>0)||(v<0&&eN<0)))k.iN=I}
   k.iN=clamp(k.iN,0,1);const n=clamp(KN*eN+k.iN,0,1);
-  k.dem={mv,fw,fv,mk,n};
+  // core flow on the MG set speed (only when the page gives a flow setpoint)
+  let mg=k.dem.mg;
+  if(c.wset!=null){const eW=c.wset/100*WCR-(f.Wc||0);
+    if(!A.mg)k.iW=c.mg/100;
+    else{const I=k.iW+KW/TIW*eW*dt,v=KW*eW+I;if(!((v>1&&eW>0)||(v<0&&eW<0)))k.iW=I}
+    k.iW=clamp(k.iW,0,1);mg=clamp(KW*eW+k.iW,0,1)}
+  k.dem={mv,fw,fv,mk,n,mg};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
-  return {heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[]};
+  return {heat:c.heat!=null?c.heat*1e6:undefined,rod:c.rod!=null?c.rod/100:undefined,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[],
+    rp:c.rp,mg:c.mg!=null?(A.mg?D.mg:c.mg/100):undefined};
 };
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,KP,TIP,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN};
+export {init,demands,command,update,WCR,KW,TIW,KP,TIP,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN};

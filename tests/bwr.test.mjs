@@ -106,7 +106,7 @@ test('feed pump speed in A holds the discharge-to-dome differential pressure, at
     near(MPa(s.d.P), 1.0, 0.02, `depressurised dt=${dt}`);
     near((s.f.Pd - s.d.P) / 1e6, 2.2, 0.02, `ΔP held dt=${dt}`);
     assert.ok(s.n < 0.6, `the pump slowed with the vessel pressure: ${s.n} dt=${dt}`);
-    near(s.d.level, 14.3, 0.15, `level held dt=${dt}`);
+    near(s.d.level, 14.3, 0.4, `level held dt=${dt}`); // was ±0.15: at 1 MPa the core voids swing with the feed's subcooling (steps 9–10)
   }
   // the speed moves at most NRATE per second
   const s = rated(); B.step(s, { ...RATED_U, n: 0 }, 1);
@@ -132,9 +132,14 @@ test('mass and energy are conserved: closed vessel, then with feed and steam', (
 });
 
 test('closing the steam valve at rated heat: voids collapse (shrink), pressure rises, SRVs lift', () => {
-  const s = rated(), L0 = s.d.level;let Lmin = L0, Pmax = 0, srv = 0;
-  runPlant(s, { ...RATED_U, mv: 0 }, 6, 0.25, x => { Lmin = Math.min(Lmin, x.d.level); return true; });
-  assert.ok(Lmin < L0 - 0.4, `level shrinks: min ${Lmin} from ${L0}`);
+  // the core voids collapse as the pressure rises (the downcomer water entering the core is further
+  // below the new saturation temperature). Before steps 9–10 all the voids came from the vessel's net
+  // steaming and the level fell > 0.4 m; now the core boiling continues at lower void, the swell shrinks
+  // about 0.1 m while the feed still comes in
+  const s = rated(), V0 = s.d.Vb, S0 = s.d.level - s.d.collapsed;let Smin = S0, Vmin = V0, Pmax = 0, srv = 0;
+  runPlant(s, { ...RATED_U, mv: 0 }, 6, 0.25, x => { Smin = Math.min(Smin, x.d.level - x.d.collapsed); Vmin = Math.min(Vmin, x.d.Vb); return true; });
+  assert.ok(Smin < S0 - 0.08, `swell shrinks: min ${Smin} from ${S0}`);
+  assert.ok(Vmin < V0 - 2, `void volume falls: min ${Vmin} from ${V0} m³`);
   assert.ok(s.d.P > 7.4e6, `pressure rises: ${MPa(s.d.P)}`);
   // same at 300 MW: the springs lift the lowest bank, which holds pressure just above its set point
   const s2 = rated(), k = K.init(), c = { ...RATED_C(), heat: 300, auto: { fv: true, mv: false, mk: true }, mv: 0 };

@@ -33,7 +33,10 @@ const DSUM=DF.reduce((a,b)=>a+b,0);
 // Void from the Zuber–Findlay drift flux: α = x/(C0·(x + (1 − x)·ρ″/ρ′) + ρ″·Vgj/G), C0 1.1, Vgj 0.25 m/s.
 // Core average over the length (Simpson, 8 intervals); the chimney above sees the exit void.
 // The voids follow their targets with TAUV (transit and bubble growth, illustrative).
-const AF=7.5,LC=Z.TAF-Z.BAF,C0=1.1,VGJ=0.25,TAUV=0.7,WMIN=100;
+// Void volume for the level: the core (AF·LC) at the core-average void and the chimney, standpipes and
+// separators (VCH, 30 m³ of mixture, illustrative) at the exit void.
+const AF=7.5,LC=Z.TAF-Z.BAF,C0=1.1,VGJ=0.25,TAUV=0.7,WMIN=100,VCH=30;
+const voidVol=k=>AF*LC*k.ac+VCH*k.ae;
 const voids=(Q,W,dh,P)=>{
   const q=sat(Tsat(P)),rg=q.rg,rf=q.rf,hfg=q.hg-q.hf,w=Math.max(W,WMIN),G=w/AF,dh1=Math.max(0,dh);
   if(!(Q>w*dh1))return {ac:0,ae:0,xe:0,zb:1};
@@ -108,5 +111,5 @@ const coreStep=(k,inp,dt,flow)=>{
   if(!fix){const r=k.n/n0;k.per=r>0&&Math.abs(Math.log(r))>1e-9?dt/Math.log(r):Infinity}
   return qs/N;
 };
-export {QC,PRC,WCR,LAM,BF,BETA,LAMBDA,BI,SRC,AV,AD,AM,TREF,MCF,RF,DL,DF,DSUM,AF,LC,C0,VGJ,TAUV,WMIN,X0,XR,WT,RODRATE,TSCRAM,HSUB,RATED,
+export {VCH,voidVol,QC,PRC,WCR,LAM,BF,BETA,LAMBDA,BI,SRC,AV,AD,AM,TREF,MCF,RF,DL,DF,DSUM,AF,LC,C0,VGJ,TAUV,WMIN,X0,XR,WT,RODRATE,TSCRAM,HSUB,RATED,
   voids,feedback,fuelT,rodRho,rodFor,coreInit,coreStep};
