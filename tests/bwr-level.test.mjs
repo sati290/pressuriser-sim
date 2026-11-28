@@ -27,7 +27,7 @@ const lowP = (dt, startup) => {
   run(s, k, c, 300, dt); c.heat = 200; run(s, k, c, 300, dt);
   if (startup) { c.auto.sfv = true; c.auto.fv = false; c.fv = s.fv * 100; while (c.fv > 0) { c.fv = Math.max(0, c.fv - 1); run(s, k, c, 10, dt); } }
   for (let p = 6.9; p >= 0.999; p -= 0.1) { c.pset = p * 1e6; run(s, k, c, 60, dt); }
-  run(s, k, c, 1200, dt);
+  run(s, k, c, 2400, dt); // the bypass is wide open (its capacity falls with pressure) until about 1 MPa
   let lo = Infinity, hi = -Infinity, flo = Infinity, fhi = 0;
   run(s, k, c, 1200, dt, x => { lo = Math.min(lo, x.d.level); hi = Math.max(hi, x.d.level); flo = Math.min(flo, x.f.fw); fhi = Math.max(fhi, x.f.fw); return true; });
   return { s, lo, hi, flo, fhi };

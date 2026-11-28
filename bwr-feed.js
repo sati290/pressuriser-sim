@@ -1,9 +1,10 @@
 // BWR condensate and feedwater train: hotwell, condensate pump, polisher, LP heater, feed pump with its
 // minimum-flow line, HP heater, feed valve. Pure functions, no DOM. An ES module; imports common.js,
-// bwr-steam.js, bwr-condenser.js. See docs/bwr.md, "Condensate and feed train".
+// bwr-steam.js, bwr-condenser.js, bwr-turbine.js. See docs/bwr.md, "Condensate and feed train".
 import {sat,Tsat,clamp,hLiq,inv} from './common.js';
 import {PR,WR,TFR,PL0} from './bwr-steam.js';
-import {expansion,condSteady,WSJ,PATM} from './bwr-condenser.js';
+import {condSteady,WSJ,PATM} from './bwr-condenser.js';
+import {turbineLine,calib,stagePs,work,P1R,PXR,PLIR,ETAG,PW0F} from './bwr-turbine.js';
 // Condenser hotwell → condensate pump → polisher → LP heater → feed pump → HP heater → feed valve →
 // check valve → sparger; a minimum-flow line from the feed pump discharge back to the condenser.
 // Hotwell: the water at the bottom of the condenser, capacity HWM kg, normal half full, its own mass and
@@ -119,15 +120,16 @@ const fwValve=(w,n,P,pc=PCD)=>{if(!(w>0))return 0;const wl=Math.max(0,w-WDD);
   return D>0?Math.sqrt(1/(KV*Math.sqrt(D/(w*w)))):null};
 // ---- feedwater heaters ----
 // Two stages, LP (before the feed pump) and HP (after it), each a shell where steam extracted from the
-// turbine stub condenses on the feed tubes. The turbine's stage pressures are in proportion to its steam
-// flow wt, so each extraction point is at pe = PE·wt/WTR, WTR = WR − WSJ the rated turbine flow (the air
-// ejector's motive steam is tapped off the header ahead of the turbine) (HP PE 2.40 MPa; LP PEL 0.28 MPa, a typical
-// low-pressure extraction, giving 126 °C out of the LP heater). Each extraction line has a valve
+// turbine condenses on the feed tubes. The extraction pressures are the turbine's stage pressures
+// (bwr-turbine.js, Stodola's cone law), which fall with the turbine flow and rise with the condenser
+// pressure; WTR = WR − WSJ is the rated turbine flow (the air ejector's motive steam is tapped off the
+// header ahead of the turbine). Rated: HP PE 2.40 MPa, from the HP turbine; LP PEL 0.28 MPa, a typical
+// low-pressure extraction from the LP turbine, giving 126 °C out of the LP heater. Each extraction line has a valve
 // (opening e) with flow KX·e·√(pe² − ps²) (compressible flow through a restriction, not choked), which
 // sets the shell pressure ps. The feed leaves TTD (3 K) below the shell saturation temperature, and
 // the shell condenses what it takes to heat the feed: ws = fw·(h_out − h_in)/(hx − h′(ps)), hx the
-// extraction steam enthalpy on the turbine stub's expansion line, which starts at the main steam header
-// (rated PL0). Design point of each: rated turbine flow WTR and feed flow WR, 5 % pressure drop across the
+// extraction steam enthalpy on the turbine's expansion line (turbineLine), which starts at the first
+// stage with the header steam's enthalpy. Design point of each: rated turbine flow WTR and feed flow WR, 5 % pressure drop across the
 // open valve. Drains (step 6): each shell holds its condensate
 // (HP shell VHS 30 m³, LP shell with its drain tank VLS 60 m³, illustrative), saturated at the shell
 // pressure. HP drains cascade through the drain valve (linear conductance KDVH·x on √(psH − psL)) to the
@@ -139,13 +141,13 @@ const fwValve=(w,n,P,pc=PCD)=>{if(!(w>0))return 0;const wl=Math.max(0,w-WDD);
 // 1.4 × the rated drains of that shell. Real extraction lines have only isolation and non-return valves;
 // the throttling valves here stand for losing or isolating a stage.
 const TTD=3,PSR=sat(TFR+TTD).p,PE=PSR/0.95,PEL=0.28e6,PSL=0.95*PEL,TLPD=Tsat(PSL)-TTD;
-const WTR=WR-WSJ,HG0=sat(Tsat(PR)).hg,LINE0=expansion(PL0,HG0),HX0=LINE0(PE),HXL0=LINE0(PEL);
+const WTR=WR-WSJ,HG0=sat(Tsat(PR)).hg,LINE0=turbineLine({p1:P1R,peH:PE,pX:PXR,pLi:PLIR,peL:PEL},HG0),HX0=LINE0(PE),HXL0=LINE0(PEL);
 const VHS=30,VLS=60,LFL=0.6,LDU=0.8,XD0=0.5;
 // feedwater liquid temperature from its enthalpy at PR (the heaters work in hLiq(T, PR))
 const ThP=inv(T=>hLiq(T,PR));
 // mixing at the feed pump suction: condensate wl at Tl and drains wd at hd (J/kg, saturated liquid)
 const mixT=(wl,Tl,wd,hd)=>{const w=wl+wd;return w>1e-9&&wd>0?ThP((wl*hLiq(Tl,PR)+wd*hLiq(Thf(hd),PR))/w):Tl};
-// design: hotwell temperature (the condenser at rated, receiving only the stub's exhaust: the drains are
+// design: hotwell temperature (the condenser at rated, receiving only the turbine exhaust: the drains are
 // pumped forward), both extraction flows, the drains, the mixed HP heater inlet THPI, the valve and pump
 // constants. They depend on one another, so iterate.
 const design=()=>{let Th=311,KXT=0,KXL=0,Pc=6.6e3,Tm=TLPD,ws=0,wsl=0;
@@ -165,11 +167,19 @@ const design=()=>{let Th=311,KXT=0,KXL=0,Pc=6.6e3,Tm=TLPD,ws=0,wsl=0;
   const KDVH=ws/(XD0*Math.sqrt(PSR-PSL)),KDDH=1.4*ws/Math.sqrt(PSR-Pc),KDDL=1.4*wd/Math.sqrt(PSL-Pc);
   return {THW:Th,KXT,KXL,PCD:Pc,THPI:Tm,KFP,KDPP,KDVL,KDVH,KDDH,KDDL,WSD:ws,WSLD:wsl,WDD:wd}};
 const {THW,KXT,KXL,PCD,THPI,KFP,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD}=design();
+// the turbine's Stodola constants from this rated point, and its rated gross electrical output PGR
+// (generator efficiency on the shaft work less the windage, which is PW0F of PGR at rated speed)
+const TK=calib({wt:WTR,wsH:WSD,wsL:WSLD,pc:PCD,peH:PE,peL:PEL});
+const PGR=(()=>{const w=work(WTR,HG0,LINE0,WSD,WSLD,LINE0(PCD));return ETAG*(w.hp+w.lp)/(1+ETAG*PW0F)})();
+// the expansion line at turbine flow wst against the condenser pressure pc, the extractions taken in their
+// rated proportion to the flow (the default line of the heater functions below)
+const lineAt=(wst,pc=PCD,h0=HG0,Pl=PL0)=>{const w=Math.max(0,wst);return turbineLine(stagePs(TK,w,w/WTR*WSD,w/WTR*WSLD,pc,Pl),h0)};
 // the drain pump as fwFlow/fwValve assume it: running, valve at its design opening, passing about WDD at rated
 const DPD=Object.freeze({on:true,x:XD0,Pin:PSL+RHW*G*ZDT,f:1});
-const HP=Object.freeze({PE,KX:KXT}),LP=Object.freeze({PE:PEL,KX:KXL});
-// one stage H {PE, KX} at turbine flow wst, extraction valve e, feed flow fw entering at Tin,
-// extraction steam enthalpy line(p), drains cascaded in ins [[w kg/s, h J/kg], …] (they flash in the
+const HP=Object.freeze({k:'peH',KX:KXT}),LP=Object.freeze({k:'peL',KX:KXL});
+// one stage H {k, KX} at turbine flow wst, extraction valve e, feed flow fw entering at Tin,
+// extraction steam enthalpy line(p) with the stage pressures line.ps (its extraction pressure pe =
+// line.ps[H.k]; default: lineAt(wst)), drains cascaded in ins [[w kg/s, h J/kg], …] (they flash in the
 // shell and give it their heat), heated fraction a of the tubes (1: none flooded):
 // {T outlet target K, pe extraction pressure, ps shell pressure, ws extraction steam kg/s, hx, hd drain
 // enthalpy, wv vent steam kg/s}. The outlet is Tin + a·(T_sat(ps) − TTD − Tin). Bisection on the shell
@@ -177,8 +187,9 @@ const HP=Object.freeze({PE,KX:KXT}),LP=Object.freeze({PE:PEL,KX:KXL});
 // steam the shell sits at most at the extraction pressure (non-return valve); if the cascaded drains then
 // flash more steam than the feed condenses (little feed flow), the excess leaves through the shell's vent
 // to the condenser (wv, saturated steam). Without extraction the drains alone set the shell temperature.
-const stage=(H,wst,e,fw,Tin,line=LINE0,ins=[],a=1)=>{
-  const pe=H.PE*Math.max(0,wst)/WTR,e1=clamp(e,0,1),Tlo=Tin+TTD,ext=e1>0&&pe>sat(Tlo).p;
+const stage=(H,wst,e,fw,Tin,line,ins=[],a=1)=>{
+  if(!line||!line.ps)line=lineAt(wst);
+  const pe=line.ps[H.k],e1=clamp(e,0,1),Tlo=Tin+TTD,ext=e1>0&&pe>sat(Tlo).p;
   let Thi=Tlo;if(ext)Thi=Tsat(pe);else for(const[w,h]of ins)if(w>1e-9)Thi=Math.max(Thi,Thf(h));
   if(!(Thi>Tlo))return {T:Tin,pe,ps:0,ws:0,hx:0,hd:0,wv:0};
   const hin=hLiq(Tin,PR),hx=ext?line(pe):0,a1=clamp(a,0,1),To=m=>Tin+a1*(m-TTD-Tin);
@@ -191,11 +202,11 @@ const stage=(H,wst,e,fw,Tin,line=LINE0,ins=[],a=1)=>{
 };
 // HP heater (default inlet: its rated design inlet, LP outlet mixed with the drains) and LP heater
 // (default inlet: the hotwell)
-const heater=(wst,e,fw,Tin=THPI,line=LINE0,ins,a)=>stage(HP,wst,e,fw,Tin,line,ins,a);
-const heaterL=(wst,e,fw,Tin=THW,line=LINE0,ins,a)=>stage(LP,wst,e,fw,Tin,line,ins,a);
+const heater=(wst,e,fw,Tin=THPI,line,ins,a)=>stage(HP,wst,e,fw,Tin,line,ins,a);
+const heaterL=(wst,e,fw,Tin=THW,line,ins,a)=>stage(LP,wst,e,fw,Tin,line,ins,a);
 // both stages in steady state for feed flow fw: HP drains cascaded to the LP shell, all drains pumped
 // forward after the LP heater, so the LP heater carries fw − drains: {T HP outlet, lp, hp, Tm HP inlet, wd}
-const train=(wst,eL,eH,fw,Tin=THW,line=LINE0)=>{let hp={ws:0,hd:0},lp=null,wd=0,Tm=Tin;
+const train=(wst,eL,eH,fw,Tin=THW,line=lineAt(wst))=>{let hp={ws:0,hd:0},lp=null,wd=0,Tm=Tin;
   for(let i=0;i<8;i++){lp=heaterL(wst,eL,Math.max(0,fw-wd),Tin,line,hp.ws>0?[[hp.ws,hp.hd]]:[]);
     const w2=Math.min(fw,hp.ws+lp.ws);Tm=mixT(fw-w2,lp.T,w2,lp.hd||hp.hd);hp=heater(wst,eH,fw,Tm,line);wd=w2}
   return {T:hp.T,lp,hp,Tm,wd}};
@@ -216,7 +227,7 @@ const hotwellMix=(hw,ins,dt)=>{const h0=sat(hw.T).hf;let M=hw.M,U=M*h0;
   for(const[w,h]of ins){const dm=w*dt;M+=dm;U+=dm*(w>=0?h:h0)}
   return M>1?{M,T:Thf(U/M)}:{M:Math.max(0,M),T:hw.T}};
 export {WTR,CSTM,HCST,ZMU,CRATE,KMU,KRJ,cstH,muFlow,rjBack,
-  H0,KPU,KLN,KV,RSU,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,
+  H0,KPU,KLN,KV,RSU,FRATE,NRATE,HWM,MKMAX,TMK,THW,PCD,TTD,PE,PEL,KXT,KXL,HX0,LINE0,TLPD,Thf,TK,PGR,HG0,lineAt,
   HC0,HF0,KCP,KPOL,KLP,KFP,ZS,HWD,NPR,PLO,TLO,WMIN,KR,RRATE,suction,cpFlow,network,shutoff,
   THPI,HDP0,ZDT,KDPP,KDVL,KDVH,KDDH,KDDL,WSD,WSLD,WDD,DPD,VHS,VLS,LFL,LDU,XD0,RHS,RLS,MHS,MLS,mixT,dpFlow,tubes,dumpX,
   fwFlow,fwValve,stage,heater,heaterL,train,heaterT,heatBalance,hotwellMix};
