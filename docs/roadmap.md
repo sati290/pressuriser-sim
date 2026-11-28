@@ -53,7 +53,7 @@ Step 12 can slot in anywhere. Steps 13–16 are low priority and come last: cont
 
 ## Steam–feed loop
 
-### 1. Condenser with a turbine stub
+### 1. Condenser with a turbine stub (done)
 **Models:** the condenser shell as a steam space over the hotwell. Main steam (later also the bypass and
 main steam drains) enters, condenses on the tube bundle, and the condensate falls into the hotwell
 at the shell saturation temperature, so condenser pressure and hotwell temperature follow the load
@@ -78,7 +78,7 @@ cooling raises Pc; vacuum degrades with load. Hotwell level and temperature now 
 **Open:** source for a generic BWR/4-class condenser UA, circulating flow (~30–50 m³/s) and design back pressure;
 whether to model hotwell subcooling or keep saturated condensate.
 
-### 2. Circulating water
+### 2. Circulating water — done
 **Models:** the circulating water as an in/out pipe through the condenser (decided: no river, cooling
 tower or pump model for now), with a circulating water valve (or pump on/off) and the inlet temperature as
 operator inputs, so loss of
@@ -89,7 +89,12 @@ temperature an input; condenser outlet temperature from the step 1 heat balance.
 enough to ship together with step 1. A pump curve and a heat sink (river or cooling tower) can come later
 if scenarios need them.
 
-### 3. Condenser air removal
+**Done:** pump on/off against a fixed head (flat, no curve) and system resistance, butterfly valve
+w = √(H/(Ksys + Kv/x²)) sized for 38 t/s open, 12 s flow lag, inlet temperature an operator slider 0–35 °C.
+The valve has no M/A: there is no controller for it (a CW valve is set open and left), so it is manual
+like the pump. No tube transit delay.
+
+### 3. Condenser air removal — done
 **Models:** air in-leakage into the shell, removed by the steam jet air ejector (motive steam from the
 main steam header) at power and by the mechanical vacuum pump at startup; off-gas as a sink.
 Makes "pulling vacuum" a startup step and air binding a failure mode.
@@ -104,7 +109,15 @@ blanketing factor). A condenser open to atmosphere starts at 0.1 MPa full of air
 pressure full of air, the mechanical vacuum pump draws it down, then the SJAE takes over once main steam is
 available.
 
-### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass
+**Done:** air mass state, Dalton with the steam; 0.009 kg/s leakage plus 0.02 kg/s radiolytic at rated
+(both illustrative); SJAE as an effective 10 m³/s of shell gas (giving 260 Pa of air at rated), motive
+steam 2.5 kg/s; vacuum pump 2.2 m³/s fading to 0 at 7 kPa (19 kPa after 1 h); blanketing
+UA0/(1 + (ya/0.1)²) with UA0 recalibrated so the rated shell temperature is unchanged (Pc 7.05 → 7.32 kPa,
+the air adds its partial pressure); vacuum breaker (manual). The SJAE motive steam is tapped off the steam header between the MSIVs and the turbine valves
+(header pressure `s.Pl`), taken out of the line flow ahead of the turbine, then the bypass. No low-vacuum trip
+(step 11) and no bypass vacuum interlock (step 4/11).
+
+### 4. Main steam valves: MSIVs, turbine stop and control valves, bypass (done)
 **Models:** the one `mv` becomes four valves in series and parallel, as drawn: inboard and outboard
 MSIV (open/shut, ~3–5 s closure), turbine stop valve (open/shut, fast), turbine control valve
 (throttling, to the turbine stub and on to the condenser), bypass valve (throttling, straight to the
@@ -123,7 +136,15 @@ lift for the rest; MSIV closure isolates the condenser.
 **Decided:** bypass capacity about 25 % of rated steam (typical BWR/4; full-capacity bypass is the exception),
 so a turbine trip from full power still lifts SRVs.
 
-### 5. Condensate and feed train split
+**Done:** header pressure algebraic (no steam-line volume: a node would have τ ≈ 0.2 s, too fast for the
+page's 2 s step). Guesses, labelled illustrative: 0.3 MPa dome-to-throttle drop at rated, MSIVs 15 % of it each
+with flow area ∝ position, valves wide open 105 % of rated, control valve characteristic 1 − (1 − x)^1.5 (86 % open
+at rated), stroke times except the MSIV closure (stop valve 0.2 s shut / 5 s open, control valve 5 s, bypass
+0.5 s). The bypass follows D minus the turbine flow reference (control valve demand × stop valve position)
+rather than the measured turbine flow, which made the valves chase each other at dt 2 s. The regulator still
+senses dome pressure. Protection hook for step 11: `u.trip = {turbine, msiv}`.
+
+### 5. Condensate and feed train split (done)
 **Models:** the lumped pump and single heater split into what the layout draws: condensate pump
 (hotwell suction, NPSH from hotwell level and Pc), condensate polisher (pressure drop), LP heater
 (extraction from the turbine stub's LP end), feed pump (suction from the condensate header), HP heater
@@ -139,7 +160,16 @@ feed pump; the drive steam itself is not modelled yet).
 **Open:** keep one feed pump driven at variable speed (BWR/4 turbine-driven) or motor-driven with a
 startup low-flow valve? Booster pump as part of the condensate pump?
 
-### 6. Heater drains
+**Done (decided in the step):** one turbine-driven variable-speed feed pump, as BWR/4 (drive steam not
+modelled), with a run/stop switch; no startup low-flow valve (the feed valve throttles to zero and the
+condensate pump alone feeds through the idle feed pump at low vessel pressure). The booster pump is part
+of the condensate pump (one constant-speed pump, 2.6 MPa shutoff). The train is solved for three node
+pressures (`network()`, nested bisection), not one flow, because the min-flow line branches off.
+Illustrative, not sourced: pump curves (split so the rated point of step 1 is unchanged), NPSH required
+(2 m at rated) and the 1 m pump pit, the 0.7 MPa/5 s low-suction trip, polisher and LP heater drops, the
+0.28 MPa LP extraction. Gross output of the stub with two stages: 1046 MWe (920 with one).
+
+### 6. Heater drains (done)
 **Models:** each heater's shell level and its drain path: HP heater drains cascade to the LP heater, LP
 drains are pumped forward into the condensate line. Heater level control; high shell level as a
 failure (tube leak, drain valve stuck).
@@ -151,16 +181,29 @@ to lower pressure (energy carried at h_f). Replaces "drains go to the hotwell in
 line downstream of the LP heater (drain tank and drain pump), as is common on BWRs; it raises the feed
 temperature slightly and keeps the heat out of the condenser.
 
-### 7. Condensate storage tank
+**Done:** HP shell 30 m³, LP shell with its drain tank 60 m³ as one inventory (one level, labelled), each
+saturated at its shell pressure; HP drain valve and drain pump discharge valve on PI level control with
+M/A; drain pump start/stop; tube flooding above 60 % (heating ∝ uncovered tubes), high-level dump to the
+condenser from 80 %; LP shell vent for flash steam its tubes can't condense; event "HP drain valve fails
+shut" (`fail(s, 'hdv')`). All illustrative. With the drains forward the LP extraction falls to 163 kg/s,
+the condenser duty to 2158 MW and the stub output rises to 1130 MWe. The feed pump constant was re-chosen so
+the rated feed valve stays 74.5 % open.
+
+### 7. Condensate storage tank (done)
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the
 suction source for RCIC/HPCI and CRD.
 
 **Approach:** one mass and temperature state; makeup and reject become valves (position, flow from the
 head between tank and condenser vacuum) in place of today's ±100 kg/s flow input. Trivial on its own; good to ship with or right after step 5.
 
+**Done:** 1900 t tank, 12 m tall, one mass and temperature, starting 70 % full at 30 °C; makeup valve to the
+condenser driven by the tank head and the vacuum, reject valve from the condensate pump discharge (a branch of
+the train solve); split-range PI on the hotwell level with M/A on each valve; an empty tank gives no makeup;
+overfilling is a fault. Whole-plant water mass test. Sizes illustrative. Not yet a suction for RCIC/HPCI/CRD.
+
 ## Reactor
 
-### 8. Point kinetics with reactivity feedback
+### 8. Point kinetics with reactivity feedback (done)
 **Models:** core power from neutron kinetics instead of a net-heat slider: the pressurisation power
 spike on a valve closure, power rising with colder feedwater, power falling with void.
 
@@ -176,7 +219,15 @@ an assumed core flow. The net-heat slider becomes the rod/reactivity control (st
 BWR/4 core; whether to model the void spatially at all (one node is crude: void feedback depends
 strongly on where the voids are).
 
-### 9. Recirculation loop and jet pump
+**Done** (bwr-core.js; numbers in docs/bwr.md, "Core"): six groups, prompt-jump with implicit precursors,
+β 0.0056; void −1×10⁻³/%, Doppler −2×10⁻⁵/K, moderator −2×10⁻⁵/K on the inlet temperature, generic BOC
+values, labelled illustrative (no plant source found offline). Core void from the core thermal-hydraulics
+(one channel, flat axial power, drift flux), not from Mb. Seven decay-heat groups fitted to the old
+(1 + t)^−0.2 shape. One rod lever, S-shaped worth, critical at 60 % HZP and 80 % at rated; manual only.
+Decided: void spatially as boiling boundary + linear quality, one node; the flat power shape makes the
+feedwater-temperature response about twice a real core's (labelled). `u.heat` stays as a fixed-heat test hook.
+
+### 9. Recirculation loop and jet pump (done)
 **Models:** one recirculation pump driving one jet pump (standing for all), core flow as a state; power
 following flow along a rod line through the void feedback of step 8 (flow control of power). Void
 clearance and carry-under depend on flow instead of one time constant.
@@ -190,7 +241,14 @@ with a speed limiter; recirculation pump trip as a transient.
 speed follows the flow controller through a speed limiter. One loop drawn; scale its flow to stand for two
 loops and 20 jet pumps.
 
-### 10. Downcomer node and core inlet subcooling
+**Done** (bwr-recirc.js): drive and core momentum equations with a mixing-section jet pump model, natural
+circulation head, homogeneous two-phase multiplier; loss coefficients set from the rated point (4300 kg/s,
+1.6 MPa, M = 2, 12,900 kg/s); MG set speed limiter 2 %/s, minimum 20 %, coastdown 5 s; core flow
+controller (PI on the MG set speed) with M/A, breaker as a plain switch. Mb now comes from the core and
+chimney voids (plus flash voids beyond core boiling with τb). Committed together with step 10: the void
+model needs the downcomer for a sensible pressurisation collapse.
+
+### 10. Downcomer node and core inlet subcooling (done)
 **Models:** a separate downcomer region where feedwater mixes with the separator return, so core inlet
 subcooling responds to feed temperature with a transport delay, and the jet pump suction sees
 downcomer water.
@@ -199,7 +257,19 @@ downcomer water.
 (two-phase), linked by the recirculation flow from step 9; the dome and separators stay as today. Level
 measured in the downcomer (which is where the instrument taps are).
 
-### 11. Reactor protection: automatic scram and isolation
+**Done** (bwr-vessel.js, bwr-sim.js): the downcomer is a fixed 100 m³ (illustrative) with its own specific
+internal energy u_dc inside the existing M, U totals; the solve flashes only the core region (u_dc held, so a
+pressure rise subcools it); mixing time ~6 s at rated flow stands for the transport delay. Level is the
+single free surface, read as the downcomer level. Mass and energy stay exact.
+
+### 11. Reactor protection: automatic scram and isolation (done)
+**Done:** bwr-rps.js inside the plant step: the trips listed in docs/bwr.md ("Reactor protection") with
+typical BWR/4 setpoints, a mode switch (Shutdown, Startup, Run) with its bypasses, latched trips with an event
+log and annunciator tiles on the page, reset only once the signal has cleared, the bypass valve interlock on
+low vacuum, and the scram level setpoint setdown in the feedwater controller. High drywell pressure waits for
+a drywell model; one logic channel (no voting). A pumped cleanup reject (placeholder for step 14) takes the
+startup swell to the condenser.
+
 **Models:** RPS trips (high pressure, low level L3, high flux, MSIV closure position switch, turbine
 stop valve closure, low condenser vacuum, high drywell pressure later) and the isolation logic (low-low
 level L2 and low steam line pressure close the MSIVs; L8 trips the turbine and feed pump). Scram stays
@@ -212,6 +282,7 @@ item 9) is natural here.
 **Open:** sourced BWR/4 trip setpoints (level instrument zero, L1–L8 in inches above instrument zero).
 
 ### 12. Vessel and containment details (any time)
+**Done** (this branch): steel node (`steelStep`), level in inches above instrument zero with BWR/4 setpoints, bulk-flash voids clearing with their own 2 s time constant, suppression pool heat-up with a placeholder cooler. Guesses: steel mass and UA, the setpoints (typical, plants differ), pool cooler size.
 - **Vessel and internals heat capacity** (B10): one steel node with UA to the water.
 - **Level by real geometry** (B11): instrument span and zero, swell from bulk flashing slower on
   depressurisation.
@@ -283,6 +354,7 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 - Recirculation pump on an MG set.
 - bwr-sim.js split into per-system modules at step 1.
 
-Still open: the feed pump drive at step 5 (turbine-driven variable speed, as now, or motor-driven with a
-startup low-flow valve), and the sourced numbers named under each step (condenser UA, kinetics
+- Feed pump at step 5: one turbine-driven variable-speed pump, no startup low-flow valve.
+
+Still open: the sourced numbers named under each step (condenser UA, kinetics
 coefficients, trip setpoints).
