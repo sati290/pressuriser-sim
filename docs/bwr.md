@@ -108,8 +108,9 @@ return), mk, Mh, hw (hotwell fraction).
 
 ## Plant layout (draft)
 
-On wide screens (canvas ≥ 900 px) the mimic draws the whole plant, one of each component (no redundant
-trains). Solid parts are modelled; dashed grey parts are layout only, to be made functional step by step.
+The mimic draws the whole plant, one of each component (no redundant trains). It spans the page width with
+the controls below it; the canvas is at least 1180 px wide and scrolls sideways on smaller screens (phones:
+use landscape). There is no separate phone layout. Solid parts are modelled; dashed grey parts are layout only, to be made functional step by step.
 
 - Inside the primary containment (dotted outline): vessel, SRVs and suppression pool, one recirculation
   loop (suction from the downcomer, pump below the core, back to one jet pump in the downcomer), the
@@ -120,13 +121,14 @@ trains). Solid parts are modelled; dashed grey parts are layout only, to be made
 - Turbine hall: HP turbine → crossover up into the moisture separator reheater (drains to the heaters) →
   LP turbine (double flow, exhausts down into the condenser) → generator on the same shaft.
 - Condenser: shell, tube bundle with circulating water in/out, air removal to the steam jet air ejector
-  (off-gas) and the mechanical vacuum pump (startup), hotwell at the bottom (the model's hotwell).
+  (off-gas; its motive steam comes from the main steam header over the turbine hall) and the mechanical
+  vacuum pump (startup), hotwell at the bottom (the model's hotwell).
 - Condensate and feed: hotwell → condensate pump → polisher → LP heater → feed pump → HP heater (the
   model's one heater, its extraction now drawn from the HP turbine casing) → feed valve → containment.
 
 Not on the layout yet, for the steam/feed circuit: feed heater and MSR drain lines (drain tank, drain
 pumps or cascade to the condenser), extraction lines to the LP heater and the MSR/heater non-return
-valves, SJAE motive steam supply and the off-gas train (recombiner, delay beds, stack), turbine gland
+valves, the off-gas train (recombiner, delay beds, stack), turbine gland
 seal steam and its condenser, circulating water pumps and the cooling tower or river, the condensate
 storage tank (shown only as the makeup label), reactor water cleanup (RWCU), control rod drive
 hydraulics, main steam drains to the condenser, generator output and grid breaker. Emergency cooling
