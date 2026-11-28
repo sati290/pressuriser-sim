@@ -154,3 +154,23 @@ test('scram at rated with the kinetics: the level setpoint setdown keeps the lev
     assert.equal(BS.fault(s), '');
   }
 });
+
+test('a reset of the scram keeps the level setpoint setdown ramping (no step back up)', () => {
+  const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true;
+  const k = K.init(c); runC(s, k, c, 10, 1); BS.manualScram(s); c.rod = 0; runC(s, k, c, 700, 1);
+  const before = K.setdown(k, s); assert.ok(before > 0.3, `set down: ${before}`);
+  BS.reset(s); assert.equal(s.scram, null, 'scram reset');
+  runC(s, k, c, 1, 1); assert.ok(Math.abs(K.setdown(k, s) - before) < 0.01, `still ${K.setdown(k, s)} after the reset`);
+  runC(s, k, c, 1300, 1); assert.equal(K.setdown(k, s), 0, 'ramped out');
+});
+
+test('no windup with the pumps off: MG set speed and feed pump speed integrals track the pumps', () => {
+  const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 60 }; delete c.heat; c.auto.mg = true;
+  const k = K.init(c); runC(s, k, c, 600, 0.5); const ng0 = s.f.ng;
+  c.rp = false; runC(s, k, c, 120, 0.5); assert.ok(k.iW < ng0, `MG integral follows the coast-down: ${k.iW} < ${ng0}`);
+  c.rp = true; let wmax = 0; for (let i = 0; i < 1200; i++) { BS.step(s, K.update(k, s, c, 0.5), 0.5); wmax = Math.max(wmax, s.f.Wc); }
+  assert.ok(wmax < 0.66 * K.WCR, `core flow back to 60 % without a big overshoot: peak ${(wmax / K.WCR * 100).toFixed(1)} %`);
+  const s2 = ratedP(), c2 = { ...RATED_C(), rod: s2.core.x * 100 }; delete c2.heat; const k2 = K.init(c2);
+  runC(s2, k2, c2, 10, 0.5); c2.fp = false; runC(s2, k2, c2, 60, 0.5);
+  assert.ok(k2.iN < 0.05, `feed pump integral follows the stopped pump: ${k2.iN}`);
+});

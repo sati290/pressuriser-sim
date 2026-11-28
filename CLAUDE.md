@@ -16,10 +16,10 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `common.js` | What both plant and controller need, on both pages: steam tables, liquid properties (`kap`, `liqRho`, `hLiq`, `cpL`, `Tuf`, `inv`), `clamp`, actuator limits `LIM`. ES module, no imports. |
 | `sim.js` | The plant: pure physics, no DOM, no automatic control. ES module; imports `common.js`. |
 | `control.js` | Automatic control: demands and the final command for the plant. ES module; imports `common.js`, not `sim.js`. |
-| `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater train (hotwell, feed pump, heater, feed valve). The mimic draws the whole plant: modelled parts solid, layout-only parts dashed grey (docs/bwr.md, "Plant layout"). Its layout differs from index.html: the mimic spans the full width with the controls in three columns under it, and the canvas is at least 1180 px wide, scrolling sideways on small screens (no phone layout; phones use landscape). Module page script importing `./common.js`, `./bwr-sim.js`, `./bwr-control.js`; needs http(s) like `index.html`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
+| `bwr.html` | Separate BWR page: reactor vessel with core kinetics and recirculation, main steam line (MSIVs, stop, control and bypass valves), safety/relief valves, suppression pool, turbine stub, condenser with circulating water and air removal, condensate and feed train (hotwell, condensate pump, polisher, LP heater, feed pump, HP heater, heater drains, storage tank, feed valve), reactor protection with an event log. The mimic draws the whole plant: modelled parts solid, layout-only parts dashed grey (docs/bwr.md, "Plant layout"). Its layout differs from index.html: the mimic spans the full width with the controls in three columns under it, and the canvas is at least 1180 px wide, scrolling sideways on small screens (no phone layout; phones use landscape). Module page script importing `./common.js`, `./bwr-sim.js`, `./bwr-control.js`; needs http(s) like `index.html`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
 | `bwr-sim.js` | BWR plant: pure physics. ES module; composes the per-system modules below and re-exports what the page and tests use. See docs/bwr.md, "Code layout". |
-| `bwr-vessel.js`, `bwr-steam.js`, `bwr-condenser.js`, `bwr-feed.js` | BWR systems (vessel solve; rated conditions, steam valves, SRVs; turbine stub and condenser; hotwell, pumps, heaters). ES modules importing `common.js` and each other (no cycles); one system per module so a roadmap step touches one. |
-| `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater cascaded onto the feed valve, hotwell makeup; SRVs are manual, their springs are in the plant). ES module; imports `common.js`, not `bwr-sim.js`. |
+| `bwr-vessel.js`, `bwr-core.js`, `bwr-recirc.js`, `bwr-steam.js`, `bwr-condenser.js`, `bwr-feed.js`, `bwr-containment.js`, `bwr-rps.js` | BWR systems (vessel solve, downcomer, steel, level instruments; point kinetics, fuel, decay heat, rod lever, core voids; recirculation pump, MG set, jet pump; rated conditions, steam line valves, SRVs; turbine stub, condenser, circulating water, condenser air; condensate and feed train, heaters and drains, storage tank; suppression pool; reactor protection: trips, latches, mode switch, event log). ES modules importing `common.js` and each other (no cycles); one system per module so a roadmap step touches one. |
+| `bwr-control.js` | BWR automatic control (pressure regulator on the control and bypass valves, three-element feedwater cascaded onto the feed valve with the scram level setdown, feed pump speed, core flow on the MG set, min-flow valve, heater drain levels, split-range hotwell makeup/reject, cleanup reject; rods, SRVs and the pump switches are manual; protection is in the plant, not here). ES module; imports `common.js`, not `bwr-sim.js`. |
 | `tests/load-physics.mjs` | Imports the three modules in Node as namespaces `common`, `phys` (sim.js), `ctrl` (control.js), plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
 | `tests/bwr*.test.mjs` | BWR regression tests, one file per system (`bwr-helpers.mjs` holds the shared runners and rated state). `npm test` runs every `tests/*.test.mjs`. |
@@ -129,16 +129,19 @@ A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is un
 ### The BWR page (bwr.html, bwr-sim.js, bwr-control.js)
 
 Same split and conventions as the PWR page: the plant never decides M/A, the controller produces
-demands every step and `command` picks demand or operator value per actuator (`n` feed pump speed, `fv` feed valve, `mk` hotwell makeup, `cv` turbine control valve, `bp` bypass valve have M/A; the MSIV and stop valve switches,
-net heat, the heater extraction valve `ext` and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring
-opens it on pressure in the plant). The vessel is one rigid volume: totals `M`, `U`,
-saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water
-and steam fill the vessel, flashing water above saturation at once and condensing on subcooled water with
-a time constant. Level includes the voids (swell); `d.collapsed` is water alone. Feedwater comes from the hotwell
-(`s.Mh`) through one lumped pump (`fwFlow`: pump curve, heater/pipe drop, quadratic feed valve `s.fv`
-against vessel pressure) and one heater stage (`heater()`: extraction pressure ∝ main steam flow, throttled by the extraction valve to the shell pressure; outlet `s.Th`). The main
-steam returns to the hotwell through `condensate(s, wst)`, for now an ideal condenser; the planned condenser
-model replaces that function. `API` in bwr-sim.js and
+demands every step and `command` picks demand or operator value per actuator (`mg` MG set speed, `n` feed pump
+speed, `fv` feed valve, `rv` min-flow valve, `hdv`/`ldv` heater drain valves, `mu`/`rj` storage tank makeup and
+reject, `rw` cleanup reject, `cv` control valve, `bp` bypass valve have M/A; the rod lever, recirculation pump
+breaker, MSIV and stop valve switches, extraction valves `ext`/`exl`, pump run switches `cp`/`fp`/`hdp`, the
+condenser line-up and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring opens it on pressure
+in the plant). Reactor protection (bwr-rps.js) runs inside `step()`: latched trips scram, isolate, trip the
+turbine and the feed pump whatever the switches say; `reset(s)` clears only trips whose signal has cleared, the
+page's Scram button is `manualScram`, the mode switch `setMode`. `init({rps:false})` gives the bare physics
+(the physics tests use it through tests/bwr-helpers.mjs). The vessel is one rigid volume: totals `M`, `U`,
+saturated steam `Mv` and its void part `Mb`, with a downcomer region (`udc`); each step solves the saturation
+temperature at which water and steam fill the vessel. Level includes the voids (swell); `d.collapsed` is water
+alone. The core heat comes from point kinetics (`u.heat` as a number is a fixed-heat test hook). See
+docs/bwr.md, "Code layout", for the step order and the per-module state. `API` in bwr-sim.js and
 `SIM_API` in bwr.html follow the same versioning rule as sim.js `API` (bwr-sim.js is imported as a namespace too). Equations in docs/bwr.md; keep the
 page's notes in step with its limitations.
 
@@ -179,9 +182,10 @@ page's notes in step with its limitations.
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
-BWR page: see docs/bwr.md, "Not modelled" (no neutronics, scram on the operator button only (nothing trips it), no recirculation, one well-mixed
-water region, saturated steam only, no air in the dome, uniform-area level, no vessel heat capacity,
-no condenser: main steam returns to the hotwell at once; one lumped feed pump and one heater stage).
+BWR page: see docs/bwr.md, "Not modelled" (one point-kinetics node and one rod lever, one recirculation loop,
+saturated steam only, no air in the dome, uniform-area level, one steel node, turbine stub, two heater stages,
+one pump of each kind, protection on one logic channel without RCIC/HPCI/ECCS, cleanup as a reject placeholder,
+no containment pressure).
 
 ## Publishing
 

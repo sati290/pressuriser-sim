@@ -243,7 +243,8 @@ and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s); core: Pth (f
 
 - Rods: manual only (`c.rod` %), as in real BWRs. Recirculation breaker `c.rp`: a plain switch.
 - Core flow (MG set speed, M/A `mg`): speed demand = KW·(wset·WCR − Wc) + I, KW = 2.3×10⁻⁵ per kg/s
-  (10 % of rated flow → 3 %), integral 5 s, anti-windup 0 … 1. Only when `c.wset` is given.
+  (10 % of rated flow → 3 %), integral 5 s, anti-windup 0 … 1. Only when `c.wset` is given. With the pump
+  breaker open the integral tracks the MG set's actual speed (no windup while the pump makes no flow).
 
 - Pressure regulator (GE EHC scheme, simplified): steam flow demand D (fraction of rated) = KP·(P − pset) + I,
   KP = 3.4×10⁻⁶ /Pa (0.1 MPa → 34 % of rated), integral time 30 s. Control valve: min(D, load limit `c.ll`,
@@ -258,11 +259,15 @@ and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s); core: Pth (f
   Constants duplicated from bwr-steam.js (`WR`, `PL0`, `KT`, `BPF`); a test checks they match.
 - MSIVs and the turbine stop valve: switches, always manual.
 - Feedwater, three-element cascade: flow demand F = main steam flow + KL·(lset − level) + I, KL = 800 kg/s
-  per m, integral time 60 s, 0 … 2500 kg/s; then a flow controller on the feed valve, x = KX·(F − fw) + I,
-  KX = 10⁻⁴ per kg/s, integral time 4 s, anti-windup at 0 and 1 (the level integral also holds while the
-  valve is saturated). SRV flow is not in the steam signal, so after a valve closure the level term alone
-  has to call for feedwater. The pump speed is manual: no valve opening helps once vessel pressure is above
-  the shutoff head.
+  per m, integral time 60 s, 0 … 2500 kg/s; then a flow controller on the feed valve, characterised on √flow:
+  x = KXS·(√F − √fw) + I, KXS = KX·2√WR (KX = 10⁻⁴ per kg/s, the same gain as a linear loop at rated flow),
+  integral time 4 s, anti-windup at 0 and 1 (the level integral also holds while the valve is saturated). The
+  quadratic valve passes flow nearly as the square of its opening; a loop on the flow error itself had a gain
+  that vanished near shut, so after an isolation it closed the valve ever more slowly and leaked enough cold feed
+  to reach L8. SRV flow is not in the steam signal, so after a valve closure the level term alone has to call
+  for feedwater. Level setpoint setdown after a scram: lset − `SDL` (0.45 m) for `SDT` 600 s, ramped back over
+  `SDR` 1200 s, kept in the controller memory (`k.sdt`, the scram time) so a reset of the scram does not snap
+  the setpoint back up; `setdown(k, s)`.
 - Hotwell level, split range (step 7): mk = (condensate pump flow − reject − return) + KH·(0.5 − hotwell fraction) + I,
   KH = 1000 kg/s per unit fraction, integral 300 s, ±100 kg/s, setpoint fixed at half full. The makeup valve
   demand is mk/100 above 0, the reject valve's −mk/100 below 0 (1 % per kg/s, about each valve's flow at a 70 %
@@ -272,7 +277,8 @@ and vpc (capacity factors), wlk, wrad, wvb, wain, waout (air kg/s); core: Pth (f
   from an initial offset: from 60 % full it undershoots to about 46.6 % and settles in about 40 min.
 - Feed pump speed: n = KN·(dpset − (Pd − P)) + I, KN = 1.5×10⁻⁸ /Pa, integral 10 s, 0 … 1: holds the pump
   discharge 2.2 MPa (default) above the dome, as turbine-driven feed pumps are run, so the feed valve keeps a
-  steady drop at any vessel pressure.
+  steady drop at any vessel pressure. While the pump is stopped or tripped (switch, low-suction trip, L8) the
+  integral tracks its actual speed.
 - Heater extraction valves (LP and HP): manual only. Pump run switches: manual only.
 - Circulating water (pump, valve, inlet temperature), SJAE motive steam, vacuum pump and vacuum breaker:
   manual only, passed through by `command()` (no controller: the CW valve is set open and left there in
