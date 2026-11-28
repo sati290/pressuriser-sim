@@ -108,6 +108,8 @@ input[type=range]:disabled{opacity:.45;cursor:not-allowed}
 .notes p,.notes li{font-size:15px;margin:0 0 8px;color:var(--mute);max-width:65ch}
 .notes ol,.notes ul{padding-left:20px;margin:0}
 code{font-size:14px;overflow-wrap:anywhere}
+footer.ver{padding-top:0;font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums}
+a.nav{color:var(--ink);font-weight:500;white-space:nowrap}
 @media(max-width:1100px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"gauges" "vessel" "controls" "lower";grid-template-rows:none}.controls{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px}.grp{border:0;padding:0}.lower{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower .stats{grid-column:1/-1}}
 @media(max-width:760px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.gauges{position:sticky;top:0;z-index:2}.vessel{min-height:480px}.lower{grid-template-columns:minmax(0,1fr)}.g{padding:6px 10px}.g span{font-size:13px}.g b{font-size:22px}}
@@ -117,7 +119,7 @@ code{font-size:14px;overflow-wrap:anywhere}
 <header class="band"><div class="wrap">
   <div>
     <h1>Steam pressuriser simulator</h1>
-    <p>A pressuriser coupled to the reactor coolant system. Start cold, water-solid or on a nitrogen cushion, draw the steam bubble, heat up to hot standby, then cool down again.</p>
+    <p>A pressuriser coupled to the reactor coolant system. Start cold, water-solid or on a nitrogen cushion, draw the steam bubble, heat up to hot standby, then cool down again. <a class="nav" href="bwr.html">BWR reactor vessel simulator</a></p>
   </div>
   <div class="bar">
     <div id="speed" class="seg" role="group" aria-label="Simulation speed"><button id="run" aria-pressed="false">Pause</button></div>
@@ -251,6 +253,8 @@ code{font-size:14px;overflow-wrap:anywhere}
   </div>
 </section>
 
+<footer class="band wrap ver">Version <span id="ver">not loaded</span></footer>
+
 <script>
 // The model is ES modules, so a failed import (opened from file://, a missing or stale file) stops the
 // whole page script without a word. The module sets PZready as its last act; say so if it didn't.
@@ -264,6 +268,7 @@ import {satX,Tsat,clamp,THI,NB} from './common.js';
 // namespace import: a cached older sim.js without a newer export gives undefined, not a link error
 import * as PZSim from './sim.js';
 import * as Ctl from './control.js';
+import {VERSION} from './version.js';
 const {hLiq,cpL,init,step,fault,VP}=PZSim;
 // sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
 const SIM_API=3,simStale=PZSim.API!==SIM_API;
@@ -620,6 +625,7 @@ readCtl();COLD();
 const ro=new ResizeObserver(()=>{drawRec();drawSat()});ro.observe(rec);ro.observe(satsvg);
 $('win').addEventListener('change',()=>{drawRec();drawSat()});
 requestAnimationFrame(frame);
+$('ver').textContent=VERSION;
 window.PZready=true;
 </script>
 </body>

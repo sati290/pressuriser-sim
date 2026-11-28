@@ -6,10 +6,7 @@
 // liquid, may be below or above saturation) and a gas space of steam and/or nitrogen with its own
 // temperature (steam superheated, saturated, or wet for one step before the condensate rains out).
 // With no gas space it is water-solid. Below the water sits the insurge layer.
-import {sat,Tsat,clamp,LIM,QP,QB,T0,THI} from './common.js';
-// isothermal compressibility of liquid water, 1/Pa (approximate, near saturation)
-const KT=[[0,.509],[25,.452],[50,.441],[75,.456],[100,.49],[150,.58],[200,.74],[250,1.03],[300,1.6],[325,2.2],[340,3],[350,3.8],[360,5.5],[374,12]];
-const kap=c=>{if(c<=0)return .509e-9;for(let i=1;i<KT.length;i++)if(c<=KT[i][0]){const[a,x]=KT[i-1],[b,y]=KT[i];return (x+(y-x)*(c-a)/(b-a))*1e-9}return 12e-9};
+import {sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QP,QB,T0,THI} from './common.js';
 const VP=51,VR=280,CM=0.6e9,TAU=300;
 // nitrogen (ideal gas): gas constant, cv, cp (J/kg/K); steam gas constant; supply header
 // pressure (Pa), supply flow at 1 MPa across the valve (kg/s), supply temperature (K); below N2MIN of
@@ -30,11 +27,8 @@ const TAUNE=Object.freeze({fl:5,sc:300,sh:30}),MVMIN=1e-3;
 const VT=[[40,23.96,-0.004242,1456,-0.7933],[50,39.01,-0.007717,1467,-0.8227],[60,61.45,-0.01337,1480,-0.8307],[70,93.94,-0.02246,1494,-0.829],[80,139.9,-0.03713,1511,-0.8363],[90,203.3,-0.0613,1530,-0.8751],[100,289.4,-0.1018,1554,-0.9692],[110,404.3,-0.1699,1582,-1.141],[120,555.4,-0.2836,1615,-1.409],[130,751.9,-0.4682,1655,-1.782],[140,1005,-0.7568,1700,-2.256],[150,1326,-1.189,1751,-2.811],[160,1731,-1.811,1807,-3.421],[170,2239,-2.673,1867,-4.057],[180,2868,-3.834,1931,-4.693],[190,3645,-5.364,1998,-5.315],[200,4598,-7.344,2067,-5.915],[210,5763,-9.868,2140,-6.489],[220,7182,-13.03,2217,-7.032],[230,8903,-16.91,2296,-7.531],[240,10990,-21.59,2379,-7.973],[250,13500,-27.12,2465,-8.348],[260,16530,-33.6,2554,-8.666],[270,20190,-41.3,2647,-8.968],[280,24620,-50.71,2746,-9.33],[290,29990,-62.5,2854,-9.827],[300,36540,-77.2,2972,-10.48],[310,44550,-94.76,3099,-11.23],[320,54440,-114.9,3234,-11.99],[330,66830,-139.1,3378,-12.8],[340,82790,-171,3543,-13.87],[350,103800,-199.6,3723,-14.59],[355,116800,-193,3799,-13.85],[360,131800,-122,3833,-10.81],[365,149100,37.41,3771,-4.121]];
 const vtc=T=>{const c=T-273.15;let i=0;while(i<VT.length-2&&c>VT[i+1][0])i++;
   const a=VT[i],b=VT[i+1],w=clamp((c-a[0])/(b[0]-a[0]),0,1);return [a[1]+w*(b[1]-a[1]),a[2]+w*(b[2]-a[2]),a[3]+w*(b[3]-a[3]),a[4]+w*(b[4]-a[4])]};
-// inverse tables, T from u_f(T) and from ln ρ″(T) (both increasing), 4000 intervals, linear
-const NI=4000,inv=f=>{const y0=f(T0),y1=f(THI),k=NI/(y1-y0),tb=new Float64Array(NI+1);
-  for(let i=0;i<=NI;i++){const y=y0+i/k;let a=T0,b=THI;for(let j=0;j<48;j++){const m=(a+b)/2;if(f(m)<y)a=m;else b=m}tb[i]=(a+b)/2}
-  return y=>{let g=(y-y0)*k;if(g<0)g=0;if(g>NI-1e-9)g=NI-1e-9;const i=g|0;return tb[i]+(g-i)*(tb[i+1]-tb[i])}};
-const Tuf=inv(T=>sat(T).uf),Trg=inv(T=>Math.log(sat(T).rg));
+// T from ln ρ″(T) (inverse table; Tuf, T from u_f, is in common.js)
+const Trg=inv(T=>Math.log(sat(T).rg));
 const mixU=(T,v)=>{const q=sat(T),x=(v-1/q.rf)/(1/q.rg-1/q.rf);return q.uf+x*(q.ug-q.uf)};
 // steam of density rho, specific internal energy u → {P, T, x}: superheated from VT; below u″ at that
 // density, a saturated mixture (x < 1) found by Newton on the mixture energy
@@ -64,10 +58,7 @@ const gas=(Mv,Mn,Ug,Vg,T0h)=>{
     const dF=(F(T+0.01)-f)/0.01;let Tn=T-f/dF;if(!(Tn>lo&&Tn<hi))Tn=(lo+hi)/2;T=Tn}
   const v=vapT(rv,T),pN=Mn*RN*T/Vg;return {P:v.p+pN,pv:v.p,pN,Tg:T,xv:v.x};
 };
-const liqRho=(T,P)=>{const q=sat(T);return q.rf/(1-kap(T-273.15)*(P-q.p))};
 const rcsP=(Mr,Tr)=>{const q=sat(Tr),rho=Mr/VR;return q.p+(1-q.rf/rho)/kap(Tr-273.15)};
-const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
-const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
 // State at trial pressure P. o: water Ml, Ul; gas Mv, Mn, Ug; layer volume Vs; start-of-step volumes Vl0,
 // Vg0 (each region does boundary work −P·ΔV); surge from an RCS of mass Mr at Tr (dm = Mr − VR·ρ(Tr, P)
 // into the pressuriser: insurge to the layer, or straight into the water when solid; outsurge from the

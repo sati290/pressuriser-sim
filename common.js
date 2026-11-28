@@ -1,4 +1,5 @@
-// Shared by sim.js (plant) and control.js (automatic control): steam tables, actuator limits, clamp.
+// Shared by sim.js (plant) and control.js (automatic control), and by the BWR side (bwr-sim.js,
+// bwr-control.js): steam tables, liquid properties, actuator limits, clamp.
 // An ES module with no imports. Neither plant nor controller depends on the other, only on this file.
 // IAPWS 1992 supplementary release (Wagner & Pruss) saturation equations
 const Tc=647.096,pc=22.064e6,rc=322;
@@ -25,6 +26,19 @@ const sat=T=>{let f=(T-T0)/DT;if(f<0)f=0;if(f>N-1.0001)f=N-1.0001;const i=f|0,w=
   Q.hf=TB[a+4]+w*(TB[b+4]-TB[a+4]);Q.hg=TB[a+5]+w*(TB[b+5]-TB[a+5]);Q.uf=Q.hf-Q.p/Q.rf;Q.ug=Q.hg-Q.p/Q.rg;return Q};
 const Tsat=p=>{let a=T0,b=THI;for(let i=0;i<50;i++){const m=(a+b)/2;if(sat(m).p<p)a=m;else b=m}return (a+b)/2};
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+// isothermal compressibility of liquid water, 1/Pa (approximate, near saturation)
+const KT=[[0,.509],[25,.452],[50,.441],[75,.456],[100,.49],[150,.58],[200,.74],[250,1.03],[300,1.6],[325,2.2],[340,3],[350,3.8],[360,5.5],[374,12]];
+const kap=c=>{if(c<=0)return .509e-9;for(let i=1;i<KT.length;i++)if(c<=KT[i][0]){const[a,x]=KT[i-1],[b,y]=KT[i];return (x+(y-x)*(c-a)/(b-a))*1e-9}return 12e-9};
+// compressed liquid at (T, P): density, enthalpy h_f(T) + (P − p_sat)/ρ_f, cp from h_f
+const liqRho=(T,P)=>{const q=sat(T);return q.rf/(1-kap(T-273.15)*(P-q.p))};
+const hLiq=(T,P)=>{const q=sat(T);return q.hf+(P-q.p)/q.rf};
+const cpL=T=>(sat(T+0.5).hf-sat(T-0.5).hf);
+// inverse table of an increasing function of T on [T0, THI], 4000 intervals, linear
+const NI=4000,inv=f=>{const y0=f(T0),y1=f(THI),k=NI/(y1-y0),tb=new Float64Array(NI+1);
+  for(let i=0;i<=NI;i++){const y=y0+i/k;let a=T0,b=THI;for(let j=0;j<48;j++){const m=(a+b)/2;if(f(m)<y)a=m;else b=m}tb[i]=(a+b)/2}
+  return y=>{let g=(y-y0)*k;if(g<0)g=0;if(g>NI-1e-9)g=NI-1e-9;const i=g|0;return tb[i]+(g-i)*(tb[i+1]-tb[i])}};
+// liquid temperature from its specific internal energy (u ≈ u_f(T) for compressed liquid)
+const Tuf=inv(T=>sat(T).uf);
 // heaters, as in a 4-loop Westinghouse-type pressuriser: 78 elements of about 23 kW, 1.8 MW in all,
 // wired as one proportional (control) group of 18 elements, whose power is varied continuously, and
 // NB backup groups of 20 elements each, switched fully on or off
@@ -33,4 +47,4 @@ const QE=1.8e6/78,QP=18*QE,QB=20*QE,NB=3;
 // on; relief and nitrogen valve opening fractions. The plant clamps every command to these; the
 // controller's anti-windup needs the same limits.
 const LIM=Object.freeze({ch:20,ld:20,hp:1,hb:NB,sp:40,rel:1,n2:1});
-export {satX,sat,Tsat,clamp,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};
+export {satX,sat,Tsat,clamp,kap,liqRho,hLiq,cpL,inv,Tuf,LIM,QE,QP,QB,NB,T0,THI,Tc,pc,rc};

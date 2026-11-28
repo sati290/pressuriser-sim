@@ -13,12 +13,18 @@ Physical correctness and honest labelling of limitations matter more than featur
 | Path | What |
 |---|---|
 | `index.html` | Presentation: CSS, markup, UI wiring, renderers. Its page script is a `<script type="module">` importing `./common.js`, `./sim.js`, `./control.js`; nothing else external except Google Fonts. Needs http(s), not `file://`. |
-| `common.js` | What both plant and controller need: steam tables, `clamp`, actuator limits `LIM`. ES module, no imports. |
+| `common.js` | What both plant and controller need, on both pages: steam tables, liquid properties (`kap`, `liqRho`, `hLiq`, `cpL`, `Tuf`, `inv`), `clamp`, actuator limits `LIM`. ES module, no imports. |
 | `sim.js` | The plant: pure physics, no DOM, no automatic control. ES module; imports `common.js`. |
 | `control.js` | Automatic control: demands and the final command for the plant. ES module; imports `common.js`, not `sim.js`. |
+| `bwr.html` | Separate BWR page: reactor vessel, main steam line and valve, safety/relief valves, feedwater. Module page script importing `./common.js`, `./bwr-sim.js`, `./bwr-control.js`; needs http(s) like `index.html`. Same stylesheet as `index.html` (copied; keep the two in step) plus a few BWR rules at its end. |
+| `bwr-sim.js` | BWR plant: pure physics. ES module; imports `common.js`. See docs/bwr.md. |
+| `bwr-control.js` | BWR automatic control (pressure regulator, three-element feedwater; SRVs are manual, their springs are in the plant). ES module; imports `common.js`, not `bwr-sim.js`. |
 | `tests/load-physics.mjs` | Imports the three modules in Node as namespaces `common`, `phys` (sim.js), `ctrl` (control.js), plus `run` (plant + controller), `runPlant` (fixed command) and `ctlOf(s)`. Tests never load `index.html`. |
 | `tests/physics.test.mjs` | Regression tests (node:test, no deps). ~7 s. |
-| `tools/screenshot.mjs` | Playwright (Node): renders 3 widths × light/dark, fails on JS errors or horizontal overflow. Serves the repo itself over http. |
+| `tests/bwr.test.mjs` | BWR regression tests (imports the BWR-side modules directly). |
+| `docs/bwr.md` | BWR model equations, constants, controllers, validation numbers, what is not modelled. |
+| `tools/screenshot.mjs` | Playwright (Node): renders both pages at 3 widths × light/dark (`--page` for one), fails on JS errors or horizontal overflow. Serves the repo itself over http. |
+| `version.js` | `VERSION` ('0.1.x'), shown in the footer of both pages so the owner can tell whether the browser has the latest. ES module, no imports. |
 | `tools/vapour-table.mjs` | Regenerates the superheated-steam table `VT` in sim.js from IAPWS-IF97 region 2. |
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`); also exports `serve(port)`. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
@@ -27,13 +33,13 @@ Physical correctness and honest labelling of limitations matter more than featur
 ## Commands
 
 ```bash
-npm test                      # physics regression suite
+npm test                      # physics regression suites (PWR and BWR)
 npm run shots                 # screenshots into shots/ (needs: npm i -D playwright && npx playwright install chromium)
 node tools/screenshot.mjs --chrome /usr/bin/google-chrome   # use an existing Chrome
 npm run serve                 # http://localhost:8000 (index.html can't be opened from file://)
 ```
 
-Always run `npm test` after touching `common.js`, `sim.js` or `control.js`, and the screenshot
+Always run `npm test` after touching any of the scripts, and the screenshot
 tool after any CSS/markup/drawing change.
 
 ## Code structure
@@ -118,6 +124,18 @@ A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is un
    `drawVessel()` (canvas mimic: pressuriser + reactor vessel joined by surge and spray lines, zone temperatures, particles). Charts redraw at ~7 Hz; canvas every frame.
 6. `frame()` rAF loop. Sim time step depends on speed: `ctl_dt()` = 0.25/0.5/1/2 s (≤20×, ≤50×, ≤200×, above). Speed buttons (Pause, 1×…1000×) set `speed`/`running`.
 
+### The BWR page (bwr.html, bwr-sim.js, bwr-control.js)
+
+Same split and conventions as the PWR page: the plant never decides M/A, the controller produces
+demands every step and `command` picks demand or operator value per actuator (`fw`, `mv` have M/A;
+net heat, feedwater temperature and the per-valve SRV toggles `srv[]` are manual only; each SRV's spring
+opens it on pressure in the plant). The vessel is one rigid volume: totals `M`, `U`,
+saturated steam `Mv` and its void part `Mb`; each step solves the saturation temperature at which water
+and steam fill the vessel, flashing water above saturation at once and condensing on subcooled water with
+a time constant. Level includes the voids (swell); `d.collapsed` is water alone. `API` in bwr-sim.js and
+`SIM_API` in bwr.html follow the same versioning rule as sim.js `API` (bwr-sim.js is imported as a namespace too). Equations in docs/bwr.md; keep the
+page's notes in step with its limitations.
+
 ## Conventions
 
 - SI units internally (K, Pa, kg, J). Convert only at display.
@@ -155,6 +173,9 @@ A small classic `<script>` warns in `#alert` on `load` if `window.PZready` is un
 - Pressuriser heat loss is UA·(T − 40 °C), UA = 200 W/K, both fixed; RCS losses are inside net heat.
 - Generic 4-loop Westinghouse-like numbers; not a VVER.
 
+BWR page: see docs/bwr.md, "Not modelled" (no neutronics or scram, no recirculation, one well-mixed
+water region, saturated steam only, no air in the dome, uniform-area level, no vessel heat capacity).
+
 ## Publishing
 
 The repo is public; the page is opened straight from GitHub through raw.githack, which serves
@@ -166,8 +187,13 @@ pushing a branch is publishing it.
   raw.githack caches branch URLs for a few minutes, so a fresh push may take a moment to show.
 - Exact commit: `https://raw.githack.com/sati290/pressuriser-sim/<commit-sha>/index.html`.
 - `main`: `https://raw.githack.com/sati290/pressuriser-sim/main/index.html`.
+- The BWR page is `bwr.html` at the same places (e.g. `.../<branch>/bwr.html`).
 
 The old claude.ai artifact is no longer the live version; don't republish there.
+
+**Version:** every change you push bumps the last number of `VERSION` in `version.js` by one (0.1.0 →
+0.1.1 → …), once per push, whatever files changed. Mention the new version in your reply. The owner
+uses the footer to check that the browser isn't showing a cached copy.
 
 **When you finish a task that changed `index.html` or any of the scripts, commit and push it, then end your reply with
 the raw.githack URL for the branch you pushed** (and the commit URL if the owner may want to compare
