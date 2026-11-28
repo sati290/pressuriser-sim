@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as R from '../bwr-rps.js';
 import * as BS from '../bwr-sim.js';
-import { K, near, MPa, P0, W0, FV0, CV0, RATED_C } from './bwr-helpers.mjs';
+import { K, near, MPa, P0, W0, FV0, CV0, RATED_C, rodsC, ALLIN } from './bwr-helpers.mjs';
 
 // signals at rated, nothing tripping
 const OK = () => ({ P: 7e6, lin: 35, aprm: 1, ms: 1, sv: 1, fsp: 1, Pl: 6.7e6, Pc: 7.3e3, wst: 1 });
@@ -146,8 +146,8 @@ test('reactor water cleanup reject: mass and energy go to the condenser, and in 
 
 test('scram at rated with the kinetics: the level setpoint setdown keeps the level off L8, so the feed pump stays in', () => {
   for (const dt of [0.25, 2]) {
-    const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true; c.auto.rw = true;
-    const k = K.init(c); runC(s, k, c, 10, dt); BS.manualScram(s); c.rod = 0;
+    const s = ratedP(), c = { ...RATED_C(), rods: rodsC(s), mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true; c.auto.rw = true;
+    const k = K.init(c); runC(s, k, c, 10, dt); BS.manualScram(s); c.rods = ALLIN();
     let lmax = 0; for (let i = 0; i < 2400 / dt; i++) { BS.step(s, K.update(k, s, c, dt), dt); lmax = Math.max(lmax, s.d.level); }
     assert.ok(!s.rps.lat.L8, `no L8: max ${lmax} dt=${dt}`);
     near(s.d.level, 14.3, 0.25, `back near the normal level dt=${dt}`);
@@ -156,8 +156,8 @@ test('scram at rated with the kinetics: the level setpoint setdown keeps the lev
 });
 
 test('a reset of the scram keeps the level setpoint setdown ramping (no step back up)', () => {
-  const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true;
-  const k = K.init(c); runC(s, k, c, 10, 1); BS.manualScram(s); c.rod = 0; runC(s, k, c, 700, 1);
+  const s = ratedP(), c = { ...RATED_C(), rods: rodsC(s), mg: 100, wset: 100 }; delete c.heat; c.auto.mg = true;
+  const k = K.init(c); runC(s, k, c, 10, 1); BS.manualScram(s); c.rods = ALLIN(); runC(s, k, c, 700, 1);
   const before = K.setdown(k, s); assert.ok(before > 0.3, `set down: ${before}`);
   BS.reset(s); assert.equal(s.scram, null, 'scram reset');
   runC(s, k, c, 1, 1); assert.ok(Math.abs(K.setdown(k, s) - before) < 0.01, `still ${K.setdown(k, s)} after the reset`);
@@ -165,12 +165,12 @@ test('a reset of the scram keeps the level setpoint setdown ramping (no step bac
 });
 
 test('no windup with the pumps off: MG set speed and feed pump speed integrals track the pumps', () => {
-  const s = ratedP(), c = { ...RATED_C(), rod: s.core.x * 100, mg: 100, wset: 60 }; delete c.heat; c.auto.mg = true;
+  const s = ratedP(), c = { ...RATED_C(), rods: rodsC(s), mg: 100, wset: 60 }; delete c.heat; c.auto.mg = true;
   const k = K.init(c); runC(s, k, c, 600, 0.5); const ng0 = s.f.ng;
   c.rp = false; runC(s, k, c, 120, 0.5); assert.ok(k.iW < ng0, `MG integral follows the coast-down: ${k.iW} < ${ng0}`);
   c.rp = true; let wmax = 0; for (let i = 0; i < 1200; i++) { BS.step(s, K.update(k, s, c, 0.5), 0.5); wmax = Math.max(wmax, s.f.Wc); }
   assert.ok(wmax < 0.66 * K.WCR, `core flow back to 60 % without a big overshoot: peak ${(wmax / K.WCR * 100).toFixed(1)} %`);
-  const s2 = ratedP(), c2 = { ...RATED_C(), rod: s2.core.x * 100 }; delete c2.heat; const k2 = K.init(c2);
+  const s2 = ratedP(), c2 = { ...RATED_C(), rods: rodsC(s2) }; delete c2.heat; const k2 = K.init(c2);
   runC(s2, k2, c2, 10, 0.5); c2.fp = false; runC(s2, k2, c2, 60, 0.5);
   assert.ok(k2.iN < 0.05, `feed pump integral follows the stopped pump: ${k2.iN}`);
 });
