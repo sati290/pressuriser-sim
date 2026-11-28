@@ -141,6 +141,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .controls{display:block;column-width:290px;column-gap:40px}.controls .grp{border:0;padding:0;break-inside:avoid;margin-bottom:22px}.controls h2{margin-bottom:2px}
 .vessel{min-height:0;overflow-x:auto;overflow-y:hidden}
 /* condenser: on/off switches, filled while on */
+.ann{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:10px 0 8px;font-size:11.5px;line-height:1.25}
+.ann span{border:1px solid var(--rule);border-radius:4px;padding:4px 6px;color:var(--mute)}
+.ann span.on{background:var(--warn);border-color:var(--warn);color:var(--bg);font-weight:600}
+.ann span.ghost{opacity:.55}
+.elog{list-style:none;margin:0;padding:0;font-size:12px;line-height:1.45;max-height:9.5em;overflow-y:auto;font-variant-numeric:tabular-nums}
+.elog li{display:flex;gap:8px}.elog time{color:var(--mute);min-width:4.5em}
+.elog:empty::before{content:'No events';color:var(--mute)}
 .tog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .tog button{font-size:14px;min-height:36px;padding:2px 8px}
 .tog button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -189,7 +196,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
     </div>
     <div class="grp">
       <h2>Reactor</h2>
-      <div class="rx"><button id="scram" aria-pressed="false" title="Insert the rods: the heat drops to the fission tail and decay heat, starting from the net heat at this moment. The net-heat slider follows it until reset.">Scram</button><button id="rst" disabled title="Hand the heat back to the net-heat slider, at the decay heat it shows now.">Reset scram</button></div>
+      <div class="rx"><button id="scram" aria-pressed="false" title="Insert the rods: the heat drops to the fission tail and decay heat, starting from the net heat at this moment. The net-heat slider follows it until reset.">Scram</button><button id="rst" disabled title="Reset the protection: every trip whose signal has cleared resets. Once no scram trip is left, the heat goes back to the net-heat slider, at the decay heat it shows now.">Reset trips</button></div>
+      <div class="sws" role="group" aria-label="Reactor mode switch">
+        <button id="modeshutdown" type="button" aria-pressed="false" title="Shutdown: scrams the reactor at once.">Shutdown</button>
+        <button id="modestartup" type="button" aria-pressed="false" title="Startup / hot standby: the APRM trips at 15 %; MSIV closure, low steam line pressure and the condenser low vacuum scram and isolation are bypassed.">Startup</button>
+        <button id="moderun" type="button" aria-pressed="true" title="Run: the APRM trips at 120 %; MSIV closure scrams; low steam line pressure and low condenser vacuum isolate.">Run</button>
+      </div>
       <div class="row"><label for="heat">Net heat to water <output id="heato"></output></label><input id="heat" type="range" min="-100" max="3400" step="1" value="0"></div>
     </div>
     <div class="grp">
@@ -198,6 +210,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <div class="row"><label for="fv">Feed valve <output id="fvo"></output></label><input id="fv" type="range" min="0" max="100" step="0.01" value="0"></div>
       <div class="row"><label for="ext">Heater extraction valve <output id="exto"></output></label><input id="ext" type="range" min="0" max="100" step="1" value="0"></div>
       <div class="row"><label for="mk">Hotwell makeup <output id="mko"></output></label><input id="mk" type="range" min="-100" max="100" step="0.1" value="0"></div>
+      <div class="row"><label for="rw">Cleanup reject <output id="rwo"></output></label><input id="rw" type="range" min="0" max="100" step="1" value="0"></div>
     </div>
     <div class="grp">
       <h2 class="srvh">Main steam line <output id="mssum"></output></h2>
@@ -224,6 +237,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <h2 class="srvh">Safety/relief valves <output id="srvo"></output></h2>
       <div class="srvs" id="srvs" role="group" aria-label="Safety/relief valves: press to open by hand"></div>
       <div class="rx"><button id="pcool" aria-pressed="false" title="Placeholder for an RHR loop in pool cooling: a fixed cooler against 30 °C service water, about 1.5 MW per kelvin above it.">Pool cooling</button></div>
+    </div>
+    <div class="grp">
+      <h2 class="srvh">Protection <output id="rpso"></output></h2>
+      <div class="ann" id="ann" aria-label="Protection trips; lit = latched"></div>
+      <ol class="elog" id="elog" aria-label="Protection event log, newest first"></ol>
     </div>
   </div>
 
@@ -326,16 +344,16 @@ import * as Ctl from './bwr-control.js';
 import {VERSION} from './version.js';
 const {init,step,fault,Z,H,NV,SRV,BD,THW,H0,PC,heatBalance,fwValve,LV,PLIM,cvPos,KB,BPF,WR}=BWRSim;
 // bwr-sim.js and this page must be the same version; raw.githack caches each file separately for a few minutes
-const SIM_API=7,simStale=BWRSim.API!==SIM_API;
+const SIM_API=8,simStale=BWRSim.API!==SIM_API;
 
 const $=id=>document.getElementById(id);
-const ids=['heat','n','fv','ext','mk','cv','bp','pset','ll','lset','dpset'];
+const ids=['heat','n','fv','ext','mk','rw','cv','bp','pset','ll','lset','dpset'];
 ids.push('cwv','tcw'); // condenser: circulating water valve %, inlet °C (manual only)
 // sliders with an M/A switch → key in ctl.auto
-const AK={n:'n',fv:'fv',mk:'mk',cv:'cv',bp:'bp'},auto={n:false,fv:false,mk:false,cv:false,bp:false};
+const AK={n:'n',fv:'fv',mk:'mk',rw:'rw',cv:'cv',bp:'bp'},auto={n:false,fv:false,mk:false,rw:false,cv:false,bp:false};
 const pct=v=>+v?(+v).toFixed(v<10?2:1)+' %':'shut';
 const fmt={heat:v=>(v>0?'+':'')+Math.round(v)+' MW',n:v=>+v?(+v).toFixed(1)+' %':'stopped',fv:pct,ext:v=>+v?Math.round(v)+' %':'shut',
-  mk:v=>Math.abs(v)<0.05?'0 kg/s':(v>0?'+':'−')+Math.abs(v).toFixed(Math.abs(v)<10?1:0)+' kg/s',cv:pct,bp:pct,ll:v=>Math.round(v)+' % of rated steam',
+  mk:v=>Math.abs(v)<0.05?'0 kg/s':(v>0?'+':'−')+Math.abs(v).toFixed(Math.abs(v)<10?1:0)+' kg/s',rw:v=>+v?`${Math.round(v)} % · ${(v/100*BWRSim.RWMAX).toFixed(1)} kg/s`:'shut',cv:pct,bp:pct,ll:v=>Math.round(v)+' % of rated steam',
   pset:v=>(+v).toFixed(2)+' MPa',dpset:v=>(+v).toFixed(2)+' MPa',lset:v=>(+v).toFixed(2)+' m'};
 Object.assign(fmt,{cwv:v=>+v?Math.round(v)+' %':'shut',tcw:v=>(+v).toFixed(1)+' °C'});
 // SRVs opened by hand (ctl.srv, passed through to the plant); the springs act in the plant
@@ -348,7 +366,7 @@ const readCtl=()=>{for(const k of ids){ctl[k]=+$(k).value;$(k+'o').textContent=f
   ctl.pset*=1e6;ctl.dpset*=1e6};
 for(const k of ids)$(k).addEventListener('input',readCtl);
 // − / + buttons beside each slider; each press snaps to the next multiple of the step, hold to repeat
-const bump={heat:5,n:1,fv:0.5,ext:5,mk:5,cv:0.5,bp:1,pset:0.1,ll:5,lset:0.1,dpset:0.1};
+const bump={heat:5,n:1,fv:0.5,ext:5,mk:5,rw:5,cv:0.5,bp:1,pset:0.1,ll:5,lset:0.1,dpset:0.1};
 Object.assign(bump,{cwv:5,tcw:1});
 for(const k of SW)$(k).onclick=()=>{sw[k]=!sw[k];readCtl();if(s)syncAuto()};
 const nudge=(k,dir)=>{
@@ -392,7 +410,7 @@ const TOG={cwp:true,sj:true,vp:false,vb:false},CDN={...TOG,cwv:100,tcw:20};
 const setTog=(k,v)=>{TOG[k]=ctl[k]=!!v;$(k).setAttribute('aria-pressed',String(!!v))};
 for(const k in TOG){setTog(k,TOG[k]);$(k).onclick=()=>setTog(k,!TOG[k])}
 // scenarios set the plant state, put every control in A and close every SRV
-const MAN={auto:{n:true,fv:true,mk:true,cv:true,bp:true},ms1:true,ms2:true,sv:true,ll:105};
+const MAN={auto:{n:true,fv:true,mk:true,rw:true,cv:true,bp:true},rw:0,ms1:true,ms2:true,sv:true,ll:105};
 let pcool=false;$('pcool').onclick=()=>{pcool=!pcool;$('pcool').setAttribute('aria-pressed',String(pcool))};
 const start=(st,cfg)=>{srvMan.fill(false);pcool=false;$('pcool').setAttribute('aria-pressed','false');setC({...MAN,...CDN,...cfg});s=init(st);cs=Ctl.init(ctl);hist=[];halted='';lastS=-1e9;setAlert('');if(!running)toggle()};
 // at power: steam flow and feed temperature from the heat balance with the heaters in, pump at full
@@ -400,17 +418,21 @@ const start=(st,cfg)=>{srvMan.fill(false);pcool=false;$('pcool').setAttribute('a
 // byp the stop valve is shut and the bypass passes it (no turbine flow: the feed is not heated)
 const atPower=(Q,cfg,byp)=>{const {W,Tfw}=byp?{W:Q*1e6/(sat(Tsat(7e6)).hg-sat(THW).hf),Tfw:THW}:heatBalance(Q*1e6,7e6,1),fv=fwValve(W,1,7e6)*100;
   const cv=byp?0:cvPos(W,7e6)*100,bp=byp?W/(KB*7e6)*100:0;
-  start({P:7e6,L:14.3,gen:W,cv:cv/100,bp:bp/100,sv:byp?0:1,fv:fv/100,n:1,tfw:Tfw-273.15},{heat:Q,n:100,fv:+fv.toFixed(2),ext:byp?0:100,mk:0,cv:+cv.toFixed(2),bp:+bp.toFixed(1),sv:!byp,pset:7,lset:14.3,dpset:2.2,...cfg})};
-// startup: the feed valve stays in M and shut, because the water expands about 3 m on the way to
-// 7 MPa and the level controller (which can only add water) would fill the vessel to the steam nozzle
-// MSIVs open, turbine stop valve shut: the bypass in A passes the steam once the pressure reaches the setpoint;
-// the condenser starts open to atmosphere, full of air; the vacuum pump runs, the SJAE waits for steam
-$('scStart').onclick=()=>start({P:0.1e6,L:11.5,sv:0,vac:false},{heat:30,n:0,fv:0,ext:0,mk:0,cv:0,bp:0,sv:false,pset:7,lset:14.3,dpset:2.2,win:21600,auto:{n:true,fv:false,mk:true,cv:true,bp:true},sj:false,vp:true});
+  start({P:7e6,L:14.3,gen:W,cv:cv/100,bp:bp/100,sv:byp?0:1,fv:fv/100,n:1,tfw:Tfw-273.15,mode:Q>=0.15*3293?'run':'startup'},{heat:Q,n:100,fv:+fv.toFixed(2),ext:byp?0:100,mk:0,cv:+cv.toFixed(2),bp:+bp.toFixed(1),sv:!byp,pset:7,lset:14.3,dpset:2.2,...cfg})};
+// startup, mode switch in Startup: the water expands about 3 m on the way to 7 MPa; the cleanup reject in A
+// takes the swell to the condenser while the feed valve in A holds the level. MSIVs open, turbine stop valve
+// shut: the bypass in A passes the steam once the pressure reaches the setpoint. The condenser starts open to
+// atmosphere, full of air; the vacuum pump runs, the SJAE waits for steam (the turbine is tripped on low
+// vacuum until the vacuum is pulled and the trip reset)
+$('scStart').onclick=()=>start({P:0.1e6,L:14.3,sv:0,vac:false,mode:'startup'},{heat:30,n:0,fv:0,ext:0,mk:0,cv:0,bp:0,sv:false,pset:7,lset:14.3,dpset:2.2,win:21600,sj:false,vp:true});
 $('scHot').onclick=()=>atPower(20,{win:3600},true);
 $('scRated').onclick=()=>atPower(3293,{win:600});
 $('scIso').onclick=()=>{atPower(200,{win:3600});setC({ms1:false,ms2:false})};
-$('scram').onclick=()=>{if(s&&!halted){BWRSim.scram(s,ctl.heat*1e6);syncAuto()}}; // the heat being commanded, also before the first step
+$('scram').onclick=()=>{if(s&&!halted){BWRSim.manualScram(s,ctl.heat*1e6);syncAuto()}}; // the heat being commanded, also before the first step
 $('rst').onclick=()=>{if(s){BWRSim.reset(s);syncAuto()}};
+for(const m of BWRSim.MODES)$('mode'+m).onclick=()=>{if(s&&!halted){BWRSim.setMode(s,m);syncAuto()}};
+// protection annunciator: one tile per trip, lit while latched
+const annB=BWRSim.TRIPS.map(tr=>{const e=document.createElement('span');e.textContent=tr.t;e.title=`${BWRSim.GROUP[tr.g]}${tr.m?' (only in '+tr.m.join(', ')+')':''}`;$('ann').append(e);return [tr,e]});
 $('scClose').onclick=()=>{setC({ms1:false,ms2:false})};
 $('scTrip').onclick=()=>{setC({sv:false})};
 // one toggle per SRV: press to open by hand, again to release (the spring may still hold it open)
@@ -443,10 +465,11 @@ const probe=document.createElement('i');probe.style.display='none';document.body
 const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
 // rate of change per hour over ~5 real seconds of history (5 s × speed), capped at 300 sim-s
 const rate=k=>{if(hist.length<2)return 0;const w=clamp(5*speed,5,300),b=hist[hist.length-1];let a=b;for(let i=hist.length-1;i>=0&&b.t-hist[i].t<=w;i--)a=hist[i];return b.t>a.t?(b[k]-a[k])/(b.t-a.t)*3600:0};
+const fmtClk=t=>{t=Math.round(t);const h=Math.floor(t/3600),m=Math.floor(t/60)%60,x=t%60;return `${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`};
 const fmtT=t=>t<120?`${t.toFixed(0)} s`:t<7200?`${(t/60).toFixed(0)} min`:`${(t/3600).toFixed(1)} h`;
 const syncAuto=()=>{
   const d=s.d,A=ctl.auto,D=cs.dem;
-  const dv={n:D.n*100,fv:D.fv*100,mk:D.mk,cv:D.cv*100,bp:D.bp*100},dtx={n:v=>v.toFixed(1),fv:v=>v.toFixed(1),mk:v=>(Math.round(v)||0).toFixed(0),cv:v=>v.toFixed(1),bp:v=>v.toFixed(1)};
+  const dv={n:D.n*100,fv:D.fv*100,mk:D.mk,rw:(D.rw||0)*100,cv:D.cv*100,bp:D.bp*100},dtx={n:v=>v.toFixed(1),fv:v=>v.toFixed(1),mk:v=>(Math.round(v)||0).toFixed(0),rw:v=>v.toFixed(0),cv:v=>v.toFixed(1),bp:v=>v.toFixed(1)};
   for(const k in AK){
     const on=A[AK[k]],el=$(k),v=dv[k],m=$(k+'m');
     el.disabled=$(k+'Dn').disabled=$(k+'Up').disabled=on;
@@ -456,7 +479,7 @@ const syncAuto=()=>{
   }
   // scram: the heat slider is greyed and follows the decay heat, so reset continues from it
   {const sc=!!s.scram,el=$('heat');el.disabled=$('heatDn').disabled=$('heatUp').disabled=sc;
-    $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc;
+    $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc&&!Object.keys(s.rps.lat).length;
     if(sc&&s.t>s.scram.t){const v=Math.round(s.f.Q/1e6);el.value=v;ctl.heat=v;$('heato').textContent=fmt.heat(v)}
   }
   // SRV toggles: pressed = opened by hand, ring = open on its spring
@@ -466,6 +489,12 @@ const syncAuto=()=>{
   {const pos=x=>x>0.999?'open':x<0.001?'shut':(x*100).toFixed(0)+' %',P={ms1:s.ms[0],ms2:s.ms[1],sv:s.sv},nm={ms1:'Inboard MSIV',ms2:'Outboard MSIV',sv:'Stop valve'};
    for(const k of SW)$(k).innerHTML=`${nm[k]}<br>${pos(P[k])}`;
    $('mssum').textContent=`${s.f.wst.toFixed(0)} kg/s`}
+  // protection: mode switch, lit trips, event log (newest first)
+  {const r=s.rps;for(const m of BWRSim.MODES)$('mode'+m).setAttribute('aria-pressed',String(r.mode===m));
+   for(const [tr,e] of annB){e.classList.toggle('on',!!r.lat[tr.k]);e.classList.toggle('ghost',!!tr.m&&!tr.m.includes(r.mode))}
+   const n=Object.keys(r.lat).length;$('rpso').textContent=r.off?'off':n?`${n} trip${n>1?'s':''} in`:'clear';
+   if(r.log.length!==syncAuto.nlog||r.log.at(-1)!==syncAuto.last){syncAuto.nlog=r.log.length;syncAuto.last=r.log.at(-1);
+     $('elog').replaceChildren(...r.log.slice().reverse().map(e=>{const li=document.createElement('li'),tm=document.createElement('time');tm.textContent=fmtClk(e.t);li.append(tm,e.text);return li}))}}
   {const f=s.f;$('fwsum').textContent=`${f.fw.toFixed(0)} kg/s · ${(f.Tfw-273.15).toFixed(0)} °C`}
   {const f=s.f;$('cdsum').textContent=`${(f.Pc/1e3).toFixed(1)} kPa · air ${(f.pa/1e3).toFixed(2)} kPa`;for(const k in TOG)$(k).setAttribute('aria-pressed',String(TOG[k]))}
   let m='',bad=false;const fS=s.f,shut=s.n>0.001&&s.n**2*H0+fS.Pc<d.P;
