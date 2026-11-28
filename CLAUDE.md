@@ -29,6 +29,7 @@ Physical correctness and honest labelling of limitations matter more than featur
 | `tools/serve.mjs` | Dependency-free static server for `npm run serve` (port 8000, or `node tools/serve.mjs <port>`); also exports `serve(port)`. |
 | `docs/physics.md` | Model equations, state variables, controllers, constants, validation numbers. |
 | `docs/backlog.md` | Ideas for next iterations, roughly prioritised. |
+| `docs/roadmap.md` | BWR plant roadmap: ordered, shippable steps to make the layout's components functional, with open questions. |
 
 ## Commands
 
