@@ -160,12 +160,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     </div>
     <div class="grp">
       <h2>Events</h2>
-      <div class="rx"><button id="scram" aria-pressed="false">Scram</button><button id="rst" disabled>Reset scram</button></div>
+      <div class="rx"><button id="scram" aria-pressed="false" title="Insert the rods: the heat drops to the fission tail and decay heat, starting from the net heat at this moment. The net-heat slider follows it until reset.">Scram</button><button id="rst" disabled title="Hand the heat back to the net-heat slider, at the decay heat it shows now.">Reset scram</button></div>
       <div class="btns">
-        <button id="scClose">Close main steam valve</button>
-        <button id="scFwh">Lose feedwater heating: −55 K</button>
+        <button id="scClose" title="Put the steam valve in M and shut it; it strokes closed over 5 s.">Close main steam valve</button>
+        <button id="scFwh" title="Lower the feedwater temperature by 55 K, as when the feedwater heaters are lost.">Lose feedwater heating: −55 K</button>
       </div>
-      <p id="scramT"></p>
     </div>
     <div class="grp">
       <h2>Reactor</h2>
@@ -369,8 +368,7 @@ const syncAuto=()=>{
   {const sc=!!s.scram,el=$('heat');el.disabled=$('heatDn').disabled=$('heatUp').disabled=sc;
     $('scram').setAttribute('aria-pressed',String(sc));$('scram').textContent=sc?'Scrammed':'Scram';$('rst').disabled=!sc;
     if(sc&&s.t>s.scram.t){const v=Math.round(s.f.Q/1e6);el.value=v;ctl.heat=v;$('heato').textContent=fmt.heat(v)}
-    $('scramT').textContent=sc?`Scrammed ${fmtT(s.t-s.scram.t)} ago from ${(s.scram.P0/1e6).toFixed(0)} MW: core heat now ${(s.f.Q/1e6).toFixed(s.f.Q<1e8?1:0)} MW, ${(s.f.Q/Math.max(1,s.scram.P0)*100).toFixed(1)} % (fission tail and decay heat). Reset hands the heat back to the slider at this value.`
-      :'These act on the running plant. Scram drops the heat to the fission tail and decay heat, starting from the net heat at that moment; reset hands the heat back to the slider at its current value. Closing the valve puts it in M and shuts it over 5 s.'}
+  }
   let m='',bad=false;
   if(s.sv){m='Safety mode: every safety/relief valve is open on its spring until pressure falls below 8.1 MPa.';bad=true}
   else if(!A.srv){m='Safety/relief valves in M: only the safety mode at 8.5 MPa limits pressure.';bad=true}
@@ -390,7 +388,7 @@ const updText=()=>{
   const sv=s.sv?'safety mode, all open':f.nsrv?`${f.nsrv} of ${NV} open (${ctl.auto.srv?'A':'by hand'})`:'closed';
   const fwLoad=f.fw*(sat(d.T).hf-f.hfw);
   const rows=[['State',d.sub<0.05?(f.gen>0.5?'boiling':'saturated'):'water subcooled'],['Water heat-up rate',(Math.abs(rT)<0.5?'0':(rT>0?'+':'−')+Math.abs(rT).toFixed(0))+' °C/h',Math.abs(rT)>55],
-    ['Reactor',s.scram?'scrammed':'at the net heat set'],['Net heat to water',(f.Q/1e6).toFixed(f.Q!==0&&Math.abs(f.Q)<1e8?1:0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
+    ['Reactor',s.scram?`scrammed ${fmtT(s.t-s.scram.t)} ago, ${(f.Q/Math.max(1,s.scram.P0)*100).toFixed(1)} % of ${(s.scram.P0/1e6).toFixed(0)} MW`:'at the net heat set',!!s.scram],['Net heat to water',(f.Q/1e6).toFixed(f.Q!==0&&Math.abs(f.Q)<1e8?1:0)+' MW'],['Steam made in the water',Math.max(0,f.gen).toFixed(0)+' kg/s'],['Condensing',f.cond.toFixed(1)+' kg/s'],
     ['Main steam flow',f.wst.toFixed(0)+' kg/s'],['Steam valve position',(s.mv*100).toFixed(1)+' %'],['Safety/relief valves',sv,s.sv||f.nsrv>0],['Relief flow',f.wsrv.toFixed(0)+' kg/s'],
     ['Feedwater',`${f.fw.toFixed(0)} kg/s at ${(f.Tfw-273.15).toFixed(0)} °C`],['Heat to bring feed to saturation',(fwLoad/1e6).toFixed(0)+' MW'],
     ['Voids',d.Vb.toFixed(1)+' m³'],['Swell (level − collapsed)',(d.level-d.collapsed).toFixed(2)+' m'],['Collapsed level',d.collapsed.toFixed(2)+' m'],
