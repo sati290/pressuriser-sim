@@ -266,5 +266,6 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 - Recirculation pump on an MG set.
 - bwr-sim.js split into per-system modules at step 1.
 
-Still open: only the sourced numbers named under each step (condenser UA, kinetics coefficients, trip
-setpoints).
+Still open: the feed pump drive at step 5 (turbine-driven variable speed, as now, or motor-driven with a
+startup low-flow valve), and the sourced numbers named under each step (condenser UA, kinetics
+coefficients, trip setpoints).
