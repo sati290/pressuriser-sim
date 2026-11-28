@@ -148,7 +148,7 @@ Illustrative, not sourced: pump curves (split so the rated point of step 1 is un
 (2 m at rated) and the 1 m pump pit, the 0.7 MPa/5 s low-suction trip, polisher and LP heater drops, the
 0.28 MPa LP extraction. Gross output of the stub with two stages: 1046 MWe (920 with one).
 
-### 6. Heater drains
+### 6. Heater drains (done)
 **Models:** each heater's shell level and its drain path: HP heater drains cascade to the LP heater, LP
 drains are pumped forward into the condensate line. Heater level control; high shell level as a
 failure (tube leak, drain valve stuck).
@@ -159,6 +159,14 @@ to lower pressure (energy carried at h_f). Replaces "drains go to the hotwell in
 **Decided:** HP drains cascade to the LP heater, LP heater drains are pumped forward into the condensate
 line downstream of the LP heater (drain tank and drain pump), as is common on BWRs; it raises the feed
 temperature slightly and keeps the heat out of the condenser.
+
+**Done:** HP shell 30 m³, LP shell with its drain tank 60 m³ as one inventory (one level, labelled), each
+saturated at its shell pressure; HP drain valve and drain pump discharge valve on PI level control with
+M/A; drain pump start/stop; tube flooding above 60 % (heating ∝ uncovered tubes), high-level dump to the
+condenser from 80 %; LP shell vent for flash steam its tubes can't condense; event "HP drain valve fails
+shut" (`fail(s, 'hdv')`). All illustrative. With the drains forward the LP extraction falls to 163 kg/s,
+the condenser duty to 2158 MW and the stub output rises to 1130 MWe. The feed pump constant was re-chosen so
+the rated feed valve stays 74.5 % open.
 
 ### 7. Condensate storage tank
 **Models:** the CST as a finite tank: hotwell makeup draws from it, reject returns to it; later the

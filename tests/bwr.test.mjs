@@ -61,18 +61,23 @@ test('rated heat balance is a steady state at dt 0.25 and 2 s: pump, valve, heat
 
 test('feed pump and valve: flow from the pump curve against vessel pressure', () => {
   near(B.fwFlow(1, FV0, P0), W0, 1e-6, 'fwValve inverts fwFlow');
-  // wide open the condensate pump runs short of NPSH (2 m at rated, ∝ flow²; 3 m available half full)
-  near(B.fwFlow(1, 1, P0), 2261, 10, 'wide open at 7 MPa');
+  // wide open the condensate pump runs short of NPSH (2 m at rated, ∝ flow²; 3 m available half full);
+  // fwFlow assumes the rated drains pumped forward, so the condensate pump carries 580 kg/s less
+  near(B.fwFlow(1, 1, P0), 2364, 10, 'wide open at 7 MPa');
   assert.ok(B.fwFlow(1, FV0, 5e6) > 1.2 * W0, 'more flow at lower vessel pressure');
   near(B.shutoff(1), B.H0 + B.PC + 0.0294e6, 1e3, 'both pumps shut off at 10 MPa over the hotwell (3 m of water)');
-  assert.equal(B.fwFlow(1, 1, B.shutoff(1) + 1), 0, 'nothing above the shutoff head');
+  // fwFlow has the drain pump running, and its 3.5 MPa head beats the condensate pump's at the feed pump suction
+  assert.ok(B.shutoff(1, B.PC, B.HWM / 2, B.DPD) > B.shutoff(1) + 1e6, 'the drain pump raises the shutoff');
+  assert.equal(B.fwFlow(1, 1, B.shutoff(1, B.PC, B.HWM / 2, B.DPD) + 1), 0, 'nothing above the shutoff head');
   // the condensate pump's 2.6 MPa does not scale with the feed pump speed: 0.6² × 7.4 + 2.6 MPa = 5.3 MPa
   assert.equal(B.fwFlow(0.6, 1, P0), 0, '60 % speed: shutoff 5.3 MPa is below 7 MPa');
   assert.equal(B.fwFlow(1, 0, P0), 0, 'valve shut');
   assert.equal(B.fwValve(100, 0.6, P0), null, 'no opening helps');
-  // low hotwell: the condensate pump's NPSH runs out and the flow falls (bwr-feed.test.mjs has more)
-  const f10 = B.fwFlow(1, FV0, P0, 0.1 * B.HWM);
-  assert.ok(f10 < 0.92 * W0 && f10 > 0.8 * W0, `10 % hotwell, NPSH-limited: ${f10}`);
+  // low hotwell: with the drains pumped forward the condensate pump carries only about 1210 kg/s at rated
+  // and has NPSH to spare; below 2 % its suction uncovers and the flow falls (bwr-feed.test.mjs has more)
+  near(B.fwFlow(1, FV0, P0, 0.05 * B.HWM), W0, 10, '5 % hotwell');
+  const f1 = B.fwFlow(1, FV0, P0, 0.01 * B.HWM);
+  assert.ok(f1 < 0.85 * W0 && f1 > 0.6 * W0, `1 % hotwell, suction uncovering: ${f1}`);
   // the valve strokes at FRATE
   const s = rated(); B.step(s, { ...RATED_U, fv: 1 }, 1);
   near(s.fv, FV0 + B.FRATE, 1e-9, 'valve travel limit');
@@ -82,11 +87,11 @@ test('feedwater heater: the extraction valve sets the shell pressure, the shell 
   const r = B.heater(B.WR, 1, B.WR);
   near(r.T - 273.15, 216, 1e-6, 'rated outlet');
   near(r.ps, r.pe * 0.95, 1e3, '5 % drop across the open valve at rated');
-  near(r.ws, B.WR * (common.hLiq(TFW, 7e6) - common.hLiq(B.TLPD, 7e6)) / (r.hx - common.sat(r.T + B.TTD).hf), 1e-3, 'shell condenses what heats the feed (wet extraction steam)');
+  near(r.ws, B.WR * (common.hLiq(TFW, 7e6) - common.hLiq(B.THPI, 7e6)) / (r.hx - common.sat(r.T + B.TTD).hf), 1e-3, 'shell condenses what heats the feed (wet extraction steam)');
   assert.ok(r.hx < common.sat(r.T + B.TTD).hg, 'extraction steam is wet, on the expansion line');
   near(B.heaterT(0, 1), B.THW, 1e-9, 'no steam flow, no extraction: hotwell temperature');
   near(B.heaterT(B.WR, 0), B.THW, 1e-9, 'extraction valve shut');
-  near(B.THW - 273.15, 38.1, 0.3, 'design hotwell temperature: condenser at rated');
+  near(B.THW - 273.15, 37.4, 0.3, 'design hotwell temperature: condenser at rated (drains pumped forward)');
   near(B.TLPD - 273.15, 126.5, 0.3, 'LP heater design outlet');
   // throttling: the outlet falls monotonically as the valve closes; less feed flow, hotter outlet
   let last = 1e9;
@@ -100,7 +105,9 @@ test('feedwater heater: the extraction valve sets the shell pressure, the shell 
   const T60 = s.f.Tfw - 273.15;
   runPlant(s, { ...RATED_U, ext: 0.2 }, 300, 0.5);
   assert.ok(T60 < 216 - 25 && T60 > 216 - 50, `after 1 min: ${T60}`);
-  assert.ok(s.f.Tfw - 273.15 < 216 - 45 && s.f.Tfw - 273.15 > 216 - 75, `after 6 min: ${s.f.Tfw - 273.15}`);
+  // (the drain valves stay at their design opening here, with no level control: the LP drain tank runs
+  // low and the HP shell floods part of its tubes, so the feed cools further than with one stage)
+  assert.ok(s.f.Tfw - 273.15 < 216 - 60 && s.f.Tfw - 273.15 > 216 - 95, `after 6 min: ${s.f.Tfw - 273.15}`);
 });
 
 test('feed pump speed in A holds the discharge-to-dome differential pressure, at rated and through a depressurisation', () => {
@@ -127,14 +134,14 @@ test('mass and energy are conserved: closed vessel, then with feed and steam', (
   near(s.U - U0, 10e6 * 600, 1e-6 * U0, 'energy');
   // with flows: integrate what went in and out at the start-of-step enthalpies the plant records
   // vessel plus hotwell change only by makeup in and relief out (the steam returns as condensate)
-  let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms;
+  let m = s.M, u = s.U, tot = s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls;
   runPlant(s, { heat: 100e6, n: 1, fv: 0.1, ext: 0.5, mk: 20, mv: 0.03, srv: [true] }, 300, 1, x => {
     const f = x.f; m += f.fw - f.wst - f.wsrv; u += f.Q + f.fw * f.hfw - (f.wst + f.wsrv) * f.hg; tot += f.mk - f.wsrv; return true;
   });
   assert.ok(s.f.fw > 10, `feed flowing: ${s.f.fw}`);
   near(s.M, m, 1e-3, 'mass with flows');
   near(s.U, u, 1e-9 * Math.abs(u), 'energy with flows');
-  near(s.M + s.Mh + s.cd.Ms, tot, 1e-3, 'vessel + hotwell + condenser steam mass');
+  near(s.M + s.Mh + s.cd.Ms + s.Mhs + s.Mls, tot, 1e-3, 'vessel + hotwell + condenser steam + heater shell mass');
 });
 
 test('closing the steam valve at rated heat: voids collapse (shrink), pressure rises, SRVs lift', () => {
@@ -199,8 +206,8 @@ test('hotwell: drains without makeup when steam is lost to the pool; pump loses 
   assert.equal(s.f.ret, 0, 'no condensate return while isolated');
   // nearly empty hotwell: the pump delivers less than its curve
   const e = B.init({ P: P0, L: 14.3, hw: 0.02, n: 1 });
-  B.step(e, { heat: 0, n: 1, fv: 0, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5); e.fv = 1;
-  B.step(e, { heat: 0, n: 1, fv: 1, ext: 0, mk: 0, mv: 0, srv: [] }, 0.5);
+  B.step(e, { heat: 0, n: 1, fv: 0, ext: 0, mk: 0, mv: 0, hdp: false, srv: [] }, 0.5); e.fv = 1;
+  B.step(e, { heat: 0, n: 1, fv: 1, ext: 0, mk: 0, mv: 0, hdp: false, srv: [] }, 0.5);
   assert.ok(e.f.fw < 0.75 * B.fwFlow(1, 1, P0) && e.f.fw > 0, `suction-limited feed (condensate pump NPSH): ${e.f.fw}`);
   // open steam valve with no feed: the condensate fills the hotwell until the condenser would flood
   const o = B.init({ P: P0, L: 14.3, hw: 0.95 });

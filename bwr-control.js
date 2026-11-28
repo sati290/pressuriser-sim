@@ -10,6 +10,9 @@
 // Condensate and feed train (step 5): exl % LP heater extraction (manual; absent: the same as ext);
 // cp, fp condensate and feed pump run switches (booleans, plain on/off, absent: on); rv % feed pump
 // minimum-flow valve, with M/A.
+// Heater drains (step 6): hdv % HP heater drain valve, ldv % LP drain pump discharge valve, both with M/A
+// (a key absent from c.auto runs in A, for callers older than step 6; absent values are 50 %); hdp drain
+// pump run switch (absent: on).
 import {clamp} from './common.js';
 // must match bwr-sim.js (the controller does not load the plant): flow demand limit, makeup limit
 const FWMAX=2500,MKMAX=100;
@@ -36,12 +39,17 @@ const KN=1.5e-8,TIN=10;
 // of rated pump flow), fully at zero forward flow; proportional only, as the valve's own job is to keep
 // the pump above its minimum flow. Must match bwr-feed.js WMIN.
 const WMIN=447;
+// heater shell levels (fraction full): PI on each drain valve, direct acting (high level opens it), 0.25
+// of level error strokes the valve fully (gain 4), integral time 30 s, setpoint half full (LSH)
+const KD=4,TID=30,LSH=0.5;
 // controller memory: iP, iF, iX, iH integrators (steam valve fraction, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
 // the level controller passes to the flow controller)
 // init(c) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the level loop's flow integral starts at 0 (feed = steam flow).
-const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,dem:{mv:0,fw:0,fv:0,mk:0,n:0,rv:0}});
+const init=(c)=>({iP:c?c.mv/100:0,iF:0,iX:c?c.fv/100:0,iH:c?c.mk:0,iN:c?c.n/100:0,iDH:(c?.hdv??50)/100,iDL:(c?.ldv??50)/100,dem:{mv:0,fw:0,fv:0,mk:0,n:0,rv:0,hdv:0.5,ldv:0.5}});
+// the drain level loops are in A unless c.auto says otherwise
+const autoD=(A,k)=>A[k]??true;
 // Automatic logic runs all the time and produces a demand for every actuator (k.dem). For an actuator
 // in M the integral holds the operator's value (net of the steam-flow feedforward for feedwater), so the
 // demand is the operator's value plus the proportional correction for the present error: the notch shows
@@ -80,15 +88,21 @@ const demands=(k,s,c,dt)=>{
   k.iN=clamp(k.iN,0,1);const n=clamp(KN*eN+k.iN,0,1);
   // minimum-flow valve on the measured forward feed flow
   const rv=clamp((WMIN-f.fw)/WMIN,0,1);
-  k.dem={mv,fw,fv,mk,n,rv};
+  // heater drain levels: HP shell on the HP drain valve, LP shell and drain tank on the drain pump's valve
+  const lvl=(key,iK,L,man)=>{const e=(L??LSH)-LSH;
+    if(!autoD(A,key))k[iK]=man;else{const I=k[iK]+KD/TID*e*dt,v=KD*e+I;if(!((v>1&&e>0)||(v<0&&e<0)))k[iK]=I}
+    k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
+  const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
+  k.dem={mv,fw,fv,mk,n,rv,hdv,ldv};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{
   const A=c.auto||{},D=k.dem;
   return {heat:c.heat*1e6,n:A.n?D.n:c.n/100,fv:A.fv?D.fv:c.fv/100,ext:c.ext/100,mk:A.mk?D.mk:c.mk,mv:A.mv?D.mv:c.mv/100,srv:c.srv||[],
-    exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100};
+    exl:(c.exl??c.ext)/100,cp:c.cp!==false,fp:c.fp!==false,rv:A.rv?D.rv:(c.rv||0)/100,
+    hdv:autoD(A,'hdv')?D.hdv:(c.hdv??50)/100,ldv:autoD(A,'ldv')?D.ldv:(c.ldv??50)/100,hdp:c.hdp!==false};
 };
 // one control step: update the demands from the plant state, return the command for bwr-sim.js step().
 // Call it before every plant step, with the same dt.
 const update=(k,s,c,dt)=>{demands(k,s,c,dt);return command(k,c)};
-export {init,demands,command,update,KP,TIP,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,WMIN};
+export {init,demands,command,update,KP,TIP,KL,TIL,KX,TIX,HSET,KH,TIH,KN,TIN,WMIN,KD,TID,LSH};

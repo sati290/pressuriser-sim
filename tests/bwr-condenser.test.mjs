@@ -6,7 +6,7 @@ import { common, B, near, runPlant, rated, RATED_U, Q0, W0 } from './bwr-helpers
 test('rated heat balance: condenser near 7 kPa, realistic duty, stub output, hotwell at the shell temperature', () => {
   const s = runPlant(rated(), RATED_U, 600, 1);
   assert.ok(s.f.Pc > 5e3 && s.f.Pc < 7.5e3, `back pressure ${s.f.Pc} Pa`);
-  near(s.f.Tc - 273.15, 38.1, 0.5, 'shell temperature (two heater stages since step 5)');
+  near(s.f.Tc - 273.15, 37.4, 0.5, 'shell temperature (two heater stages since step 5, drains pumped forward since step 6)');
   assert.ok(s.f.Qc > 2.1e9 && s.f.Qc < 2.5e9, `condenser duty ${s.f.Qc / 1e6} MW`);
   assert.ok(s.f.Pgen > 850e6 && s.f.Pgen < 1150e6, `gross output ${s.f.Pgen / 1e6} MW`);
   near(s.f.Tcw - B.TCW, s.f.Qc / (B.WCW * B.CPW), 1e-6, 'circulating water rise from the duty');
