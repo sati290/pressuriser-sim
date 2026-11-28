@@ -46,10 +46,11 @@ B1. **Feedwater system** (done, 0.1.6) — condenser hotwell as the suction sour
 B2. **Simple condenser** — closes the loop: main steam (and later bypass) condenses into the hotwell
     that feeds B1; cooling-water heat sink, condenser pressure from the steam load, hotwell level.
     Replaces `condensate()` in bwr-sim.js (today: the main steam flow back at once at 45.8 °C); the steam
-    valve's back pressure `PC` would then follow the condenser. On the mimic it goes at the turbine end of
-    the steam line, above the hotwell, where the dashed condensate line is now.
+    valve's back pressure `PC` would then follow the condenser. The mimic already draws it (layout draft)
+    under the LP turbine, with the hotwell as its bottom; see docs/bwr.md, "Plant layout".
 B3. **Turbine and bypass valves** — turbine control valves and a steam bypass to the condenser, so a
-    load rejection has somewhere to send steam besides the SRVs.
+    load rejection has somewhere to send steam besides the SRVs. Already on the layout draft (MSIVs, stop
+    and control valve, bypass valve); docs/bwr.md "Plant layout" lists the other components still missing.
 
 ### Core
 B4. **Void and pressure reactivity feedback** — point kinetics (one or six delayed groups) with void,

@@ -6,6 +6,9 @@ shippable increment: its own PR, its own tests in `tests/bwr.test.mjs`, the part
 mimic, docs/bwr.md updated (constants, validation numbers, "Not modelled"), and the page notes kept in
 step. Steps say what they depend on; where two steps don't depend on each other the order is a preference.
 
+Reference plant (decided): generic BWR/4-class, not one named plant; numbers sourced where possible
+from that class.
+
 Ground rules carried over from the project: one of each component (no redundant trains); realistic
 arrangements, control schemes and sourced numbers, with placeholders labelled as such; manual control
 primary, every new actuator gets M/A and a demand notch; emergency core cooling is out of scope for now.
@@ -19,7 +22,7 @@ The existing backlog items B1–B11 (docs/backlog.md) map onto the steps below; 
 | # | Step | Depends on | Replaces / adds | Backlog |
 |---|---|---|---|---|
 | 1 | Condenser with a turbine stub | — | `condensate()`, fixed `PC` | B2 |
-| 2 | Circulating water | 1 | fixed cooling-water flow and inlet temperature | — |
+| 2 | Circulating water (in/out pipe) | 1 | fixed cooling-water flow and inlet temperature | — |
 | 3 | Condenser air removal (SJAE, vacuum pump, off-gas sink) | 1 | vacuum as a given | — |
 | 4 | Main steam valves: MSIVs, stop, control, bypass | 1 | the one `mv` valve | B3 |
 | 5 | Condensate and feed train split | 1 | the lumped pump and one heater | — |
@@ -55,7 +58,7 @@ time constant of a few seconds; solve implicitly or substep). Hotwell gains w_c 
 subcooled, an illustrative 1–2 K), and its temperature becomes a state (mixing with makeup and drains).
 Main steam valve and feed pump suction see Pc in place of the constant `PC`.
 
-**Turbine stub:** without a turbine the condenser would receive the full steam enthalpy and reject
+**Turbine stub** (decided: acceptable as a placeholder): without a turbine the condenser would receive the full steam enthalpy and reject
 ~3290 MW instead of ~2200 MW. Until step 15, the steam passes a fixed expansion line from the throttle
 to Pc with one isentropic efficiency (≈ 0.85), so it arrives wet at the right enthalpy and the stub
 reports gross electrical output (≈ 1100 MW at rated). Labelled as a stub on the page.
@@ -63,21 +66,18 @@ reports gross electrical output (≈ 1100 MW at rated). Labelled as a stub on th
 **Checks:** rated heat balance with Pc ≈ 5–7 kPa and a realistic condenser duty; loss of condenser
 cooling raises Pc; vacuum degrades with load. Hotwell level and temperature now meaningful.
 
-**Open:** source for a BWR/4-class condenser UA, circulating flow (~30–50 m³/s) and design back pressure;
+**Open:** source for a generic BWR/4-class condenser UA, circulating flow (~30–50 m³/s) and design back pressure;
 whether to model hotwell subcooling or keep saturated condensate.
 
 ### 2. Circulating water
-**Models:** circulating water pump (one, on/off or with a discharge valve), the heat sink (river or
-cooling tower), so loss of circulating water and seasonal inlet temperature are things the operator can
-cause and see.
+**Models:** the circulating water as an in/out pipe through the condenser (decided: no river, cooling
+tower or pump model for now), with the flow and inlet temperature as operator inputs, so loss of
+circulating water and a warm inlet are things the operator can cause and see.
 
-**Approach:** pump flow from a pump curve against a fixed system resistance; condenser outlet
-temperature from the step 1 heat balance; inlet temperature an operator input (once-through river) or
-a cooling-tower basin node with an approach-temperature correlation (Merkel-type simplified: outlet =
-wet bulb + approach(range, load)). Tube transit delay optional.
-
-**Open:** river (once-through) or cooling tower? Most US BWR/4s are once-through or have towers; pick
-one reference.
+**Approach:** flow (0 … rated, a manual valve or pump on/off as one setting) and inlet temperature are
+inputs; condenser outlet temperature from the step 1 heat balance. Tube transit delay optional. Small
+enough to ship together with step 1. A pump curve and a heat sink (river or cooling tower) can come later
+if scenarios need them.
 
 ### 3. Condenser air removal
 **Models:** air in-leakage into the shell, removed by the steam jet air ejector (motive steam from the
@@ -109,7 +109,8 @@ allowed to pass, as on the GE EHC scheme (pressure demand split between control 
 **Checks:** turbine trip (stop valve closes) at rated with bypass in A: bypass takes its capacity, SRVs
 lift for the rest; MSIV closure isolates the condenser.
 
-**Open:** bypass capacity, ~25 % of rated steam on a BWR/4, some plants 100 %; which reference?
+**Decided:** bypass capacity about 25 % of rated steam (typical BWR/4; full-capacity bypass is the exception),
+so a turbine trip from full power still lifts SRVs.
 
 ### 5. Condensate and feed train split
 **Models:** the lumped pump and single heater split into what the layout draws: condensate pump
@@ -259,12 +260,12 @@ shutdown cooling, pool cooling), ADS, isolation condenser. Waits until the prote
 
 ## Open questions (summary)
 
-1. Reference plant: stay generic BWR/4 (Browns Ferry / Peach Bottom class, the SRV numbers are BWR/4)
-   or name one plant for sourced numbers throughout?
-2. Turbine stub in step 1 (fixed expansion line, gross MW readout): acceptable as a placeholder?
-3. Circulating water sink: once-through river or cooling tower?
-4. Bypass capacity: 25 % or 100 % of rated steam?
-5. Condenser vacuum at startup: model pulling vacuum now (step 3) or start with vacuum drawn?
-6. Heater drains: cascade to condenser or pumped forward?
-7. Recirculation drive: MG set (BWR/4) or VFD?
-8. Module split of bwr-sim.js: now, or when it hurts?
+Decided (Attila, 2026-11-28): generic BWR/4-class plant; the turbine stub is fine; circulating water is
+an in/out pipe for now; bypass about 25 % of rated steam, as is typical.
+
+Still open:
+
+1. Condenser vacuum at startup: model pulling vacuum now (step 3) or start with vacuum drawn?
+2. Heater drains: cascade to condenser or pumped forward?
+3. Recirculation drive: MG set (BWR/4) or VFD?
+4. Module split of bwr-sim.js: now, or when it hurts?
