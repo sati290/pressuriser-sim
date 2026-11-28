@@ -277,6 +277,10 @@ const $=id=>document.getElementById(id);
 const ids=['set','dT','lset','heat','ch','ld','hp','hb','sp','relSet','relMan','n2'];
 // sliders with an M/A switch → key in ctl.auto (as control.js names the actuator)
 const AK={ch:'ch',ld:'ld',hp:'hp',hb:'hb',sp:'sp',relMan:'rel'},auto={ch:false,ld:false,hp:false,hb:false,sp:false,rel:true};
+// second line of each M/A switch's tooltip: what drives the automatic demand
+const AKT={ch:'Auto: pressuriser level, or pressure when water-solid, as selected under Charging and letdown.',ld:'Auto: pressure when water-solid, or level with a bubble, as selected under Charging and letdown.',
+  hp:'Auto: pressure (or pressuriser − coolant ΔT) against its setpoint.',hb:'Auto: pressure (or ΔT) below its setpoint switches the groups on.',
+  sp:'Auto: pressure (or ΔT) above its setpoint opens the spray.',relMan:'Auto: opens above the relief opening pressure.'};
 const fmt={set:v=>(+v).toFixed(1)+' MPa',dT:v=>v+' K',lset:v=>v+' %',heat:v=>(v>0?'+':'')+(+v).toFixed(1)+' MW',ch:v=>(+v).toFixed(1)+' kg/s',ld:v=>(+v).toFixed(1)+' kg/s',hp:v=>Math.round(v)+' %',hb:v=>Math.round(v)+' of '+NB,sp:v=>(+v).toFixed(1)+' kg/s',relMan:v=>+v?v+' %':'closed',n2:v=>+v?v+' %':'shut',relSet:v=>(+v).toFixed(1)+' MPa'};
 const ctl={};
 const invR=[...document.querySelectorAll('input[name=inv]')],pzR=[...document.querySelectorAll('input[name=pzMode]')];
@@ -307,7 +311,7 @@ for(const k of ids){
   // M/A switch beside the label, demand readout before the value, demand notch on the track
   const head=document.createElement('div');head.className='rhead';lab.replaceWith(head);
   const sw=document.createElement('button');sw.type='button';sw.className='am';sw.id=k+'Am';sw.setAttribute('role','switch');
-  sw.setAttribute('aria-label',name+' automatic');sw.title='M manual / A automatic';sw.innerHTML='<span>M</span><span>A</span>';
+  sw.setAttribute('aria-label',name+' automatic');sw.title='M manual / A automatic\n'+AKT[k];sw.innerHTML='<span>M</span><span>A</span>';
   sw.onclick=()=>{auto[AK[k]]=!auto[AK[k]];readCtl();if(s)syncAuto()};head.append(lab,sw);
   const dem=document.createElement('span');dem.className='dem';dem.id=k+'d';lab.insertBefore(dem,lab.querySelector('output'));
   const m=document.createElement('i');m.className='cmd';m.id=k+'m';m.hidden=true;trk.append(m);

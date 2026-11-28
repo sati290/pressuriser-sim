@@ -116,7 +116,7 @@ const WMIN=447;
 const KD=4,TID=30,LSH=0.5;
 // controller memory: iP, iF, iX, iH, iN, iW integrators (steam flow demand as a fraction of rated, feed flow kg/s, feed valve
 // fraction, makeup kg/s); dem the latest demand for every automatic actuator (SI; fw is the flow demand
-// the level controller passes to the flow controller)
+// the level controller passes to the flow controller, ls the level setpoint in use after any scram setdown)
 // init(c, p) preloads the integrators from the operator's settings c (panel units), so an actuator that
 // starts in A starts from its slider; the three-element level loop's flow integral starts at 0 (feed = steam flow).
 // With the plant state p (optional) the level loops start steady too: the feed it starts with (its steam
@@ -219,7 +219,7 @@ const demands=(k,s,c,dt)=>{
     k[iK]=clamp(k[iK],0,1);return clamp(KD*e+k[iK],0,1)};
   const hdv=lvl('hdv','iDH',f.LH,(c.hdv??50)/100),ldv=lvl('ldv','iDL',f.LL,(c.ldv??50)/100);
   const mu=clamp(mk/MKMAX,0,1),rj=clamp(-mk/MKMAX,0,1);
-  k.dem={D,SL,Lr:k.Lr,nr:k.nr,cv,bp,fw,fv,fws,sfv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
+  k.dem={D,SL,Lr:k.Lr,nr:k.nr,cv,bp,ls:lset,fw,fv,fws,sfv,mk,n,rw,mg,rv,hdv,ldv,mu,rj};
 };
 // final command: the demand for actuators in A, the operator's value for those in M, in SI
 const command=(k,c)=>{

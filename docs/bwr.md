@@ -380,6 +380,12 @@ Plp (HP and LP steam work), Pgen (electrical output); `breaker(s, close)` the op
 - In M an actuator's integral holds the operator's value (for the level loop, the measured feed flow net
   of the steam-flow feedforward; for makeup, net of its feedforward), so the demand — the notch — is the operator's value plus the proportional correction for
   the present error. At balance the notch sits on the slider; switching to A starts from the notch.
+- On the page each controller is one box in the "Automatic control" card, like a unit in a control rack:
+  the actuators it drives (chips, filled while in A), 3–5 readouts of the signals it works on, and its
+  setpoints. A controller driving several actuators is one box (pressure regulator: control and bypass
+  valves, with the load and speed sets; feedwater: feed and startup feed valves; heater drains; hotwell
+  makeup and reject). `dem.ls` is the level setpoint in use after any scram setdown, for that readout.
+  Each M/A switch's tooltip has a second line saying what drives its automatic demand.
 
 ## Validation numbers (tests/bwr.test.mjs, bwr-core, bwr-recirc, bwr-downcomer)
 
